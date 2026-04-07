@@ -1,0 +1,80 @@
+{
+  "$schema": "https://raw.githubusercontent.com/badlogic/pi-mono/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json",
+  "name": "neon-matrix",
+  "vars": {
+    "green": "#39ff14",
+    "darkGreen": "#003b00",
+    "brightGreen": "#7fff00",
+    "phosphor": "#66ff33",
+    "matrixBg": "#000000",
+    "deepBlack": "#000000",
+    "glowGreen": "#00ff41",
+    "fadeGreen": "#00cc33",
+    "digitGreen": "#39ff14",
+    "hotGreen": "#b2ff59"
+  },
+  "colors": {
+    "accent": "green",
+    "border": "darkGreen",
+    "borderAccent": "brightGreen",
+    "borderMuted": "fadeGreen",
+    "success": "brightGreen",
+    "error": "#ff3333",
+    "warning": "#eeff00",
+    "muted": "fadeGreen",
+    "dim": "#005f00",
+    "text": "green",
+    "thinkingText": "glowGreen",
+
+    "selectedBg": "#000000",
+    "userMessageBg": "#000000",
+    "userMessageText": "brightGreen",
+    "customMessageBg": "#000000",
+    "customMessageText": "phosphor",
+    "customMessageLabel": "brightGreen",
+    "toolPendingBg": "#000000",
+    "toolSuccessBg": "#000000",
+    "toolErrorBg": "#000000",
+    "toolTitle": "brightGreen",
+    "toolOutput": "green",
+
+    "mdHeading": "brightGreen",
+    "mdLink": "phosphor",
+    "mdLinkUrl": "fadeGreen",
+    "mdCode": "digitGreen",
+    "mdCodeBlock": "#000000",
+    "mdCodeBlockBorder": "darkGreen",
+    "mdQuote": "glowGreen",
+    "mdQuoteBorder": "fadeGreen",
+    "mdHr": "darkGreen",
+    "mdListBullet": "phosphor",
+
+    "toolDiffAdded": "#39ff14",
+    "toolDiffRemoved": "#ff3333",
+    "toolDiffContext": "fadeGreen",
+
+    "syntaxComment": "#008f11",
+    "syntaxKeyword": "brightGreen",
+    "syntaxFunction": "phosphor",
+    "syntaxVariable": "green",
+    "syntaxString": "digitGreen",
+    "syntaxNumber": "hotGreen",
+    "syntaxType": "glowGreen",
+    "syntaxOperator": "green",
+    "syntaxPunctuation": "fadeGreen",
+
+    "thinkingOff": "#005f00",
+    "thinkingMinimal": "fadeGreen",
+    "thinkingLow": "glowGreen",
+    "thinkingMedium": "green",
+    "thinkingHigh": "brightGreen",
+    "thinkingXhigh": "phosphor",
+
+    "bashMode": "#39ff14"
+  },
+  "export": {
+    "pageBg": "#000000",
+    "cardBg": "#000000",
+    "infoBg": "#000000"
+  }
+}
