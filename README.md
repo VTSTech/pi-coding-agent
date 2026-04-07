@@ -119,6 +119,8 @@ Sample output:
 
 ### 📊 System Monitor (`sysmon.ts` / `status.ts`)
 
+*Written by VTSTech — https://github.com/VTSTech — www.vts-tech.org*
+
 **Real-time system resource monitoring in the Pi status bar.**
 
 ```
@@ -129,12 +131,6 @@ CPU 54% · RAM 5.2G/12.7G · Resp 5m24s · max:16384
 - RAM usage via `os.totalmem()` and `os.freemem()`
 - Response time via `agent_start`/`agent_end` event timing
 - Generation parameters captured via `before_provider_request` interception
-
-### ⚡ TPS Monitor (`tps.ts`)
-
-**Real-time tokens-per-second tracking.**
-
-Displays actual tok/s using Pi's provider usage reporting — the official extension from the Pi monorepo.
 
 ---
 
@@ -296,8 +292,7 @@ Benchmarks run with `/model-test` on Google Colab CPU (2x Xeon @ 2.20GHz, 12GB R
     │   ├── diag.ts              # System diagnostic suite
     │   ├── model-test.ts        # Model benchmark tool
     │   ├── ollama-sync.ts       # Ollama ↔ models.json sync
-    │   ├── sysmon.ts            # System resource monitor
-    │   └── tps.ts               # Tokens/second tracker
+    │   └── sysmon.ts            # System resource monitor
     ├── themes/
     │   └── neon-matrix.json     # Matrix movie theme
     ├── models.json              # Model provider configuration
