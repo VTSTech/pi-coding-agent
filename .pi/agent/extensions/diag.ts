@@ -85,7 +85,7 @@ export default function (pi: ExtensionAPI) {
     check(totalMem >= 4 * 1024 * 1024 * 1024,
       `Total RAM: ${bytesHuman(totalMem)} (≥4GB)`,
       `Total RAM: ${bytesHuman(totalMem)} — LOW (<4GB), may struggle with models`);
-    warning(memPct !== "NaN" && parseFloat(memPct) > 85,
+    warning(totalMem > 0 && (usedMem / totalMem) > 0.85,
       `RAM usage ${memPct} — HIGH, close apps or reduce model size`);
     warning(cpus.length < 2, `Only ${cpus.length} CPU core(s), inference will be slow`);
 
@@ -160,10 +160,11 @@ export default function (pi: ExtensionAPI) {
     const agentDir = path.join(os.homedir(), ".pi", "agent");
     const modelsJsonPath = path.join(agentDir, "models.json");
     let configuredModels: string[] = [];
+    let modelsJson: any = null;
 
     if (fs.existsSync(modelsJsonPath)) {
       try {
-        const modelsJson = JSON.parse(fs.readFileSync(modelsJsonPath, "utf-8"));
+        modelsJson = JSON.parse(fs.readFileSync(modelsJsonPath, "utf-8"));
         const providers = modelsJson.providers || {};
         lines.push(info(`Providers configured: ${Object.keys(providers).length}`));
         for (const [providerName, providerConfig] of Object.entries(providers)) {
@@ -272,23 +273,22 @@ export default function (pi: ExtensionAPI) {
       lines.push(info(`Model: ${model.id || "unknown"}`));
       lines.push(info(`Provider: ${model.provider || "unknown"}`));
 
-      // ── API Mode ──
-      if (fs.existsSync(modelsJsonPath)) {
-        try {
-          const modelsJson2 = JSON.parse(fs.readFileSync(modelsJsonPath, "utf-8"));
-          const providerCfg = (modelsJson2.providers || {})[model.provider];
-          if (providerCfg) {
-            const apiMode = providerCfg.api || "not set";
-            const baseUrl = providerCfg.baseUrl || "not set";
-            lines.push(info(`API mode: ${apiMode}`));
-            lines.push(info(`Base URL: ${baseUrl}`));
-            if (providerCfg.apiKey) {
-              lines.push(info(`API key: ****${String(providerCfg.apiKey).slice(-4)}`));
-            }
-          } else {
-            lines.push(info(`API mode: unknown — provider "${model.provider}" not found in models.json`));
+      // ── API Mode (reuse modelsJson from MODELS.JSON section if parsed) ──
+      if (modelsJson) {
+        const providerCfg = (modelsJson.providers || {})[model.provider];
+        if (providerCfg) {
+          const apiMode = providerCfg.api || "not set";
+          const baseUrl = providerCfg.baseUrl || "not set";
+          lines.push(info(`API mode: ${apiMode}`));
+          lines.push(info(`Base URL: ${baseUrl}`));
+          if (providerCfg.apiKey) {
+            lines.push(info(`API key: ****${String(providerCfg.apiKey).slice(-4)}`));
           }
-        } catch { /* ignore */ }
+        } else {
+          lines.push(info(`API mode: unknown — provider "${model.provider}" not found in models.json`));
+        }
+      } else if (fs.existsSync(modelsJsonPath)) {
+        lines.push(info(`API mode: unknown — could not parse models.json`));
       } else {
         lines.push(info(`API mode: unknown — models.json not found`));
       }
@@ -300,8 +300,8 @@ export default function (pi: ExtensionAPI) {
     }
 
     const usage = ctx.getContextUsage?.();
-    if (usage) {
-      lines.push(info(`Context: ${usage.tokens ?? "?"} / ${usage.contextWindow ?? "?"} tokens (${((usage.tokens / usage.contextWindow) * 100).toFixed(1)}%)`));
+    if (usage && usage.contextWindow > 0) {
+      lines.push(info(`Context: ${usage.tokens ?? "?"} / ${usage.contextWindow} tokens (${((usage.tokens / usage.contextWindow) * 100).toFixed(1)}%)`));
     }
 
     const thinking = pi.getThinkingLevel();
@@ -309,7 +309,6 @@ export default function (pi: ExtensionAPI) {
 
     // ── SUMMARY ──
     lines.push(section("SUMMARY"));
-    const total = passCount + failCount;
     lines.push(info(`Passed: ${passCount}  Failed: ${failCount}  Warnings: ${warnCount}`));
     if (failCount === 0) {
       lines.push(ok("All critical checks passed! 🎉"));
