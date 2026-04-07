@@ -186,39 +186,32 @@ export default function (pi: ExtensionAPI) {
 
       return {
         render(width: number): string[] {
-          // Line 1: pwd · branch · model · thinking · context%
-          const l1: string[] = [];
-          l1.push(getPwd());
+          const parts: string[] = [];
+          parts.push(getPwd());
           try {
             const branch = footerData?.getGitBranch?.();
-            if (branch) l1.push(dim(branch));
+            if (branch) parts.push(dim(branch));
           } catch { /* no git */ }
-          if (footerModel) l1.push(footerModel);
-          if (footerThinking && footerThinking !== "off") l1.push(dim(footerThinking));
-          if (footerCtxPct) l1.push(footerCtxPct);
+          if (footerModel) parts.push(footerModel);
+          if (footerThinking && footerThinking !== "off") parts.push(dim(footerThinking));
+          if (footerCtxPct) parts.push(footerCtxPct);
 
-          // Line 2: CPU · RAM · Swap · VRAM · Resp · params
-          const l2: string[] = [];
-          l2.push(`CPU ${cpuUsage.toFixed(0)}%`);
-          l2.push(`RAM ${fmtBytes(memUsed)}/${fmtBytes(memTotal)}`);
+          parts.push(dim(`CPU ${cpuUsage.toFixed(0)}%`));
+          parts.push(`RAM ${fmtBytes(memUsed)}/${fmtBytes(memTotal)}`);
           if (hasSwap && swapUsed > 0) {
-            l2.push(`Swap ${fmtBytes(swapUsed)}/${fmtBytes(swapTotal)}`);
+            parts.push(`Swap ${fmtBytes(swapUsed)}/${fmtBytes(swapTotal)}`);
           }
-          if (ollamaLoaded) l2.push(`VRAM:${ollamaLoaded}`);
-          if (lastResponseTime !== null) l2.push(`Resp ${fmtDur(lastResponseTime)}`);
+          if (ollamaLoaded) parts.push(`VRAM:${ollamaLoaded}`);
+          if (lastResponseTime !== null) parts.push(`Resp ${fmtDur(lastResponseTime)}`);
           if (lastPayload) {
             const params = extractParams(lastPayload);
-            if (params.length > 0) l2.push(...params.map(p => dim(p)));
+            if (params.length > 0) parts.push(...params.map(p => dim(p)));
           }
 
-          let line1 = l1.join(sep);
-          let line2 = l2.join(sep);
+          let line = parts.join(sep);
+          if (line.length > width) line = line.slice(0, width - 3) + dim("...");
 
-          // Truncate to terminal width
-          if (line1.length > width) line1 = line1.slice(0, width - 3) + dim("...");
-          if (line2.length > width) line2 = line2.slice(0, width - 3) + dim("...");
-
-          return [line1, line2];
+          return [line];
         },
 
         invalidate(): void {},
