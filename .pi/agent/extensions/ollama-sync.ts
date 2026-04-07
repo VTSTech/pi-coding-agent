@@ -143,11 +143,37 @@ export default function (pi: ExtensionAPI) {
         };
         await writeModelsJson(existing);
 
-        // Report
-        const parts: string[] = [`Synced ${newModels.length} models`];
-        if (added.length > 0) parts.push(`+${added.map(m => m.id).join(", ")}`);
-        if (removed.length > 0) parts.push(`-${removed.join(", ")}`);
-        ctx.ui.notify(parts.join(" · "), "success");
+        // Build report with branding
+        const lines: string[] = [BRANDING];
+        lines.push(`  Synced ${newModels.length} models from Ollama`);
+        if (added.length > 0) {
+          lines.push(`  Added: ${added.map(m => m.id).join(", ")}`);
+        }
+        if (removed.length > 0) {
+          lines.push(`  Removed: ${removed.join(", ")}`);
+        }
+        if (added.length === 0 && removed.length === 0) {
+          lines.push(`  No changes — already in sync`);
+        }
+        lines.push(`  Written to ${MODELS_FILE}`);
+        lines.push(`  Run /reload to pick up changes`);
+        lines.push(BRANDING);
+
+        const report = lines.join("\n");
+
+        // Notify short summary
+        const summary: string[] = [`Synced ${newModels.length} models`];
+        if (added.length > 0) summary.push(`+${added.map(m => m.id).join(", ")}`);
+        if (removed.length > 0) summary.push(`-${removed.join(", ")}`);
+        ctx.ui.notify(summary.join(" · "), "success");
+
+        // Display full report with branding
+        pi.sendMessage({
+          customType: "ollama-sync-report",
+          content: report,
+          display: { type: "content", content: report },
+          details: { timestamp: new Date().toISOString(), added: added.length, removed: removed.length },
+        });
       } catch (err: any) {
         ctx.ui.notify(`Failed: ${err.message}`, "error");
       }
