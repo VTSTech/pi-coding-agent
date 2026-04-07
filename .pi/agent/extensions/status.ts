@@ -209,7 +209,22 @@ export default function (pi: ExtensionAPI) {
           }
 
           let line = parts.join(sep);
-          if (line.length > width) line = line.slice(0, width - 3) + dim("...");
+          // Strip ANSI codes for visible-width measurement
+          const visible = line.replace(/\x1b\[[0-9;]*m/g, "");
+          if (visible.length > width) {
+            // Truncate by visible chars, then find the ANSI-safe cut point
+            let vis = 0, cut = 0;
+            for (let i = 0; i < line.length && vis < width - 3; i++) {
+              if (line[i] === "\x1b") {
+                // skip to end of escape sequence
+                while (i < line.length && line[i] !== "m") i++;
+              } else {
+                vis++;
+              }
+              cut = i + 1;
+            }
+            line = line.slice(0, cut) + dim("...");
+          }
 
           return [line];
         },
