@@ -9,6 +9,7 @@
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import os from "node:os";
+import { execSync } from "node:child_process";
 
 export default function (pi: ExtensionAPI) {
   let lastResponseTime: number | null = null;
@@ -62,6 +63,48 @@ export default function (pi: ExtensionAPI) {
     return `${Math.floor(ms / 60000)}m${Math.round((ms % 60000) / 1000)}s`;
   }
 
+  function getSwap(): { used: number; total: number } | null {
+    try {
+      const out = execSync("cat /proc/meminfo", { encoding: "utf-8", timeout: 3000 });
+      const swapTotal = Number(out.match(/SwapTotal:\s+(\d+)/)?.[1]) * 1024;
+      const swapFree = Number(out.match(/SwapFree:\s+(\d+)/)?.[1]) * 1024;
+      if (swapTotal > 0) return { used: swapTotal - swapFree, total: swapTotal };
+    } catch { /* ignore */ }
+    return null;
+  }
+
+  let ollamaLoadedCache = "";
+  let ollamaLoadedLastCheck = 0;
+  const OLLAMA_LOADED_INTERVAL = 15000; // only check every 15s to avoid spamming
+
+  function getOllamaLoadedModel(): string {
+    const now = Date.now();
+    if (now - ollamaLoadedLastCheck < OLLAMA_LOADED_INTERVAL) return ollamaLoadedCache;
+    ollamaLoadedLastCheck = now;
+    try {
+      const out = execSync("ollama ps --format json 2>/dev/null", { encoding: "utf-8", timeout: 5000 });
+      if (out.trim()) {
+        const data = JSON.parse(out.trim());
+        if (Array.isArray(data) && data.length > 0) {
+          ollamaLoadedCache = data[0].name || data[0].model || "unknown";
+          return ollamaLoadedCache;
+        }
+      }
+    } catch {
+      try {
+        // fallback to text output
+        const out = execSync("ollama ps 2>/dev/null", { encoding: "utf-8", timeout: 5000 });
+        const lines = out.trim().split("\n").slice(1);
+        if (lines.length > 0) {
+          ollamaLoadedCache = lines[0].trim().split(/\s+/)[0];
+          return ollamaLoadedCache;
+        }
+      } catch { /* ignore */ }
+    }
+    ollamaLoadedCache = "";
+    return "";
+  }
+
   function extractParams(payload: Record<string, any>): string[] {
     const params: string[] = [];
     if (payload.temperature !== undefined) params.push(`temp:${payload.temperature}`);
@@ -82,6 +125,17 @@ export default function (pi: ExtensionAPI) {
     const parts: string[] = [];
     parts.push(`CPU ${cpu.toFixed(0)}%`);
     parts.push(`RAM ${fmtBytes(mem.used)}/${fmtBytes(mem.total)}`);
+
+    // Swap — only show if swap is being used
+    const swap = getSwap();
+    if (swap && swap.used > 0) {
+      parts.push(`Swap ${fmtBytes(swap.used)}/${fmtBytes(swap.total)}`);
+    }
+
+    // Ollama loaded model
+    const loaded = getOllamaLoadedModel();
+    if (loaded) parts.push(`VRAM:${loaded}`);
+
     if (lastResponseTime !== null) parts.push(`Resp ${fmtDur(lastResponseTime)}`);
     if (lastPayload) {
       const params = extractParams(lastPayload);
