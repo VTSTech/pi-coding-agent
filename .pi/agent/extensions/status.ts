@@ -2,7 +2,7 @@
  * System Monitor — Pi Coding Agent Extension
  * Replaces the default footer with a unified 2-line status bar:
  *   Line 1: pwd · git branch · model · thinking level · context%
- *   Line 2: CPU% · RAM · Swap · VRAM (Ollama loaded) · response time · params
+ *   Line 2: CPU% · RAM · Swap · LOADED (Ollama loaded) · response time · params
  * Metrics update every 3 seconds. Restores default footer on session shutdown.
  *
  * Written by VTSTech
@@ -201,7 +201,7 @@ export default function (pi: ExtensionAPI) {
           if (hasSwap && swapUsed > 0) {
             parts.push(`Swap ${fmtBytes(swapUsed)}/${fmtBytes(swapTotal)}`);
           }
-          if (ollamaLoaded) parts.push(`VRAM:${ollamaLoaded}`);
+          if (ollamaLoaded) parts.push(`LOADED:${ollamaLoaded}`);
           if (lastResponseTime !== null) parts.push(`Resp ${fmtDur(lastResponseTime)}`);
           if (lastPayload) {
             const params = extractParams(lastPayload);
