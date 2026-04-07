@@ -119,8 +119,6 @@ Sample output:
 
 ### 📊 System Monitor (`sysmon.ts` / `status.ts`)
 
-*Written by VTSTech — https://github.com/VTSTech — www.vts-tech.org*
-
 **Real-time system resource monitoring in the Pi status bar.**
 
 ```
