@@ -117,7 +117,7 @@ Sample output:
 - Merges with existing per-model settings
 - Registered as both `/ollama-sync` slash command and `ollama_sync` tool
 
-### 📊 System Monitor (`sysmon.ts` / `status.ts`)
+### 📊 System Monitor (`status.ts`)
 
 **Real-time system resource monitoring in the Pi status bar.**
 
