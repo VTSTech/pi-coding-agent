@@ -144,7 +144,7 @@ export default function (pi: ExtensionAPI) {
         await writeModelsJson(existing);
 
         // Build report with branding
-        const lines: string[] = [BRANDING];
+        const lines: string[] = [""];
         lines.push(`  Synced ${newModels.length} models from Ollama`);
         if (added.length > 0) {
           lines.push(`  Added: ${added.map(m => m.id).join(", ")}`);
