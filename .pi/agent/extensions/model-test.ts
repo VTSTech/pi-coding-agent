@@ -37,12 +37,6 @@ export default function (pi: ExtensionAPI) {
     return s.length > max ? s.slice(0, max) + "..." : s;
   }
 
-  function extractNumber(s: string): string {
-    // Find the last number in the response (likely the answer)
-    const numbers = s.match(/\b\d+\b/g);
-    return numbers ? numbers[numbers.length - 1] : "?";
-  }
-
   /**
    * Call Ollama /api/chat and return the parsed response.
    */
@@ -65,6 +59,7 @@ export default function (pi: ExtensionAPI) {
     if (result.code !== 0) {
       throw new Error(`curl exited ${result.code}: ${result.stderr}`);
     }
+    if (!result.stdout.trim()) throw new Error("Empty response from Ollama");
     const parsed = JSON.parse(result.stdout);
     return { response: parsed, elapsedMs };
   }
@@ -136,7 +131,7 @@ export default function (pi: ExtensionAPI) {
       // Check for reasoning patterns (step-by-step, because, therefore, etc.)
       // Note: "17 -" alone is NOT reasoning, it's just restating the problem
       const reasoningPatterns = ["because", "therefore", "since", "step", "subtract", "minus",
-        "remaining", "all but", "died", "alive", "survive"];
+        "remaining", "alive", "survive"];
       const hasReasoning = reasoningPatterns.some(w => msg.toLowerCase().includes(w));
 
       let score: string;
@@ -179,10 +174,10 @@ export default function (pi: ExtensionAPI) {
     const prompt = "What is 37 × 43? Show your work.";
 
     try {
-      // Try with think=true to see if model supports it
+      // Request thinking tokens to test if model supports extended thinking
       const { response, elapsedMs } = await ollamaChat(model, [
         { role: "user", content: prompt },
-      ]);
+      ], { think: true } as any);
 
       const msg = response?.message?.content || "";
       const thinking = response?.message?.thinking || "";
@@ -261,6 +256,7 @@ export default function (pi: ExtensionAPI) {
         return { pass: false, score: "ERROR", hasToolCalls: false, toolCall: `curl error: ${result.stderr}`, response: "", elapsedMs };
       }
 
+      if (!result.stdout.trim()) throw new Error("Empty response from Ollama");
       const parsed = JSON.parse(result.stdout);
       const toolCalls = parsed?.message?.tool_calls;
       const content = parsed?.message?.content || "";
@@ -268,8 +264,20 @@ export default function (pi: ExtensionAPI) {
       if (toolCalls && toolCalls.length > 0) {
         const call = toolCalls[0];
         const fn = call.function || {};
-        // Check if it called get_weather with location=Paris or "paris"
-        const args = typeof fn.arguments === "string" ? JSON.parse(fn.arguments) : (fn.arguments || {});
+        // Parse tool arguments safely
+        let args: any = {};
+        try {
+          args = typeof fn.arguments === "string" ? JSON.parse(fn.arguments) : (fn.arguments || {});
+        } catch {
+          return {
+            pass: true,
+            score: "WEAK",
+            hasToolCalls: true,
+            toolCall: `malformed args: ${truncate(String(fn.arguments), 100)}`,
+            response: truncate(content, 200),
+            elapsedMs,
+          };
+        }
         const hasCorrectTool = fn.name === "get_weather";
         const hasLocation = typeof args.location === "string" && args.location.toLowerCase().includes("paris");
 
@@ -457,7 +465,7 @@ Create a JSON object with these exact keys:
     let modelModified = "unknown";
     try {
       const tagsResult = await pi.exec("curl", ["-s", `${OLLAMA_BASE}/api/tags`], { timeout: 10000 });
-      if (tagsResult.code === 0) {
+      if (tagsResult.code === 0 && tagsResult.stdout.trim()) {
         const tags = JSON.parse(tagsResult.stdout);
         const entry = (tags.models || []).find((m: any) => m.name === model);
         if (entry) {
@@ -481,7 +489,6 @@ Create a JSON object with these exact keys:
 
     // 1. Reasoning test
     lines.push(section("REASONING TEST"));
-    const reasoningStart = Date.now();
     lines.push(info("Prompt: \"A farmer has 17 sheep. All but 9 die. How many left?\""));
     lines.push(info("Testing..."));
 
@@ -586,8 +593,6 @@ Create a JSON object with these exact keys:
     } else {
       lines.push(fail(`${model} is WEAK — limited capabilities for agent use`));
     }
-    lines.push(branding);
-
     return lines.join("\n");
   }
 
@@ -678,9 +683,14 @@ Create a JSON object with these exact keys:
     promptGuidelines: [
       "When the user asks to test or evaluate a model, call model_test with the model name.",
     ],
-    parameters: {} as any,
+    parameters: {
+      type: "object",
+      properties: {
+        model: { type: "string", description: "Ollama model name to test (e.g. qwen3:0.6b). If omitted, tests the current model." },
+      },
+    } as any,
     execute: async (_toolCallId, _params, _signal, _onUpdate, ctx) => {
-      const model = getCurrentModel(ctx);
+      const model = ((_params as any)?.model as string) || getCurrentModel(ctx);
       if (!model) {
         return {
           content: [{ type: "text", text: "No model currently selected to test." }],
