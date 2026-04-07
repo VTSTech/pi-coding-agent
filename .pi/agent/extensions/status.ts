@@ -12,8 +12,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import os from "node:os";
 import { execSync } from "node:child_process";
-// @ts-ignore — Ink internals used by Pi's TUI
-import React from "react";
 
 export default function (pi: ExtensionAPI) {
   let lastResponseTime: number | null = null;
@@ -173,49 +171,53 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
-  // ── custom footer component (React/Ink) ─────────────────────────
+  // ── custom footer component ─────────────────────────────────────
 
-  // We use a class component so we can force re-render via setState
-  // when metrics update, rather than creating a new component instance.
-  let forceUpdate: (() => void) | null = null;
+  function buildFooter(_tui: any, theme: any, footerData: any) {
+    const dim = (s: string) => theme?.fg?.("dim", s) ?? s;
+    const sep = dim(" \u00b7 ");
 
-  class FooterComponent extends React.Component<{ theme: any; footerData: any }> {
-    render() {
-      const { theme, footerData } = this.props;
-      const dim = theme?.fg ? (s: string) => theme.fg("dim", s) : (s: string) => s;
-      const sep = dim(" \u00b7 ");
+    return {
+      render(width: number): string {
+        // Line 1: pwd · branch · model · thinking · context%
+        const l1: string[] = [];
+        l1.push(getPwd());
 
-      // Line 1: pwd · branch · model · thinking · context%
-      const l1: (string | any)[] = [];
-      l1.push(getPwd());
-      try {
-        const branch = footerData?.getGitBranch?.();
-        if (branch) l1.push(dim(branch));
-      } catch { /* no git */ }
-      if (footerModel) l1.push(footerModel);
-      if (footerThinking && footerThinking !== "off") l1.push(dim(footerThinking));
-      if (footerCtxPct) l1.push(footerCtxPct);
+        try {
+          const branch = footerData?.getGitBranch?.();
+          if (branch) l1.push(dim(branch));
+        } catch { /* no git */ }
 
-      // Line 2: CPU · RAM · Swap · VRAM · Resp · params
-      const l2: (string | any)[] = [];
-      l2.push(`CPU ${cpuUsage.toFixed(0)}%`);
-      l2.push(`RAM ${fmtBytes(memUsed)}/${fmtBytes(memTotal)}`);
-      if (hasSwap && swapUsed > 0) {
-        l2.push(`Swap ${fmtBytes(swapUsed)}/${fmtBytes(swapTotal)}`);
-      }
-      if (ollamaLoaded) l2.push(`VRAM:${ollamaLoaded}`);
-      if (lastResponseTime !== null) l2.push(`Resp ${fmtDur(lastResponseTime)}`);
-      if (lastPayload) {
-        const params = extractParams(lastPayload);
-        if (params.length > 0) l2.push(...params.map(p => dim(p)));
-      }
+        if (footerModel) l1.push(footerModel);
+        if (footerThinking && footerThinking !== "off") l1.push(dim(footerThinking));
+        if (footerCtxPct) l1.push(footerCtxPct);
 
-      // Try to use Ink's Text/Box if available via theme, else return string
-      const line1 = l1.join(sep);
-      const line2 = l2.join(sep);
+        // Line 2: CPU · RAM · Swap · VRAM · Resp · params
+        const l2: string[] = [];
+        l2.push(`CPU ${cpuUsage.toFixed(0)}%`);
+        l2.push(`RAM ${fmtBytes(memUsed)}/${fmtBytes(memTotal)}`);
+        if (hasSwap && swapUsed > 0) {
+          l2.push(`Swap ${fmtBytes(swapUsed)}/${fmtBytes(swapTotal)}`);
+        }
+        if (ollamaLoaded) l2.push(`VRAM:${ollamaLoaded}`);
+        if (lastResponseTime !== null) l2.push(`Resp ${fmtDur(lastResponseTime)}`);
+        if (lastPayload) {
+          const params = extractParams(lastPayload);
+          if (params.length > 0) l2.push(...params.map(p => dim(p)));
+        }
 
-      return `${line1}\n${line2}`;
-    }
+        let line1 = l1.join(sep);
+        let line2 = l2.join(sep);
+
+        // Truncate to terminal width
+        if (line1.length > width) line1 = line1.slice(0, width - 3) + "...";
+        if (line2.length > width) line2 = line2.slice(0, width - 3) + "...";
+
+        return `${line1} ${line2}`;
+      },
+      height(): number { return 2; },
+      dispose() {},
+    };
   }
 
   // ── event handlers ──────────────────────────────────────────────
@@ -226,25 +228,18 @@ export default function (pi: ExtensionAPI) {
     prevCpuInfo = getCpuSnapshot();
     updateMetrics();
 
-    // Replace default footer with our custom Ink component
-    ctx.ui.setFooter((_tui: any, theme: any, footerData: any) => {
-      const comp = new FooterComponent({ theme, footerData });
-      forceUpdate = () => comp.forceUpdate?.();
-      return comp as any;
+    // Replace default footer with our custom one
+    ctx.ui.setFooter((tui: any, theme: any, footerData: any) => {
+      return buildFooter(tui, theme, footerData);
     });
 
-    // Refresh footer on every metrics tick
     if (updateInterval) clearInterval(updateInterval);
-    updateInterval = setInterval(() => {
-      updateMetrics();
-      if (forceUpdate) forceUpdate();
-    }, 3000);
+    updateInterval = setInterval(updateMetrics, 3000);
   });
 
   pi.on("session_shutdown", async () => {
     if (updateInterval) clearInterval(updateInterval);
     updateInterval = null;
-    forceUpdate = null;
     // Restore default footer
     if (ctxUi) {
       ctxUi.setFooter(undefined);
@@ -267,6 +262,5 @@ export default function (pi: ExtensionAPI) {
       agentStartTime = null;
     }
     updateMetrics();
-    if (forceUpdate) forceUpdate();
   });
 }
