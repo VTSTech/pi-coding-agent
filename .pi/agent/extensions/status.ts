@@ -134,7 +134,7 @@ export default function (pi: ExtensionAPI) {
 
     // Ollama loaded model
     const loaded = getOllamaLoadedModel();
-    if (loaded) parts.push(`VRAM:${loaded}`);
+    if (loaded) parts.push(`LOADED:${loaded}`);
 
     if (lastResponseTime !== null) parts.push(`Resp ${fmtDur(lastResponseTime)}`);
     if (lastPayload) {
