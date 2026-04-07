@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/badlogic/pi-mono/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json",
-  "name": "neon-matrix",
+  "name": "matrix",
   "vars": {
     "green": "#39ff14",
     "darkGreen": "#003b00",
@@ -26,15 +26,15 @@
     "text": "green",
     "thinkingText": "glowGreen",
 
-    "selectedBg": "#000000",
-    "userMessageBg": "#000000",
+    "selectedBg": 0,
+    "userMessageBg": 0,
     "userMessageText": "brightGreen",
-    "customMessageBg": "#000000",
+    "customMessageBg": 0,
     "customMessageText": "phosphor",
     "customMessageLabel": "brightGreen",
-    "toolPendingBg": "#000000",
-    "toolSuccessBg": "#000000",
-    "toolErrorBg": "#000000",
+    "toolPendingBg": 0,
+    "toolSuccessBg": 0,
+    "toolErrorBg": 0,
     "toolTitle": "brightGreen",
     "toolOutput": "green",
 
@@ -42,7 +42,7 @@
     "mdLink": "phosphor",
     "mdLinkUrl": "fadeGreen",
     "mdCode": "digitGreen",
-    "mdCodeBlock": "#000000",
+    "mdCodeBlock": 0,
     "mdCodeBlockBorder": "darkGreen",
     "mdQuote": "glowGreen",
     "mdQuoteBorder": "fadeGreen",
