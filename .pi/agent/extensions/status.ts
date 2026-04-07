@@ -21,8 +21,9 @@ export default function (pi: ExtensionAPI) {
   let ctxUi: any = null;
   let prevCpuInfo = getCpuSnapshot();
   let lastPayload: Record<string, any> | null = null;
+  let tuiRef: any = null;
 
-  // Cached metrics — updated every 3s, read by footer on each render
+  // Cached metrics
   let cpuUsage = 0;
   let memUsed = 0;
   let memTotal = 0;
@@ -157,7 +158,6 @@ export default function (pi: ExtensionAPI) {
     }
     ollamaLoaded = getOllamaLoadedModel();
 
-    // Session data from context
     if (currentCtx) {
       footerModel = currentCtx.model?.id || "";
       footerThinking = pi.getThinkingLevel?.() ?? "";
@@ -171,55 +171,6 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
-  // ── custom footer component ─────────────────────────────────────
-
-  function buildFooter(_tui: any, theme: any, footerData: any) {
-    const dim = (s: string) => theme?.fg?.("dim", s) ?? s;
-    const sep = dim(" \u00b7 ");
-
-    return {
-      render(width: number): string {
-        // Line 1: pwd · branch · model · thinking · context%
-        const l1: string[] = [];
-        l1.push(getPwd());
-
-        try {
-          const branch = footerData?.getGitBranch?.();
-          if (branch) l1.push(dim(branch));
-        } catch { /* no git */ }
-
-        if (footerModel) l1.push(footerModel);
-        if (footerThinking && footerThinking !== "off") l1.push(dim(footerThinking));
-        if (footerCtxPct) l1.push(footerCtxPct);
-
-        // Line 2: CPU · RAM · Swap · VRAM · Resp · params
-        const l2: string[] = [];
-        l2.push(`CPU ${cpuUsage.toFixed(0)}%`);
-        l2.push(`RAM ${fmtBytes(memUsed)}/${fmtBytes(memTotal)}`);
-        if (hasSwap && swapUsed > 0) {
-          l2.push(`Swap ${fmtBytes(swapUsed)}/${fmtBytes(swapTotal)}`);
-        }
-        if (ollamaLoaded) l2.push(`VRAM:${ollamaLoaded}`);
-        if (lastResponseTime !== null) l2.push(`Resp ${fmtDur(lastResponseTime)}`);
-        if (lastPayload) {
-          const params = extractParams(lastPayload);
-          if (params.length > 0) l2.push(...params.map(p => dim(p)));
-        }
-
-        let line1 = l1.join(sep);
-        let line2 = l2.join(sep);
-
-        // Truncate to terminal width
-        if (line1.length > width) line1 = line1.slice(0, width - 3) + "...";
-        if (line2.length > width) line2 = line2.slice(0, width - 3) + "...";
-
-        return `${line1} ${line2}`;
-      },
-      height(): number { return 2; },
-      dispose() {},
-    };
-  }
-
   // ── event handlers ──────────────────────────────────────────────
 
   pi.on("session_start", async (_event, ctx) => {
@@ -228,19 +179,65 @@ export default function (pi: ExtensionAPI) {
     prevCpuInfo = getCpuSnapshot();
     updateMetrics();
 
-    // Replace default footer with our custom one
     ctx.ui.setFooter((tui: any, theme: any, footerData: any) => {
-      return buildFooter(tui, theme, footerData);
+      tuiRef = tui;
+      const dim = (s: string) => theme?.fg?.("dim", s) ?? s;
+      const sep = dim(" \u00b7 ");
+
+      return {
+        render(width: number): string[] {
+          // Line 1: pwd · branch · model · thinking · context%
+          const l1: string[] = [];
+          l1.push(getPwd());
+          try {
+            const branch = footerData?.getGitBranch?.();
+            if (branch) l1.push(dim(branch));
+          } catch { /* no git */ }
+          if (footerModel) l1.push(footerModel);
+          if (footerThinking && footerThinking !== "off") l1.push(dim(footerThinking));
+          if (footerCtxPct) l1.push(footerCtxPct);
+
+          // Line 2: CPU · RAM · Swap · VRAM · Resp · params
+          const l2: string[] = [];
+          l2.push(`CPU ${cpuUsage.toFixed(0)}%`);
+          l2.push(`RAM ${fmtBytes(memUsed)}/${fmtBytes(memTotal)}`);
+          if (hasSwap && swapUsed > 0) {
+            l2.push(`Swap ${fmtBytes(swapUsed)}/${fmtBytes(swapTotal)}`);
+          }
+          if (ollamaLoaded) l2.push(`VRAM:${ollamaLoaded}`);
+          if (lastResponseTime !== null) l2.push(`Resp ${fmtDur(lastResponseTime)}`);
+          if (lastPayload) {
+            const params = extractParams(lastPayload);
+            if (params.length > 0) l2.push(...params.map(p => dim(p)));
+          }
+
+          let line1 = l1.join(sep);
+          let line2 = l2.join(sep);
+
+          // Truncate to terminal width
+          if (line1.length > width) line1 = line1.slice(0, width - 3) + dim("...");
+          if (line2.length > width) line2 = line2.slice(0, width - 3) + dim("...");
+
+          return [line1, line2];
+        },
+
+        invalidate(): void {},
+
+        dispose(): void {},
+      };
     });
 
     if (updateInterval) clearInterval(updateInterval);
-    updateInterval = setInterval(updateMetrics, 3000);
+    updateInterval = setInterval(() => {
+      updateMetrics();
+      if (tuiRef) tuiRef.requestRender();
+    }, 3000);
   });
 
   pi.on("session_shutdown", async () => {
     if (updateInterval) clearInterval(updateInterval);
     updateInterval = null;
-    // Restore default footer
+    tuiRef = null;
     if (ctxUi) {
       ctxUi.setFooter(undefined);
       ctxUi = null;
@@ -262,5 +259,6 @@ export default function (pi: ExtensionAPI) {
       agentStartTime = null;
     }
     updateMetrics();
+    if (tuiRef) tuiRef.requestRender();
   });
 }
