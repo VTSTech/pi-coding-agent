@@ -1,7 +1,9 @@
 /**
  * System Monitor — Pi Coding Agent Extension
- * Displays CPU%, RAM usage, response time, and generation parameters
- * in the Pi status bar. Updates every 3 seconds.
+ * Replaces the default footer with a unified 2-line status bar:
+ *   Line 1: pwd · git branch · model · thinking level · context%
+ *   Line 2: CPU% · RAM · Swap · VRAM (Ollama loaded) · response time · params
+ * Metrics update every 3 seconds. Restores default footer on session shutdown.
  *
  * Written by VTSTech
  * GitHub: https://github.com/VTSTech
@@ -16,8 +18,23 @@ export default function (pi: ExtensionAPI) {
   let agentStartTime: number | null = null;
   let updateInterval: ReturnType<typeof setInterval> | null = null;
   let currentCtx: any = null;
+  let ctxUi: any = null;
   let prevCpuInfo = getCpuSnapshot();
   let lastPayload: Record<string, any> | null = null;
+
+  // Cached metrics — updated every 3s, read by footer on each render
+  let cpuUsage = 0;
+  let memUsed = 0;
+  let memTotal = 0;
+  let swapUsed = 0;
+  let swapTotal = 0;
+  let hasSwap = false;
+  let ollamaLoaded = "";
+  let footerModel = "";
+  let footerThinking = "";
+  let footerCtxPct = "";
+
+  // ── helpers ──────────────────────────────────────────────────────
 
   function getCpuSnapshot() {
     return os.cpus().map((c) => ({
@@ -75,7 +92,7 @@ export default function (pi: ExtensionAPI) {
 
   let ollamaLoadedCache = "";
   let ollamaLoadedLastCheck = 0;
-  const OLLAMA_LOADED_INTERVAL = 15000; // only check every 15s to avoid spamming
+  const OLLAMA_LOADED_INTERVAL = 15000;
 
   function getOllamaLoadedModel(): string {
     const now = Date.now();
@@ -92,7 +109,6 @@ export default function (pi: ExtensionAPI) {
       }
     } catch {
       try {
-        // fallback to text output
         const out = execSync("ollama ps 2>/dev/null", { encoding: "utf-8", timeout: 5000 });
         const lines = out.trim().split("\n").slice(1);
         if (lines.length > 0) {
@@ -118,53 +134,126 @@ export default function (pi: ExtensionAPI) {
     return params;
   }
 
-  function updateStatus() {
-    if (!currentCtx) return;
-    const cpu = getCpuUsage();
-    const mem = getMem();
-    const parts: string[] = [];
-    parts.push(`CPU ${cpu.toFixed(0)}%`);
-    parts.push(`RAM ${fmtBytes(mem.used)}/${fmtBytes(mem.total)}`);
-
-    // Swap — only show if swap is being used
-    const swap = getSwap();
-    if (swap && swap.used > 0) {
-      parts.push(`Swap ${fmtBytes(swap.used)}/${fmtBytes(swap.total)}`);
-    }
-
-    // Ollama loaded model
-    const loaded = getOllamaLoadedModel();
-    if (loaded) parts.push(`LOADED:${loaded}`);
-
-    if (lastResponseTime !== null) parts.push(`Resp ${fmtDur(lastResponseTime)}`);
-    if (lastPayload) {
-      const params = extractParams(lastPayload);
-      if (params.length > 0) parts.push(params.join(" "));
-    }
-    currentCtx.ui.setStatus("sysmon", parts.join(" · "));
+  function getPwd(): string {
+    const cwd = process.cwd();
+    if (cwd.startsWith(os.homedir())) return "~" + cwd.slice(os.homedir().length);
+    return cwd;
   }
+
+  // ── metrics refresh (called every 3s) ───────────────────────────
+
+  function updateMetrics() {
+    cpuUsage = getCpuUsage();
+    const mem = getMem();
+    memUsed = mem.used;
+    memTotal = mem.total;
+    const swap = getSwap();
+    if (swap) {
+      swapUsed = swap.used;
+      swapTotal = swap.total;
+      hasSwap = true;
+    } else {
+      hasSwap = false;
+    }
+    ollamaLoaded = getOllamaLoadedModel();
+
+    // Session data from context
+    if (currentCtx) {
+      footerModel = currentCtx.model?.id || "";
+      footerThinking = pi.getThinkingLevel?.() ?? "";
+      const usage = currentCtx.getContextUsage?.();
+      if (usage && usage.contextWindow > 0) {
+        const pct = ((usage.tokens / usage.contextWindow) * 100).toFixed(1);
+        footerCtxPct = `${pct}%/${(usage.contextWindow / 1000).toFixed(0)}k`;
+      } else {
+        footerCtxPct = "";
+      }
+    }
+  }
+
+  // ── custom footer component ─────────────────────────────────────
+
+  function buildFooter(_tui: any, theme: any, footerData: any) {
+    const dim = (s: string) => theme?.fg?.("dim", s) ?? s;
+    const sep = dim(" \u00b7 ");
+
+    return {
+      render(width: number): string {
+        // Line 1: pwd · branch · model · thinking · context%
+        const l1: string[] = [];
+        l1.push(getPwd());
+
+        try {
+          const branch = footerData?.getGitBranch?.();
+          if (branch) l1.push(dim(branch));
+        } catch { /* no git */ }
+
+        if (footerModel) l1.push(footerModel);
+        if (footerThinking && footerThinking !== "off") l1.push(dim(footerThinking));
+        if (footerCtxPct) l1.push(footerCtxPct);
+
+        // Line 2: CPU · RAM · Swap · VRAM · Resp · params
+        const l2: string[] = [];
+        l2.push(`CPU ${cpuUsage.toFixed(0)}%`);
+        l2.push(`RAM ${fmtBytes(memUsed)}/${fmtBytes(memTotal)}`);
+        if (hasSwap && swapUsed > 0) {
+          l2.push(`Swap ${fmtBytes(swapUsed)}/${fmtBytes(swapTotal)}`);
+        }
+        if (ollamaLoaded) l2.push(`VRAM:${ollamaLoaded}`);
+        if (lastResponseTime !== null) l2.push(`Resp ${fmtDur(lastResponseTime)}`);
+        if (lastPayload) {
+          const params = extractParams(lastPayload);
+          if (params.length > 0) l2.push(...params.map(p => dim(p)));
+        }
+
+        let line1 = l1.join(sep);
+        let line2 = l2.join(sep);
+
+        // Truncate to terminal width
+        if (line1.length > width) line1 = line1.slice(0, width - 3) + "...";
+        if (line2.length > width) line2 = line2.slice(0, width - 3) + "...";
+
+        return `${line1}\n${line2}`;
+      },
+      height(): number { return 2; },
+      dispose() {},
+    };
+  }
+
+  // ── event handlers ──────────────────────────────────────────────
 
   pi.on("session_start", async (_event, ctx) => {
     currentCtx = ctx;
+    ctxUi = ctx.ui;
     prevCpuInfo = getCpuSnapshot();
-    updateStatus();
+    updateMetrics();
+
+    // Replace default footer with our custom one
+    ctx.ui.setFooter((tui: any, theme: any, footerData: any) => {
+      return buildFooter(tui, theme, footerData);
+    });
+
     if (updateInterval) clearInterval(updateInterval);
-    updateInterval = setInterval(updateStatus, 3000);
+    updateInterval = setInterval(updateMetrics, 3000);
   });
 
   pi.on("session_shutdown", async () => {
     if (updateInterval) clearInterval(updateInterval);
     updateInterval = null;
+    // Restore default footer
+    if (ctxUi) {
+      ctxUi.setFooter(undefined);
+      ctxUi = null;
+    }
     currentCtx = null;
   });
 
-  pi.on("before_provider_request", (event, _ctx) => {
+  pi.on("before_provider_request", (event) => {
     lastPayload = event.payload as Record<string, any>;
   });
 
-  pi.on("agent_start", async (_event, ctx) => {
+  pi.on("agent_start", async () => {
     agentStartTime = performance.now();
-    ctx.ui.setStatus("sysmon", "thinking...");
   });
 
   pi.on("agent_end", async () => {
@@ -172,6 +261,6 @@ export default function (pi: ExtensionAPI) {
       lastResponseTime = performance.now() - agentStartTime;
       agentStartTime = null;
     }
-    updateStatus();
+    updateMetrics();
   });
 }
