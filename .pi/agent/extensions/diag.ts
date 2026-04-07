@@ -336,10 +336,7 @@ export default function (pi: ExtensionAPI) {
       try {
         const report = await runDiagnostics(ctx);
         pi.sendMessage({
-          customType: "diagnostic-report",
           content: report,
-          display: { type: "content", content: report },
-          details: { timestamp: new Date().toISOString() },
         });
       } catch (e: any) {
         ctx.ui.notify(`Diagnostic failed: ${e.message}`, "error");
