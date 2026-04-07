@@ -271,6 +271,28 @@ export default function (pi: ExtensionAPI) {
     if (model) {
       lines.push(info(`Model: ${model.id || "unknown"}`));
       lines.push(info(`Provider: ${model.provider || "unknown"}`));
+
+      // ── API Mode ──
+      if (fs.existsSync(modelsJsonPath)) {
+        try {
+          const modelsJson2 = JSON.parse(fs.readFileSync(modelsJsonPath, "utf-8"));
+          const providerCfg = (modelsJson2.providers || {})[model.provider];
+          if (providerCfg) {
+            const apiMode = providerCfg.api || "not set";
+            const baseUrl = providerCfg.baseUrl || "not set";
+            lines.push(info(`API mode: ${apiMode}`));
+            lines.push(info(`Base URL: ${baseUrl}`));
+            if (providerCfg.apiKey) {
+              lines.push(info(`API key: ****${String(providerCfg.apiKey).slice(-4)}`));
+            }
+          } else {
+            lines.push(info(`API mode: unknown — provider "${model.provider}" not found in models.json`));
+          }
+        } catch { /* ignore */ }
+      } else {
+        lines.push(info(`API mode: unknown — models.json not found`));
+      }
+
       lines.push(info(`Context window: ${model.contextWindow ?? "unknown"}`));
       lines.push(info(`Max tokens: ${model.maxTokens ?? "unknown"}`));
     } else {
