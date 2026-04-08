@@ -2,17 +2,18 @@
 
 # ⚡ Pi Coding Agent — VTSTech Extensions
 
-**Custom extensions, themes, and configurations for the [Pi Coding Agent](https://github.com/badlogic/pi-mono)**
+**Pi package with custom extensions, themes, and configurations for the [Pi Coding Agent](https://github.com/badlogic/pi-mono)**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Pi Version](https://img.shields.io/badge/Pi-v0.65%2B-green.svg)](https://github.com/badlogic/pi-mono)
+[![Pi Version](https://img.shields.io/badge/Pi-v0.66%2B-green.svg)](https://github.com/badlogic/pi-mono)
+[![Pi Package](https://img.shields.io/badge/Install-pi%20install%20git-blue.svg)](#installation)
 
 <p>
   <a href="https://github.com/VTSTech"><strong>VTSTech</strong></a> •
   <a href="https://www.vts-tech.org">Website</a> •
   <a href="#extensions">Extensions</a> •
   <a href="#themes">Themes</a> •
-  <a href="#setup">Setup</a>
+  <a href="#installation">Install</a>
 </p>
 
 </div>
@@ -21,9 +22,65 @@
 
 ## Overview
 
-This repository contains a collection of custom extensions, themes, and configuration files designed to enhance the [Pi Coding Agent](https://github.com/badlogic/pi-mono) framework. These tools are built and optimized for running Pi on **resource-constrained environments** such as **Google Colab (CPU-only, 12GB RAM)** with **Ollama** serving small local models (0.3B–2B parameters).
+A [Pi package](#pi-package-format) containing extensions, themes, and configuration for the [Pi Coding Agent](https://github.com/badlogic/pi-mono). These tools are built and optimized for running Pi on **resource-constrained environments** such as **Google Colab (CPU-only, 12GB RAM)** with **Ollama** serving small local models (0.3B–2B parameters).
 
 Everything here is battle-tested on real hardware with real small models — no cloud GPUs, no expensive API calls, just pure local inference on a budget.
+
+---
+
+## Installation
+
+### Pi Package (recommended)
+
+```bash
+pi install git:github.com/VTSTech/pi-coding-agent
+```
+
+Pi clones the repo, auto-discovers the `extensions/` and `themes/` directories, and loads everything automatically. Restart Pi and you're done.
+
+Update to the latest version:
+```bash
+pi update
+```
+
+Pin to a specific tag:
+```bash
+pi install git:github.com/VTSTech/pi-coding-agent@v1
+```
+
+### Manual install
+
+```bash
+git clone https://github.com/VTSTech/pi-coding-agent.git
+cd pi-coding-agent
+cp extensions/*.ts ~/.pi/agent/extensions/
+cp themes/*.json ~/.pi/agent/themes/
+pi -c
+```
+
+### Prerequisites
+
+- [Pi Coding Agent](https://github.com/badlogic/pi-mono) v0.66+ installed
+- [Ollama](https://ollama.com) running locally or on a remote machine
+
+---
+
+## Pi Package Format
+
+This repo is a standard Pi package. The `package.json` contains a `pi` manifest that tells Pi where to find resources:
+
+```json
+{
+  "name": "@vtstech/pi-coding-agent-extensions",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./extensions"],
+    "themes": ["./themes"]
+  }
+}
+```
+
+Pi auto-discovers from conventional directories (`extensions/`, `themes/`, `skills/`, `prompts/`) even without the manifest. The manifest is included for explicit declaration.
 
 ---
 
@@ -44,8 +101,6 @@ This means you can:
 ---
 
 ## Extensions
-
-All extensions are installed by copying them to `~/.pi/agent/extensions/` and restarting Pi.
 
 ### 🔍 Diagnostics (`diag.ts`)
 
@@ -81,7 +136,7 @@ Four tests per model:
 
 | Test | Method | Scoring |
 |------|--------|---------|
-| **Reasoning** | Snail wall puzzle — "climbs 3ft/day, slides 2ft/night, 10ft wall" — answer extracted as the last number in the response (never appears in the prompt, preventing false positives) | STRONG / WEAK / FAIL |
+| **Reasoning** | Snail wall puzzle — "climbs 3ft/day, slides 2ft/night, 10ft wall" — answer (8) never appears in the prompt, preventing false positives. Answer extracted as the last number in the response. | STRONG / WEAK / FAIL |
 | **Thinking** | Extended thinking/reasoning token support (`<think` tags or native API) — "Multiply 37 × 43" prompt | SUPPORTED / NOT SUPPORTED |
 | **Tool Usage** | Tool call generation — detects both native Ollama `tool_calls` API and JSON tool calls embedded in text responses | STRONG / MODERATE / WEAK / FAIL |
 | **Instruction Following** | Strict JSON output format compliance — 4 specific keys with typed values, automatic repair of truncated output | STRONG / MODERATE / WEAK / FAIL |
@@ -89,6 +144,8 @@ Four tests per model:
 Features:
 - Calls Ollama `/api/chat` directly — no Pi agent round-trip
 - **Automatic remote Ollama URL** — reads from `models.json`, no manual config
+- **Timeout resilience** — 180s default with `--connect-timeout`, auto-retry on empty responses and connection failures (handles flaky tunnels)
+- **Thinking model fallback** — if a model returns empty without `think:true`, automatically retries with thinking enabled (supports qwen3 and similar models)
 - Retrieves model metadata (size, params, quantization, family) from `/api/tags`
 - **Auto-updates `models.json`** reasoning field based on thinking test results
 - **Text-based tool call detection** — models that output tool call JSON as text (instead of using the native API) are still correctly identified and scored
@@ -112,11 +169,11 @@ Sample output:
    ℹ️  Family: granite  |  Modified: 4/8/2026
 
  ── REASONING TEST ──────────────────────────────────────────
-   ℹ️  Prompt: "A farmer has 17 sheep. All but 9 die. How many left?"
+   ℹ️  Prompt: A snail climbs 3ft up a wall each day, slides 2ft back each night. Wall is 10ft. How many days?
    ℹ️  Testing...
    ℹ️  Time: 6.2s
-   ✅ Answer: 9 — Correct with clear reasoning (STRONG)
-   ℹ️  Response: The farmer has 9 sheep left.
+   ✅ Answer: 8 — Correct with clear reasoning (STRONG)
+   ℹ️  Response: On the 8th day, the snail climbs 3 feet...
 
  ── THINKING TEST ───────────────────────────────────────────
    ℹ️  Prompt: "Multiply 37 by 43. Explain your reasoning step by step."
@@ -175,24 +232,23 @@ Sample output:
 **Replaces the Pi footer with a unified status bar showing system metrics, model info, and generation params.**
 
 ```
-~/project · main · CPU 54% · RAM 5.2G/12.7G · Swap 128M/2.0G · granite4:350m · Resp 5m24s · temp:0.0 · max:16384 · 1.2%/128k
+~/.pi/agent · main · qwen3:0.6b · medium · 5.6%/128k · CPU 9% · RAM 2.2G/15.1G · qwen3:0.6b · Resp 5m24s · temp:0.0 · max:16384
 ```
 
-**Line 1 displays:**
+**Displays:**
 - **Working directory** — compact `~`-relative path
-- **Git branch** — current branch name (dimmed)
+- **Git branch** — current branch name via framework API with `git rev-parse` fallback (cached)
+- **Active model** — the model Pi is currently using from agent context
 - **Thinking level** — shown when active (off is hidden)
-- **Context usage** — percentage and window size (`1.2%/128k`)
-
-**System metrics (update every 3s):**
-- **CPU%** — per-core delta via `os.cpus()`
+- **Context usage** — percentage and window size (`5.6%/128k`)
+- **CPU%** — per-core delta via `os.cpus()` (updates every 3s)
 - **RAM** — used/total via `os.totalmem()` / `os.freemem()`
 - **Swap** — used/total from `/proc/meminfo` (shown only when swap is active)
-- **Loaded model** — Ollama model currently loaded in memory via `/api/ps` (works with remote Ollama)
+- **Loaded model** — Ollama model currently in memory via `/api/ps` (works with remote Ollama, cached 15s)
 - **Response time** — agent loop duration via `agent_start`/`agent_end` events
 - **Generation params** — temperature, top_p, top_k, max tokens, num_predict, context size captured via `before_provider_request` interception
 
-Restores the default footer on session shutdown.
+Restores the default footer on session shutdown. Automatically truncates to terminal width with ANSI-safe clipping.
 
 ---
 
@@ -205,8 +261,6 @@ A Matrix movie-inspired theme with neon green on pure black. Designed for termin
 ```
 /theme matrix
 ```
-
-Install by copying to `~/.pi/agent/themes/matrix.json`.
 
 **Color palette:**
 
@@ -222,45 +276,26 @@ Install by copying to `~/.pi/agent/themes/matrix.json`.
 
 ---
 
-## Setup
-
-### Prerequisites
-
-- [Pi Coding Agent](https://github.com/badlogic/pi-mono) installed
-- [Ollama](https://ollama.com) running locally or on a remote machine
-
-### Install Extensions
+## Quick Start
 
 ```bash
-# Clone this repo
-git clone https://github.com/VTSTech/pi-coding-agent.git
-cd pi-coding-agent
+# 1. Install the package
+pi install git:github.com/VTSTech/pi-coding-agent
 
-# Copy extensions to Pi's extension directory
-cp .pi/agent/extensions/*.ts ~/.pi/agent/extensions/
-
-# Copy theme
-mkdir -p ~/.pi/agent/themes
-cp .pi/agent/themes/*.json ~/.pi/agent/themes/
-
-# Restart Pi
+# 2. Restart Pi
 pi -c
-```
 
-### Quick Start
-
-```bash
-# 1. Sync your Ollama models into Pi
+# 3. Sync your Ollama models into Pi
 /ollama-sync                              # Local Ollama
 /ollama-sync https://your-tunnel-url      # Remote Ollama (e.g., Cloudflare Tunnel)
 
-# 2. Reload Pi to pick up changes
+# 4. Reload Pi to pick up model changes
 /reload
 
-# 3. Run diagnostics to verify everything
+# 5. Run diagnostics to verify everything
 /diag
 
-# 4. Benchmark your models
+# 6. Benchmark your models
 /model-test --all
 ```
 
@@ -376,12 +411,12 @@ subprocess.Popen(["ollama", "serve"])
 
 ## Tested Models
 
-Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via remote Ollama over Cloudflare Tunnel:
+Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via remote Ollama over Cloudflare Tunnel. The reasoning test uses the **snail wall puzzle** (answer: 8, never appears in the prompt).
 
 | Model | Params | Quant | Reasoning | Thinking | Tools | Instructions | Score |
 |-------|--------|-------|-----------|----------|-------|-------------|-------|
 | `granite4:350m` | 352M | BF16 | ❌ WEAK | ❌ | ✅ STRONG | ✅ STRONG | **2/4** |
-| `qwen3:0.6b` | 752M | Q4_K_M | ❌ FAIL | ✅ | ✅ STRONG | ✅ STRONG | **3/4** |
+| `qwen3:0.6b` | 752M | Q4_K_M | ⏳ pending* | ✅ | ✅ STRONG | ✅ STRONG | **—** |
 | `qwen2.5-coder:1.5b` | 1.5B | Q4_K_M | ⏳ pending | ❌ | ✅ STRONG | ✅ STRONG | **—** |
 | `llama3.2:1b` | 1.2B | Q8_0 | ⏳ pending | ❌ | ✅ STRONG | ✅ STRONG | **—** |
 | `qwen2.5-coder:0.5b-instruct-q4_k_m` | 494M | Q4_K_M | ❌ WEAK | ❌ | ✅ MODERATE | ✅ STRONG | **2/4** |
@@ -392,22 +427,24 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 | `gemma3:270m` | 268M | Q8_0 | ❌ WEAK | ❌ | ❌ FAIL | ❌ FAIL | **0/4** |
 | `smollm:135m` | 135M | Q4_0 | ❌ WEAK | ❌ | ❌ FAIL | ❌ FAIL | **0/4** |
 
-> Reasoning scores pending for qwen2.5-coder:1.5b and llama3.2:1b — re-test needed with the new snail wall puzzle. Other scores remain valid.
+> *qwen3:0.6b scored 3/4 previously but needs re-test — the snail puzzle reasoning score was not captured before a timeout issue. The `think:true` fallback in the latest update should now handle this correctly.
 
 ---
 
 ## File Structure
 
 ```
-.pi/
-└── agent/
-    ├── extensions/
-    │   ├── diag.ts              # System diagnostic suite
-    │   ├── model-test.ts        # Model benchmark tool
-    │   ├── ollama-sync.ts       # Ollama ↔ models.json sync
-    │   └── status.ts            # System resource monitor
-    └── themes/
-        └── matrix.json          # Matrix movie theme
+pi-coding-agent/
+├── extensions/
+│   ├── diag.ts              # System diagnostic suite
+│   ├── model-test.ts        # Model benchmark tool
+│   ├── ollama-sync.ts       # Ollama ↔ models.json sync
+│   └── status.ts            # System resource monitor
+├── themes/
+│   └── matrix.json          # Matrix movie theme
+├── package.json             # Pi package manifest
+├── README.md
+└── LICENSE
 ```
 
 ---
