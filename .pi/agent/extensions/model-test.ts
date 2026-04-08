@@ -81,7 +81,7 @@ export default function (pi: ExtensionAPI) {
     model: string,
     messages: Array<{ role: string; content: string }>,
     options: Record<string, unknown> = {},
-    timeoutMs = 360000
+    timeoutMs = 120000
   ): Promise<{ response: any; elapsedMs: number }> {
     const start = Date.now();
     const body: any = { model, messages, stream: false, options: { num_predict: 1024, temperature: 0.1, ...options } };
@@ -114,7 +114,7 @@ export default function (pi: ExtensionAPI) {
     answer: string;
     elapsedMs: number;
   }> {
-    const prompt = `A farmer has 17 sheep. All but 9 die. How many sheep does the farmer have left? Think step by step and give the final answer on its own line like: ANSWER: <number>`;
+    const prompt = `A snail climbs 3 feet up a wall each day, but slides back 2 feet each night. The wall is 10 feet tall. How many days does it take the snail to reach the top? Think step by step and give the final answer on its own line like: ANSWER: <number>`;
 
     try {
       const { response, elapsedMs } = await ollamaChat(model, [
@@ -136,12 +136,11 @@ export default function (pi: ExtensionAPI) {
       const allNumbers = effectiveMsg.match(/\b(\d+)\b/g) || [];
       const answer = allNumbers.length > 0 ? allNumbers[allNumbers.length - 1] : "?";
 
-      const isCorrect = answer === "9";
+      const isCorrect = answer === "8";
 
       // Check for reasoning patterns (step-by-step, because, therefore, etc.)
-      // Note: "17 -" alone is NOT reasoning, it's just restating the problem
       const reasoningPatterns = ["because", "therefore", "since", "step", "subtract", "minus",
-        "remaining", "alive", "survive", "find the", "left"];
+        "each day", "each night", "slides", "climbs", "night", "reaches", "finally", "last day"];
       const hasReasoningWords = reasoningPatterns.some(w => effectiveMsg.toLowerCase().includes(w));
       // Also detect numbered step patterns (e.g. "1. Find... 2. Subtract... 3. Therefore...")
       const hasNumberedSteps = /^\s*\d+\.\s/m.test(effectiveMsg);
@@ -263,7 +262,7 @@ export default function (pi: ExtensionAPI) {
         `${OLLAMA_BASE}/api/chat`,
         "-H", "Content-Type: application/json",
         "-d", JSON.stringify(body),
-      ], { timeout: 240000 });
+      ], { timeout: 120000 });
       const elapsedMs = Date.now() - start;
 
       if (result.code !== 0) {
@@ -392,7 +391,7 @@ The JSON object must have exactly these 4 keys:
     try {
       const { response, elapsedMs } = await ollamaChat(model, [
         { role: "user", content: prompt },
-      ], { num_predict: 1024 });
+      ], { num_predict: 512 });
 
       const msg = (response?.message?.content || "").trim();
 
@@ -564,7 +563,7 @@ The JSON object must have exactly these 4 keys:
 
     // 1. Reasoning test
     lines.push(section("REASONING TEST"));
-    lines.push(info("Prompt: \"A farmer has 17 sheep. All but 9 die. How many left?\""));
+    lines.push(info("Prompt: A snail climbs 3ft up a wall each day, slides 2ft back each night. Wall is 10ft. How many days?"));
     lines.push(info("Testing..."));
 
     const reasoning = await testReasoning(model);
