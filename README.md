@@ -42,21 +42,14 @@ All extensions are installed by copying them to `~/.pi/agent/extensions/` and re
 Checks:
 - **System** — OS, CPU, RAM usage, uptime, Node.js version
 - **Disk** — Disk usage via `df -h`
-- **Ollama** — Running? Version? Response latency? Models pulled? Currently loaded?
+- **Ollama** — Running? Version? Response latency? Models pulled? Currently loaded in VRAM?
 - **models.json** — Valid JSON? Provider config? Models listed? Cross-references with Ollama
 - **Settings** — settings.json exists? Valid?
 - **Extensions** — Extension files found? Active tools?
 - **Themes** — Theme files? Valid JSON?
-- **Session** — Active model? Context window? Context usage? Thinking level?
+- **Session** — Active model? API mode? Context window? Context usage? Thinking level?
 
 Also registers a `self_diagnostic` tool so the AI agent can run diagnostics on command.
-
-```
-  ⚡ Pi Diagnostics v1.0
-  Written by VTSTech
-  GitHub: https://github.com/VTSTech
-  Website: www.vts-tech.org
-```
 
 ### 🧪 Model Benchmark (`model-test.ts`)
 
@@ -72,15 +65,18 @@ Four tests per model:
 
 | Test | Method | Scoring |
 |------|--------|---------|
-| **Reasoning** | "17 sheep, all but 9 die" logic puzzle | STRONG / MODERATE / WEAK / FAIL |
-| **Thinking** | Extended thinking/reasoning token support | SUPPORTED / NOT SUPPORTED |
-| **Tool Usage** | Proper tool call generation via Ollama API | STRONG / MODERATE / WEAK / FAIL |
-| **Instruction Following** | JSON output format compliance | STRONG / MODERATE / WEAK / FAIL |
+| **Reasoning** | "17 sheep, all but 9 die" logic puzzle — answer extracted as the last number in the response | STRONG / WEAK / FAIL |
+| **Thinking** | Extended thinking/reasoning token support (`<think` tags or native API) | SUPPORTED / NOT SUPPORTED |
+| **Tool Usage** | Tool call generation — detects both native Ollama `tool_calls` API and JSON tool calls embedded in text responses | STRONG / MODERATE / WEAK / FAIL |
+| **Instruction Following** | JSON output format compliance with automatic repair of truncated output | STRONG / MODERATE / WEAK / FAIL |
 
 Features:
 - Calls Ollama `/api/chat` directly — no Pi agent round-trip
 - Retrieves model metadata (size, params, quantization, family) from `/api/tags`
 - **Auto-updates `models.json`** reasoning field based on thinking test results
+- **Text-based tool call detection** — models that output tool call JSON as text (instead of using the native API) are still correctly identified and scored
+- **JSON repair** — automatically fixes truncated JSON output (missing closing braces) from `num_predict` limits
+- **Complete response display** — full model responses are shown with markdown code fences stripped for clean rendering
 - Tab-completion for model names in the `/model-test` command
 - Final recommendation: STRONG / GOOD / USABLE / WEAK
 
@@ -93,13 +89,28 @@ Sample output:
 
 ── MODEL: granite4:350m ────────────────────────────
   ℹ️  Size: 676 MB  |  Params: 352.38M  |  Quant: BF16
+  ℹ️  Family: granite  |  Modified: 4/8/2026
 
-── SUMMARY ──────────────────────────────────────────
-  ✅ Reasoning: MODERATE
+── REASONING TEST ──────────────────────────────────
+  ✅ Answer: 9 — Correct with clear reasoning (STRONG)
+  ℹ️  Response: The farmer has 9 sheep left.
+
+── TOOL USAGE TEST ─────────────────────────────────
+  ✅ Tool call: get_weather({"location":"Paris"}) (STRONG)
+
+── INSTRUCTION FOLLOWING TEST ──────────────────────
+  ✅ JSON output valid with correct values (STRONG)
+  ℹ️  Output: {"name":"MyModel","can_count":true,"sum":42,"language":"English"}
+
+── SUMMARY ─────────────────────────────────────────
+  ✅ Reasoning: STRONG
   ❌ Thinking: NO
   ✅ Tool Usage: STRONG
   ✅ Instructions: STRONG
   ℹ️  Score: 3/4 tests passed
+
+── RECOMMENDATION ──────────────────────────────────
+  ✅ granite4:350m is a GOOD model — most capabilities work
 ```
 
 ### 🔄 Ollama Sync (`ollama-sync.ts`)
@@ -112,8 +123,9 @@ Sample output:
 
 - Queries `http://localhost:11434/api/tags` for available models
 - Preserves existing provider config (baseUrl, apiKey, compat settings)
+- Defaults to `openai-completions` API mode (correct for Ollama's `/v1/chat/completions` endpoint)
 - Sorts models by size (smallest first)
-- Auto-detects reasoning-capable models
+- Auto-detects reasoning-capable models (deepseek-r1, qwq, o1, o3, think, reason)
 - Merges with existing per-model settings
 - Registered as both `/ollama-sync` slash command and `ollama_sync` tool
 
@@ -134,15 +146,15 @@ CPU 54% · RAM 5.2G/12.7G · Resp 5m24s · max:16384
 
 ## Themes
 
-### 🟢 Neon Matrix (`neon-matrix.json`)
+### 🟢 Matrix (`matrix.json`)
 
 A Matrix movie-inspired theme with neon green on pure black. Designed for terminal aesthetics and extended coding sessions.
 
 ```
-/theme neon-matrix
+/theme matrix
 ```
 
-Install by copying to `~/.pi/agent/themes/neon-matrix.json`.
+Install by copying to `~/.pi/agent/themes/matrix.json`.
 
 **Color palette:**
 
@@ -183,6 +195,22 @@ cp .pi/agent/themes/*.json ~/.pi/agent/themes/
 pi -c
 ```
 
+### Quick Start
+
+```bash
+# 1. Sync your Ollama models into Pi
+/ollama-sync
+
+# 2. Reload Pi to pick up changes
+/reload
+
+# 3. Run diagnostics to verify everything
+/diag
+
+# 4. Benchmark your models
+/model-test --all
+```
+
 ### Recommended models.json
 
 ```json
@@ -190,26 +218,19 @@ pi -c
   "providers": {
     "ollama": {
       "baseUrl": "http://localhost:11434/v1",
-      "api": "openai-responses",
+      "api": "openai-completions",
       "apiKey": "ollama",
       "compat": {
         "supportsDeveloperRole": false,
         "supportsReasoningEffort": false
       },
-      "models": [
-        { "id": "granite4:350m", "reasoning": false },
-        { "id": "qwen2.5-coder:0.5b-instruct-q4_k_m", "reasoning": false },
-        { "id": "qwen3:0.6b", "reasoning": true },
-        { "id": "qwen3.5:0.8b", "reasoning": false },
-        { "id": "qwen2.5:1.5b", "reasoning": false },
-        { "id": "llama3.2:1b", "reasoning": false },
-        { "id": "granite3.1-moe:1b", "reasoning": false },
-        { "id": "qwen3.5:2b", "reasoning": true }
-      ]
+      "models": []
     }
   }
 }
 ```
+
+> Use `/ollama-sync` to auto-populate the models array from your Ollama instance.
 
 ### Recommended settings.json
 
@@ -218,9 +239,9 @@ Optimized for CPU-only environments with limited RAM:
 ```json
 {
   "defaultProvider": "ollama",
-  "defaultModel": "qwen3.5:0.8b",
+  "defaultModel": "granite4:350m",
   "defaultThinkingLevel": "off",
-  "theme": "neon-matrix",
+  "theme": "matrix",
   "compaction": {
     "enabled": true,
     "reserveTokens": 2048,
@@ -228,6 +249,24 @@ Optimized for CPU-only environments with limited RAM:
   }
 }
 ```
+
+---
+
+## Supported API Modes
+
+Pi supports multiple API backends via the `api` field in `models.json`. For Ollama, use **`openai-completions`** which maps to Ollama's native `/v1/chat/completions` endpoint. Other available modes:
+
+| API Mode | Use Case |
+|----------|----------|
+| `openai-completions` | Ollama, OpenAI-compatible `/v1/chat/completions` |
+| `openai-responses` | OpenAI Responses API (`/v1/responses`) |
+| `anthropic-messages` | Anthropic native API |
+| `google-generative-ai` | Gemini API |
+| `google-vertex` | Google Vertex AI |
+| `mistral-conversations` | Mistral API |
+| `bedrock-converse-stream` | Amazon Bedrock |
+
+See [Pi's AI package docs](https://github.com/badlogic/pi-mono/tree/main/packages/ai#apis-models-and-providers) for the full list.
 
 ---
 
@@ -262,8 +301,9 @@ subprocess.Popen(["ollama", "serve"])
 | `granite4:350m` | 352M | 676 MB | ❌ | ✅ | Fast tasks, tool calling |
 | `qwen3:0.6b` | 752M | 498 MB | ✅ | ✅ | Thinking tasks |
 | `qwen3.5:0.8b` | ~800M | 1.0 GB | ❌ | ✅ | Daily driver |
+| `qwen2.5-coder:1.5b` | 1.5B | 940 MB | ❌ | ✅ | Code tasks |
+| `llama3.2:1b` | 1.2B | 1.2 GB | ❌ | ✅ | General use |
 | `qwen3.5:2b` | 2.3B | 2.7 GB | ✅ | ✅ | Best quality (fits 12GB) |
-| `llama3.2:1b` | 1.2B | 1.3 GB | ❌ | ✅ | General use |
 
 ---
 
@@ -273,11 +313,13 @@ Benchmarks run with `/model-test` on Google Colab CPU (2x Xeon @ 2.20GHz, 12GB R
 
 | Model | Params | Quant | Reasoning | Thinking | Tools | Instructions | Score |
 |-------|--------|-------|-----------|----------|-------|-------------|-------|
-| `granite4:350m` | 352M | BF16 | MODERATE | NO | STRONG | STRONG | **3/4** |
-| `qwen2.5-coder:0.5b` | 494M | Q4_K_M | WEAK | NO | FAIL | STRONG | 2/4 |
-| `qwen3:0.6b` | 752M | Q4_K_M | FAIL | YES | STRONG | FAIL | 2/4 |
+| `granite4:350m` | 352M | BF16 | ✅ STRONG | ❌ | ✅ STRONG | ✅ STRONG | **3/4** |
+| `qwen2.5-coder:1.5b` | 1.5B | Q4_K_M | ❌ WEAK | ❌ | ✅ STRONG | ✅ STRONG | **2/4** |
+| `llama3.2:1b` | 1.2B | Q8_0 | ❌ WEAK | ❌ | ✅ STRONG | ✅ STRONG | **2/4** |
+| `gemma3:270m` | 268M | Q8_0 | ❌ FAIL | ❌ | ❌ FAIL | ❌ FAIL | **0/4** |
+| `functiongemma:270m` | 268M | Q8_0 | — | — | — | — | — |
 
-> More benchmarks coming as models are tested. Run `/model-test --all` on your setup to generate your own!
+> Reasoning test uses the model's last number as its answer. The "all but 9 die" puzzle requires understanding that 9 survive — models that calculate 17-9=8 get WEAK, while models that correctly state 9 get STRONG. Thinking test checks for `<think` tag support or native reasoning tokens. Tool usage detects both native Ollama `tool_calls` and JSON tool calls embedded in text. Instruction following includes automatic JSON repair for truncated output.
 
 ---
 
@@ -290,11 +332,9 @@ Benchmarks run with `/model-test` on Google Colab CPU (2x Xeon @ 2.20GHz, 12GB R
     │   ├── diag.ts              # System diagnostic suite
     │   ├── model-test.ts        # Model benchmark tool
     │   ├── ollama-sync.ts       # Ollama ↔ models.json sync
-    │   └── sysmon.ts            # System resource monitor
-    ├── themes/
-    │   └── neon-matrix.json     # Matrix movie theme
-    ├── models.json              # Model provider configuration
-    └── settings.json            # Pi settings
+    │   └── status.ts            # System resource monitor
+    └── themes/
+        └── matrix.json          # Matrix movie theme
 ```
 
 ---
