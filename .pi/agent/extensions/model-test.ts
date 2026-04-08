@@ -313,13 +313,17 @@ export default function (pi: ExtensionAPI) {
       }
 
       // Model answered in text — check if it contains valid tool call JSON
-      const sanitizedContent = sanitizeForReport(content);
-      const textToolMatch = sanitizedContent.match(/\{[\s\S]*?\}/);
+      // Use greedy match so nested braces (e.g. {"arguments": {...}}) are captured fully
+      const firstBrace = content.indexOf('{');
       let textToolParsed: any = null;
-      if (textToolMatch) {
-        try {
-          textToolParsed = JSON.parse(textToolMatch[0]);
-        } catch { /* not valid JSON */ }
+      if (firstBrace !== -1) {
+        const lastBrace = content.lastIndexOf('}');
+        if (lastBrace > firstBrace) {
+          const jsonCandidate = content.slice(firstBrace, lastBrace + 1);
+          try {
+            textToolParsed = JSON.parse(jsonCandidate);
+          } catch { /* not valid JSON */ }
+        }
       }
 
       // Check if the parsed JSON looks like a valid tool call
