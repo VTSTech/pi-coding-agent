@@ -8,7 +8,7 @@ import {
   section, ok, fail, warn, info,
   bytesHuman, msHuman, pct, padRight,
 } from "../shared/format";
-import { MODELS_JSON_PATH } from "../shared/ollama";
+import { MODELS_JSON_PATH, getOllamaBaseUrl } from "../shared/ollama";
 import {
   BLOCKED_COMMANDS, BLOCKED_URL_PATTERNS,
   validatePath, isSafeUrl, sanitizeCommand, readRecentAuditEntries,
@@ -89,49 +89,102 @@ export default function (pi: ExtensionAPI) {
     let ollamaOk = false;
     let ollamaModels: string[] = [];
     let ollamaVersion = "unknown";
+    const ollamaBaseUrl = getOllamaBaseUrl();
+    const isRemoteOllama = !ollamaBaseUrl.includes("localhost") && !ollamaBaseUrl.includes("127.0.0.1");
 
-    try {
-      const startTime = Date.now();
-      const versionResult = await pi.exec("ollama", ["--version"], { timeout: 10000 });
-      const latency = Date.now() - startTime;
-      if (versionResult.code === 0) {
-        ollamaVersion = versionResult.stdout.trim();
-        ollamaOk = true;
-        lines.push(ok(`Ollama running: ${ollamaVersion} (${msHuman(latency)} response time)`));
-      } else {
-        lines.push(fail(`Ollama error: ${versionResult.stderr.trim() || "non-zero exit code"}`));
+    if (isRemoteOllama) {
+      // Remote Ollama — probe via HTTP instead of CLI
+      lines.push(info(`Remote Ollama detected: ${ollamaBaseUrl}`));
+      try {
+        const startTime = Date.now();
+        const versionUrl = ollamaBaseUrl.replace(/\/v1\s*$/, "/api/version");
+        const versionRes = await fetch(versionUrl, { signal: AbortSignal.timeout(10000) });
+        const latency = Date.now() - startTime;
+        if (versionRes.ok) {
+          const versionData = await versionRes.json();
+          ollamaVersion = versionData.version || "unknown";
+          ollamaOk = true;
+          lines.push(ok(`Remote Ollama running: ${ollamaVersion} (${msHuman(latency)} response time)`));
+        } else {
+          lines.push(fail(`Remote Ollama returned status ${versionRes.status}`));
+        }
+      } catch (e: any) {
+        lines.push(fail(`Remote Ollama not reachable: ${e.message || "unknown error"}`));
       }
-    } catch (e: any) {
-      lines.push(fail(`Ollama not reachable: ${e.message || "unknown error"}`));
-    }
 
-    if (ollamaOk) {
-      try {
-        const listResult = await pi.exec("ollama", ["list"], { timeout: 15000 });
-        if (listResult.code === 0) {
-          const modelLines = listResult.stdout.trim().split("\n").slice(1); // skip header
-          ollamaModels = modelLines
-            .map(l => l.trim().split(/\s+/)[0])
-            .filter(Boolean);
-          lines.push(info(`Available models: ${ollamaModels.length}`));
-          ollamaModels.forEach(m => lines.push(info(`  • ${m}`)));
-          check(ollamaModels.length > 0, "Models found in Ollama", "No models pulled in Ollama");
-        }
-      } catch { lines.push(warn("Could not list Ollama models")); }
-
-      // Check currently loaded model
-      try {
-        const psResult = await pi.exec("ollama", ["ps"], { timeout: 10000 });
-        if (psResult.code === 0) {
-          const psLines = psResult.stdout.trim().split("\n").slice(1);
-          if (psLines.length > 0) {
-            const loadedModel = psLines[0].trim().split(/\s+/)[0];
-            lines.push(info(`Loaded in VRAM: ${loadedModel}`));
-          } else {
-            lines.push(warn("No model currently loaded in Ollama"));
+      if (ollamaOk) {
+        try {
+          const tagsUrl = ollamaBaseUrl.replace(/\/v1\s*$/, "/api/tags");
+          const tagsRes = await fetch(tagsUrl, { signal: AbortSignal.timeout(15000) });
+          if (tagsRes.ok) {
+            const tagsData = await tagsRes.json();
+            ollamaModels = (tagsData.models || []).map((m: any) => m.name || m.model).filter(Boolean);
+            lines.push(info(`Available models: ${ollamaModels.length}`));
+            ollamaModels.forEach(m => lines.push(info(`  • ${m}`)));
+            check(ollamaModels.length > 0, "Models found in Ollama", "No models pulled in Ollama");
           }
+        } catch { lines.push(warn("Could not list remote Ollama models")); }
+
+        // Check currently loaded model via /api/ps
+        try {
+          const psUrl = ollamaBaseUrl.replace(/\/v1\s*$/, "/api/ps");
+          const psRes = await fetch(psUrl, { signal: AbortSignal.timeout(10000) });
+          if (psRes.ok) {
+            const psData = await psRes.json();
+            const loaded = psData.models || [];
+            if (loaded.length > 0) {
+              lines.push(info(`Loaded in VRAM: ${loaded[0].name || loaded[0].model || "unknown"}`));
+            } else {
+              lines.push(info("No model currently loaded in Ollama"));
+            }
+          }
+        } catch { /* ignore */ }
+      }
+    } else {
+      // Local Ollama — probe via CLI
+      try {
+        const startTime = Date.now();
+        const versionResult = await pi.exec("ollama", ["--version"], { timeout: 10000 });
+        const latency = Date.now() - startTime;
+        if (versionResult.code === 0) {
+          ollamaVersion = versionResult.stdout.trim();
+          ollamaOk = true;
+          lines.push(ok(`Ollama running: ${ollamaVersion} (${msHuman(latency)} response time)`));
+        } else {
+          lines.push(fail(`Ollama error: ${versionResult.stderr.trim() || "non-zero exit code"}`));
         }
-      } catch { /* ignore */ }
+      } catch (e: any) {
+        lines.push(fail(`Ollama not reachable: ${e.message || "unknown error"}`));
+      }
+
+      if (ollamaOk) {
+        try {
+          const listResult = await pi.exec("ollama", ["list"], { timeout: 15000 });
+          if (listResult.code === 0) {
+            const modelLines = listResult.stdout.trim().split("\n").slice(1); // skip header
+            ollamaModels = modelLines
+              .map(l => l.trim().split(/\s+/)[0])
+              .filter(Boolean);
+            lines.push(info(`Available models: ${ollamaModels.length}`));
+            ollamaModels.forEach(m => lines.push(info(`  • ${m}`)));
+            check(ollamaModels.length > 0, "Models found in Ollama", "No models pulled in Ollama");
+          }
+        } catch { lines.push(warn("Could not list Ollama models")); }
+
+        // Check currently loaded model
+        try {
+          const psResult = await pi.exec("ollama", ["ps"], { timeout: 10000 });
+          if (psResult.code === 0) {
+            const psLines = psResult.stdout.trim().split("\n").slice(1);
+            if (psLines.length > 0) {
+              const loadedModel = psLines[0].trim().split(/\s+/)[0];
+              lines.push(info(`Loaded in VRAM: ${loadedModel}`));
+            } else {
+              lines.push(warn("No model currently loaded in Ollama"));
+            }
+          }
+        } catch { /* ignore */ }
+      }
     }
 
     // ── MODELS.JSON ──
