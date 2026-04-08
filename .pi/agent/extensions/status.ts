@@ -11,7 +11,26 @@
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import os from "node:os";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { execSync } from "node:child_process";
+
+const MODELS_JSON_PATH = path.join(os.homedir(), ".pi", "agent", "models.json");
+
+function getOllamaBaseUrl(): string {
+  try {
+    if (fs.existsSync(MODELS_JSON_PATH)) {
+      const raw = fs.readFileSync(MODELS_JSON_PATH, "utf-8");
+      const config = JSON.parse(raw);
+      const baseUrl = config?.providers?.["ollama"]?.baseUrl;
+      if (baseUrl) return baseUrl.replace(/\/v1\/?$/, "");
+    }
+  } catch { /* ignore */ }
+  if (process.env.OLLAMA_HOST) {
+    return `http://${process.env.OLLAMA_HOST.replace(/^https?:\/\//, "")}`;
+  }
+  return "http://localhost:11434";
+}
 
 export default function (pi: ExtensionAPI) {
   let lastResponseTime: number | null = null;
@@ -100,24 +119,17 @@ export default function (pi: ExtensionAPI) {
     if (now - ollamaLoadedLastCheck < OLLAMA_LOADED_INTERVAL) return ollamaLoadedCache;
     ollamaLoadedLastCheck = now;
     try {
-      const out = execSync("ollama ps --format json 2>/dev/null", { encoding: "utf-8", timeout: 5000 });
+      const ollamaBase = getOllamaBaseUrl();
+      const out = execSync(`curl -s "${ollamaBase}/api/ps"`, { encoding: "utf-8", timeout: 5000 });
       if (out.trim()) {
         const data = JSON.parse(out.trim());
-        if (Array.isArray(data) && data.length > 0) {
-          ollamaLoadedCache = data[0].name || data[0].model || "unknown";
+        const models = data?.models || [];
+        if (Array.isArray(models) && models.length > 0) {
+          ollamaLoadedCache = models[0].name || models[0].model || "unknown";
           return ollamaLoadedCache;
         }
       }
-    } catch {
-      try {
-        const out = execSync("ollama ps 2>/dev/null", { encoding: "utf-8", timeout: 5000 });
-        const lines = out.trim().split("\n").slice(1);
-        if (lines.length > 0) {
-          ollamaLoadedCache = lines[0].trim().split(/\s+/)[0];
-          return ollamaLoadedCache;
-        }
-      } catch { /* ignore */ }
-    }
+    } catch { /* ignore */ }
     ollamaLoadedCache = "";
     return "";
   }
