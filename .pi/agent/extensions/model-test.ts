@@ -99,11 +99,19 @@ export default function (pi: ExtensionAPI) {
         { role: "user", content: prompt },
       ]);
 
-      const msg = response?.message?.content || "";
+      let msg = response?.message?.content || "";
+      const thinking = response?.message?.thinking || "";
+
+      // If the model uses thinking tokens but produced no regular content,
+      // fall back to extracting from the thinking content
+      const effectiveMsg = msg.trim().length > 0 ? msg : thinking;
+      if (effectiveMsg.trim().length === 0) {
+        return { pass: false, score: "ERROR", reasoning: "Empty response from Ollama (no content or thinking tokens)", answer: "?", elapsedMs };
+      }
 
       // Extract the answer: use the last number in the model's response.
       // The model's final number is its conclusion regardless of intermediate math.
-      const allNumbers = msg.match(/\b(\d+)\b/g) || [];
+      const allNumbers = effectiveMsg.match(/\b(\d+)\b/g) || [];
       const answer = allNumbers.length > 0 ? allNumbers[allNumbers.length - 1] : "?";
 
       const isCorrect = answer === "9";
@@ -112,9 +120,9 @@ export default function (pi: ExtensionAPI) {
       // Note: "17 -" alone is NOT reasoning, it's just restating the problem
       const reasoningPatterns = ["because", "therefore", "since", "step", "subtract", "minus",
         "remaining", "alive", "survive", "find the", "left"];
-      const hasReasoningWords = reasoningPatterns.some(w => msg.toLowerCase().includes(w));
+      const hasReasoningWords = reasoningPatterns.some(w => effectiveMsg.toLowerCase().includes(w));
       // Also detect numbered step patterns (e.g. "1. Find... 2. Subtract... 3. Therefore...")
-      const hasNumberedSteps = /^\s*\d+\.\s/m.test(msg);
+      const hasNumberedSteps = /^\s*\d+\.\s/m.test(effectiveMsg);
       const hasReasoning = hasReasoningWords || hasNumberedSteps;
 
       let score: string;
@@ -133,7 +141,11 @@ export default function (pi: ExtensionAPI) {
         pass = false;
       }
 
-      return { pass, score, reasoning: msg, answer, elapsedMs };
+      // Use effectiveMsg for display; note if it came from thinking tokens
+      const displayMsg = msg.trim().length > 0
+        ? effectiveMsg
+        : `[thinking tokens] ${effectiveMsg}`;
+      return { pass, score, reasoning: displayMsg, answer, elapsedMs };
     } catch (e: any) {
       return { pass: false, score: "ERROR", reasoning: e.message, answer: "?", elapsedMs: 0 };
     }
