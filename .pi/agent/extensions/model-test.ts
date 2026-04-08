@@ -101,52 +101,10 @@ export default function (pi: ExtensionAPI) {
 
       const msg = response?.message?.content || "";
 
-      // Extract the final answer using multiple strategies, ordered by reliability.
-      // Strategy 1: ANSWER: <number> format
-      const answerMatch = msg.match(/ANSWER:\s*(\d+)/i);
-      // Strategy 2: \boxed{<number>} LaTeX format
-      const boxedMatch = msg.match(/\\boxed\{(\d+)\}/);
-      // Strategy 3: "= <number>" or "equals <number>" near end of text
-      const equalsMatch = msg.match(/(?:=|equals)\s*(\d+)/gi);
-      // Strategy 4: "<number> sheep left/remain/alive/survive" (survival context only)
-      const sheepSurviveMatch = msg.match(/(\d+)\s*sheep\s*(left|remain|alive|survive|still)/gi);
-      // Strategy 4b: any "<number> sheep" mention (lower confidence)
-      const lastSheepMatch = msg.match(/(\d+)\s*sheep/gi);
-      // Strategy 5: the last standalone number in the entire response
+      // Extract the answer: use the last number in the model's response.
+      // The model's final number is its conclusion regardless of intermediate math.
       const allNumbers = msg.match(/\b(\d+)\b/g) || [];
-
-      let answer: string;
-      let answerConfidence: number; // 0-1
-
-      if (answerMatch) {
-        answer = answerMatch[1];
-        answerConfidence = 1.0;
-      } else if (boxedMatch) {
-        answer = boxedMatch[1];
-        answerConfidence = 0.95;
-      } else if (sheepSurviveMatch && sheepSurviveMatch.length > 0) {
-        // Use the LAST "<number> sheep left/remain/alive/survive"
-        const lastMatch = sheepSurviveMatch[sheepSurviveMatch.length - 1];
-        answer = lastMatch.match(/(\d+)/)![1];
-        answerConfidence = 0.8;
-      } else if (equalsMatch && equalsMatch.length > 0) {
-        // Use the LAST "= <number>" occurrence (likely the model's conclusion)
-        const lastEquals = equalsMatch[equalsMatch.length - 1];
-        answer = lastEquals.match(/(\d+)/)![1];
-        answerConfidence = 0.7;
-      } else if (lastSheepMatch && lastSheepMatch.length > 0) {
-        // Fallback: any "<number> sheep" mention (low confidence)
-        const lastMatch = lastSheepMatch[lastSheepMatch.length - 1];
-        answer = lastMatch.match(/(\d+)/)![1];
-        answerConfidence = 0.5;
-      } else if (allNumbers.length > 0) {
-        // Use the last number in the response
-        answer = allNumbers[allNumbers.length - 1];
-        answerConfidence = 0.5;
-      } else {
-        answer = "?";
-        answerConfidence = 0;
-      }
+      const answer = allNumbers.length > 0 ? allNumbers[allNumbers.length - 1] : "?";
 
       const isCorrect = answer === "9";
 
@@ -163,9 +121,6 @@ export default function (pi: ExtensionAPI) {
       let pass: boolean;
       if (isCorrect && hasReasoning) {
         score = "STRONG";
-        pass = true;
-      } else if (isCorrect && answerConfidence >= 0.5) {
-        score = "MODERATE";
         pass = true;
       } else if (isCorrect) {
         score = "MODERATE";
