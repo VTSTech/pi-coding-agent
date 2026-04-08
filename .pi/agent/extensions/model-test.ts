@@ -42,8 +42,11 @@ export default function (pi: ExtensionAPI) {
    * so they don't create unwanted code blocks in the report output.
    */
   function sanitizeForReport(s: string): string {
-    // Remove code fence lines (```json, ```, etc.)
-    let cleaned = s.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '');
+    // Remove code fence lines: ```json, ```text, ``` with trailing spaces/newlines
+    // Match ``` at start of line (with optional whitespace), optional lang tag, trailing whitespace to EOL
+    let cleaned = s.replace(/^\s*```[a-zA-Z]*[ \t]*\n?/gm, '');
+    // Remove any remaining standalone ``` (e.g. closing fences)
+    cleaned = cleaned.replace(/^\s*```[ \t]*\n?/gm, '');
     // Normalize excessive whitespace (but keep single newlines)
     cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
     return cleaned;
