@@ -3,6 +3,27 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
+const MODELS_JSON_PATH = path.join(os.homedir(), ".pi", "agent", "models.json");
+
+function getOllamaBaseUrl(): string {
+  // Priority: models.json ollama provider baseUrl > OLLAMA_HOST env > localhost
+  try {
+    if (fs.existsSync(MODELS_JSON_PATH)) {
+      const raw = fs.readFileSync(MODELS_JSON_PATH, "utf-8");
+      const config = JSON.parse(raw);
+      const baseUrl = config?.providers?.["ollama"]?.baseUrl;
+      if (baseUrl) {
+        // baseUrl is like "https://host/v1" or "http://localhost:11434/v1" — strip /v1
+        return baseUrl.replace(/\/v1\/?$/, "");
+      }
+    }
+  } catch { /* ignore parse errors */ }
+  if (process.env.OLLAMA_HOST) {
+    return `http://${process.env.OLLAMA_HOST.replace(/^https?:\/\//, "")}`;
+  }
+  return "http://localhost:11434";
+}
+
 /**
  * Model testing extension for Pi Coding Agent.
  * Tests Ollama models for reasoning/thinking ability and tool usage capability
@@ -15,7 +36,8 @@ import * as path from "node:path";
  */
 export default function (pi: ExtensionAPI) {
 
-  const OLLAMA_BASE = "http://localhost:11434";
+  // Ollama URL: models.json > OLLAMA_HOST env > localhost
+  const OLLAMA_BASE = getOllamaBaseUrl();
 
   // ── helpers ──────────────────────────────────────────────────────────
 
@@ -231,7 +253,7 @@ export default function (pi: ExtensionAPI) {
       ],
       tools,
       stream: false,
-      options: { num_predict: 1024, temperature: 0.1 },
+      options: { num_predict: 256, temperature: 0.0 },
     };
 
     try {
@@ -241,7 +263,7 @@ export default function (pi: ExtensionAPI) {
         `${OLLAMA_BASE}/api/chat`,
         "-H", "Content-Type: application/json",
         "-d", JSON.stringify(body),
-      ], { timeout: 240000 });
+      ], { timeout: 120000 });
       const elapsedMs = Date.now() - start;
 
       if (result.code !== 0) {
@@ -433,14 +455,15 @@ The JSON object must have exactly these 4 keys:
   // ── get models to test ───────────────────────────────────────────────
 
   async function getOllamaModels(): Promise<string[]> {
-    const result = await pi.exec("ollama", ["list"], { timeout: 15000 });
-    if (result.code !== 0) return [];
-    return result.stdout
-      .trim()
-      .split("\n")
-      .slice(1)
-      .map(l => l.trim().split(/\s+/)[0])
-      .filter(Boolean);
+    // Use the same Ollama base URL (could be remote) via /api/tags
+    try {
+      const result = await pi.exec("curl", ["-s", `${OLLAMA_BASE}/api/tags`], { timeout: 10000 });
+      if (result.code !== 0 || !result.stdout.trim()) return [];
+      const data = JSON.parse(result.stdout);
+      return (data.models || []).map((m: any) => m.name).filter(Boolean);
+    } catch {
+      return [];
+    }
   }
 
   function getCurrentModel(ctx: any): string | undefined {
