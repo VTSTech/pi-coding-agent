@@ -82,35 +82,73 @@ Features:
 
 Sample output:
 ```
-  ⚡ Pi Model Benchmark v1.0
-  Written by VTSTech
-  GitHub: https://github.com/VTSTech
-  Website: www.vts-tech.org
-
-── MODEL: granite4:350m ────────────────────────────
-  ℹ️  Size: 676 MB  |  Params: 352.38M  |  Quant: BF16
-  ℹ️  Family: granite  |  Modified: 4/8/2026
-
-── REASONING TEST ──────────────────────────────────
-  ✅ Answer: 9 — Correct with clear reasoning (STRONG)
-  ℹ️  Response: The farmer has 9 sheep left.
-
-── TOOL USAGE TEST ─────────────────────────────────
-  ✅ Tool call: get_weather({"location":"Paris"}) (STRONG)
-
-── INSTRUCTION FOLLOWING TEST ──────────────────────
-  ✅ JSON output valid with correct values (STRONG)
-  ℹ️  Output: {"name":"MyModel","can_count":true,"sum":42,"language":"English"}
-
-── SUMMARY ─────────────────────────────────────────
-  ✅ Reasoning: STRONG
-  ❌ Thinking: NO
-  ✅ Tool Usage: STRONG
-  ✅ Instructions: STRONG
-  ℹ️  Score: 3/4 tests passed
-
-── RECOMMENDATION ──────────────────────────────────
-  ✅ granite4:350m is a GOOD model — most capabilities work
+ [model-test-report]                                                                                                      
+                                                                                                                          
+   ⚡ Pi Model Benchmark v1.0                                                                                             
+   Written by VTSTech                                                                                                     
+   GitHub: https://github.com/VTSTech                                                                                     
+   Website: www.vts-tech.org (http://www.vts-tech.org)                                                                    
+                                                                                                                          
+ ── MODEL: granite4:350m ────────────────────────────────────                                                             
+   ℹ️  Size: 676 MB  |  Params: 352.38M  |  Quant: BF16                                                                   
+   ℹ️  Family: granite  |  Modified: 4/8/2026                                                                             
+                                                                                                                          
+ ── REASONING TEST ──────────────────────────────────────────                                                             
+   ℹ️  Prompt: "A farmer has 17 sheep. All but 9 die. How many left?"                                                     
+   ℹ️  Testing...                                                                                                         
+   ℹ️  Time: 4.8s                                                                                                         
+   ✅ Answer: 9 —  Correct with clear reasoning (STRONG)                                                                   
+   ℹ️  Response: The farmer has 9 sheep left.                                                                             
+                                                                                                                          
+ ── THINKING TEST ───────────────────────────────────────────                                                             
+   ℹ️  Prompt: "Multiply 37 by 43. Explain your reasoning step by step."                                                  
+   ℹ️  Time: 18.6s                                                                                                        
+   ❌  Thinking/reasoning tokens: NOT SUPPORTED                                                                            
+   ℹ️  Answer output: To multiply 37 by 43, we can use the standard multiplication algorithm.                             
+                                                                                                                          
+ Step 1: Multiply the ones digit of the second number (3) by the first number (7).                                        
+    7 x 3 = 21                                                                                                            
+                                                                                                                          
+ Step 2: Write down the result in the ones place.                                                                         
+    7 x 43 = 301                                                                                                          
+                                                                                                                          
+ Step 3: Multiply the tens digit of the second number (4) by both numbers and add them together.                          
+    7 x 4 = 28                                                                                                            
+    3 x 4 = 12                                                                                                            
+    Add these results together:                                                                                           
+    28 + 12 = 40                                                                                                          
+                                                                                                                          
+ Step 4: Write down the result in the tens place.                                                                         
+    301 + 40 = 341                                                                                                        
+                                                                                                                          
+ Therefore, 37 multiplied by 43 equals 1,413.                                                                             
+                                                                                                                          
+ ── MODELS.JSON SYNC ────────────────────────────────────────                                                             
+   ℹ️  reasoning already "false" for granite4:350m — no change                                                            
+                                                                                                                          
+ ── TOOL USAGE TEST ─────────────────────────────────────────                                                             
+   ℹ️  Prompt: "What's the weather in Paris?" (with get_weather tool available)                                           
+   ℹ️  Testing...                                                                                                         
+   ℹ️  Time: 7.2s                                                                                                         
+   ✅  Tool call: get_weather({"location":"Paris"}) (STRONG)                                                               
+                                                                                                                          
+ ── INSTRUCTION FOLLOWING TEST ──────────────────────────────                                                             
+   ℹ️  Prompt: Respond with ONLY a JSON object with keys: name, can_count, sum (15+27), language                          
+   ℹ️  Testing...                                                                                                         
+   ℹ️  Time: 4.6s                                                                                                         
+   ✅  JSON output valid with correct values (STRONG)                                                                      
+   ℹ️  Output: {"name":"AI Assistant","can_count":true,"sum":42,"language":"English"}                                     
+                                                                                                                          
+ ── SUMMARY ─────────────────────────────────────────────────                                                             
+   ✅  Reasoning: STRONG                                                                                                   
+   ❌  Thinking: NO                                                                                                        
+   ✅  Tool Usage: STRONG                                                                                                  
+   ✅  Instructions: STRONG                                                                                                
+   ℹ️  Total time: 35.3s                                                                                                  
+   ℹ️  Score: 3/4 tests passed                                                                                            
+                                                                                                                          
+ ── RECOMMENDATION ──────────────────────────────────────────                                                             
+   ✅ granite4:350m is a GOOD model —  most capabilities work
 ```
 
 ### 🔄 Ollama Sync (`ollama-sync.ts`)
