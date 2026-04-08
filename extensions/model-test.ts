@@ -114,7 +114,7 @@ export default function (pi: ExtensionAPI) {
         const parsed = JSON.parse(result.stdout);
         return { response: parsed, elapsedMs };
       } catch (e: any) {
-        if (attempt < retries && (e.message.includes("Empty response") || e.message.includes("timed out") || e.message.includes("curl exited 28") || e.message.includes("curl exited 35"))) {
+        if (attempt < retries && (e.message.includes("Empty response") || e.message.includes("timed out") || e.message.includes("curl exited 22") || e.message.includes("curl exited 28") || e.message.includes("curl exited 35") || e.message.includes("curl exited 52"))) {
           await new Promise(r => setTimeout(r, 2000));
           continue;
         }
