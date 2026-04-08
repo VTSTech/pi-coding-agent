@@ -81,24 +81,47 @@ export default function (pi: ExtensionAPI) {
     model: string,
     messages: Array<{ role: string; content: string }>,
     options: Record<string, unknown> = {},
-    timeoutMs = 120000
+    timeoutMs = 500000,
+    retries = 1
   ): Promise<{ response: any; elapsedMs: number }> {
-    const start = Date.now();
     const body: any = { model, messages, stream: false, options: { num_predict: 1024, temperature: 0.1, ...options } };
-    const result = await pi.exec("curl", [
-      "-s", "-X", "POST",
-      `${OLLAMA_BASE}/api/chat`,
-      "-H", "Content-Type: application/json",
-      "-d", JSON.stringify(body),
-    ], { timeout: timeoutMs });
-    const elapsedMs = Date.now() - start;
 
-    if (result.code !== 0) {
-      throw new Error(`curl exited ${result.code}: ${result.stderr}`);
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      const start = Date.now();
+      try {
+        const result = await pi.exec("curl", [
+          "-s", "--fail-with-body", "-X", "POST",
+          "--connect-timeout", "30",
+          "--max-time", String(Math.ceil(timeoutMs / 1000)),
+          `${OLLAMA_BASE}/api/chat`,
+          "-H", "Content-Type: application/json",
+          "-d", JSON.stringify(body),
+        ], { timeout: timeoutMs + 5000 });
+        const elapsedMs = Date.now() - start;
+
+        if (result.code !== 0) {
+          const detail = result.stderr?.trim() || result.stdout?.trim() || "unknown error";
+          throw new Error(`curl exited ${result.code}: ${detail}`);
+        }
+        if (!result.stdout.trim()) {
+          // Empty response — could be transient tunnel/timeout issue
+          if (attempt < retries) {
+            await new Promise(r => setTimeout(r, 2000));
+            continue;
+          }
+          throw new Error(`Empty response from Ollama after ${attempt + 1} attempt(s)`);
+        }
+        const parsed = JSON.parse(result.stdout);
+        return { response: parsed, elapsedMs };
+      } catch (e: any) {
+        if (attempt < retries && (e.message.includes("Empty response") || e.message.includes("timed out") || e.message.includes("curl exited 28") || e.message.includes("curl exited 35"))) {
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
+        throw e;
+      }
     }
-    if (!result.stdout.trim()) throw new Error("Empty response from Ollama");
-    const parsed = JSON.parse(result.stdout);
-    return { response: parsed, elapsedMs };
+    throw new Error("Unreachable");
   }
 
   // ── test: reasoning ──────────────────────────────────────────────────
@@ -117,9 +140,38 @@ export default function (pi: ExtensionAPI) {
     const prompt = `A snail climbs 3 feet up a wall each day, but slides back 2 feet each night. The wall is 10 feet tall. How many days does it take the snail to reach the top? Think step by step and give the final answer on its own line like: ANSWER: <number>`;
 
     try {
-      const { response, elapsedMs } = await ollamaChat(model, [
-        { role: "user", content: prompt },
-      ]);
+      // Try normal request first; if it returns empty (common for thinking models like qwen3),
+      // retry with think:true enabled
+      let response: any, elapsedMs: number;
+      let usedThinkingFallback = false;
+
+      try {
+        const result = await ollamaChat(model, [
+          { role: "user", content: prompt },
+        ]);
+        response = result.response;
+        elapsedMs = result.elapsedMs;
+
+        // If the model returned completely empty, it may be a thinking model
+        // that requires think:true to produce any output
+        const msg = response?.message?.content || "";
+        const thinking = response?.message?.thinking || "";
+        if (msg.trim().length === 0 && thinking.trim().length === 0) {
+          throw new Error("empty — will retry with thinking");
+        }
+      } catch (firstErr: any) {
+        if (firstErr.message?.includes("empty — will retry with thinking")) {
+          // Retry with think:true for thinking models (qwen3, etc.)
+          const retry = await ollamaChat(model, [
+            { role: "user", content: prompt },
+          ], { think: true } as any);
+          response = retry.response;
+          elapsedMs = retry.elapsedMs;
+          usedThinkingFallback = true;
+        } else {
+          throw firstErr;
+        }
+      }
 
       let msg = response?.message?.content || "";
       const thinking = response?.message?.thinking || "";
@@ -258,15 +310,18 @@ export default function (pi: ExtensionAPI) {
     try {
       const start = Date.now();
       const result = await pi.exec("curl", [
-        "-s", "-X", "POST",
+        "-s", "--fail-with-body", "-X", "POST",
+        "--connect-timeout", "30",
+        "--max-time", "9999",
         `${OLLAMA_BASE}/api/chat`,
         "-H", "Content-Type: application/json",
         "-d", JSON.stringify(body),
-      ], { timeout: 120000 });
+      ], { timeout: 50000 });
       const elapsedMs = Date.now() - start;
 
       if (result.code !== 0) {
-        return { pass: false, score: "ERROR", hasToolCalls: false, toolCall: `curl error: ${result.stderr}`, response: "", elapsedMs };
+        const detail = result.stderr?.trim() || result.stdout?.trim() || "unknown error";
+        return { pass: false, score: "ERROR", hasToolCalls: false, toolCall: `curl error: ${result.code}: ${detail}`, response: "", elapsedMs };
       }
 
       if (!result.stdout.trim()) throw new Error("Empty response from Ollama");
@@ -391,7 +446,7 @@ The JSON object must have exactly these 4 keys:
     try {
       const { response, elapsedMs } = await ollamaChat(model, [
         { role: "user", content: prompt },
-      ], { num_predict: 512 });
+      ], { num_predict: 1024 });
 
       const msg = (response?.message?.content || "").trim();
 
@@ -456,7 +511,7 @@ The JSON object must have exactly these 4 keys:
   async function getOllamaModels(): Promise<string[]> {
     // Use the same Ollama base URL (could be remote) via /api/tags
     try {
-      const result = await pi.exec("curl", ["-s", `${OLLAMA_BASE}/api/tags`], { timeout: 10000 });
+      const result = await pi.exec("curl", ["-s", "--connect-timeout", "10", `${OLLAMA_BASE}/api/tags`], { timeout: 15000 });
       if (result.code !== 0 || !result.stdout.trim()) return [];
       const data = JSON.parse(result.stdout);
       return (data.models || []).map((m: any) => m.name).filter(Boolean);
