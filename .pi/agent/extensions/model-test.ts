@@ -163,7 +163,7 @@ export default function (pi: ExtensionAPI) {
     answerContent: string;
     elapsedMs: number;
   }> {
-    const prompt = "What is 37 × 43? Show your work.";
+    const prompt = "Multiply 37 by 43. Explain your reasoning step by step and give the final answer.";
 
     try {
       // Request thinking tokens to test if model supports extended thinking
@@ -359,13 +359,13 @@ export default function (pi: ExtensionAPI) {
     output: string;
     elapsedMs: number;
   }> {
-    const prompt = `You must respond with ONLY a JSON object, nothing else. No markdown, no explanation, no backticks. Just the raw JSON.
+    const prompt = `You must respond with ONLY a valid JSON object. No markdown, no explanation, no backticks, no extra text.
 
-Create a JSON object with these exact keys:
-- "name": your model name
-- "can_count": true
-- "sum": the result of 15 + 27
-- "language": the language you are responding in`;
+The JSON object must have exactly these 4 keys:
+- "name" (string): your model name
+- "can_count" (boolean): true
+- "sum" (number): the result of 15 + 27
+- "language" (string): the language you are responding in`;
 
     try {
       const { response, elapsedMs } = await ollamaChat(model, [
@@ -561,7 +561,7 @@ Create a JSON object with these exact keys:
 
     // 2. Thinking test
     lines.push(section("THINKING TEST"));
-    lines.push(info("Checking for extended thinking/reasoning tokens..."));
+    lines.push(info('Prompt: "Multiply 37 by 43. Explain your reasoning step by step."'));
 
     const thinking = await testThinking(model);
     lines.push(info(`Time: ${msHuman(thinking.elapsedMs)}`));
@@ -615,7 +615,7 @@ Create a JSON object with these exact keys:
 
     // 4. Instruction following test
     lines.push(section("INSTRUCTION FOLLOWING TEST"));
-    lines.push(info("Prompt: Respond with ONLY a JSON object with name, sum (15+27), etc."));
+    lines.push(info('Prompt: Respond with ONLY a JSON object with keys: name, can_count, sum (15+27), language'));
     lines.push(info("Testing..."));
 
     const instructions = await testInstructionFollowing(model);

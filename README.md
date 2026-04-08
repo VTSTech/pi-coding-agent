@@ -66,9 +66,9 @@ Four tests per model:
 | Test | Method | Scoring |
 |------|--------|---------|
 | **Reasoning** | "17 sheep, all but 9 die" logic puzzle — answer extracted as the last number in the response | STRONG / WEAK / FAIL |
-| **Thinking** | Extended thinking/reasoning token support (`<think` tags or native API) | SUPPORTED / NOT SUPPORTED |
+| **Thinking** | Extended thinking/reasoning token support (`<think` tags or native API) — "Multiply 37 × 43" prompt | SUPPORTED / NOT SUPPORTED |
 | **Tool Usage** | Tool call generation — detects both native Ollama `tool_calls` API and JSON tool calls embedded in text responses | STRONG / MODERATE / WEAK / FAIL |
-| **Instruction Following** | JSON output format compliance with automatic repair of truncated output | STRONG / MODERATE / WEAK / FAIL |
+| **Instruction Following** | Strict JSON output format compliance — 4 specific keys with typed values, automatic repair of truncated output | STRONG / MODERATE / WEAK / FAIL |
 
 Features:
 - Calls Ollama `/api/chat` directly — no Pi agent round-trip
