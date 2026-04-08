@@ -3,31 +3,84 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-const MODELS_JSON_PATH = path.join(os.homedir(), ".pi", "agent", "models.json");
+// ── Shared imports ───────────────────────────────────────────────────────
+import {
+  section, ok, fail, warn, info,
+  msHuman, truncate, sanitizeForReport,
+} from "../shared/format";
+import { getOllamaBaseUrl, MODELS_JSON_PATH, detectModelFamily } from "../shared/ollama";
+import type { ToolSupportLevel } from "../shared/types";
 
-function getOllamaBaseUrl(): string {
-  // Priority: models.json ollama provider baseUrl > OLLAMA_HOST env > localhost
+// ── Tool support cache ──────────────────────────────────────────────────
+
+const TOOL_SUPPORT_CACHE_DIR = path.join(os.homedir(), ".cache", "agentnova");
+const TOOL_SUPPORT_CACHE_PATH = path.join(TOOL_SUPPORT_CACHE_DIR, "tool_support.json");
+
+interface ToolSupportCacheRecord {
+  support: ToolSupportLevel;
+  testedAt: string;
+  family: string;
+}
+
+interface ToolSupportCache {
+  [modelName: string]: ToolSupportCacheRecord;
+}
+
+/**
+ * Read the tool support cache from disk.
+ * Returns an empty object if the file doesn't exist or is invalid.
+ */
+function readToolSupportCache(): ToolSupportCache {
   try {
-    if (fs.existsSync(MODELS_JSON_PATH)) {
-      const raw = fs.readFileSync(MODELS_JSON_PATH, "utf-8");
-      const config = JSON.parse(raw);
-      const baseUrl = config?.providers?.["ollama"]?.baseUrl;
-      if (baseUrl) {
-        // baseUrl is like "https://host/v1" or "http://localhost:11434/v1" — strip /v1
-        return baseUrl.replace(/\/v1\/?$/, "");
-      }
+    if (fs.existsSync(TOOL_SUPPORT_CACHE_PATH)) {
+      const raw = fs.readFileSync(TOOL_SUPPORT_CACHE_PATH, "utf-8");
+      return JSON.parse(raw) as ToolSupportCache;
     }
   } catch { /* ignore parse errors */ }
-  if (process.env.OLLAMA_HOST) {
-    return `http://${process.env.OLLAMA_HOST.replace(/^https?:\/\//, "")}`;
+  return {};
+}
+
+/**
+ * Write the tool support cache to disk.
+ */
+function writeToolSupportCache(cache: ToolSupportCache): void {
+  if (!fs.existsSync(TOOL_SUPPORT_CACHE_DIR)) {
+    fs.mkdirSync(TOOL_SUPPORT_CACHE_DIR, { recursive: true });
   }
-  return "http://localhost:11434";
+  fs.writeFileSync(TOOL_SUPPORT_CACHE_PATH, JSON.stringify(cache, null, 2) + "\n", "utf-8");
+}
+
+/**
+ * Look up a model's cached tool support level.
+ * Returns null if not cached.
+ */
+function getCachedToolSupport(model: string): ToolSupportCacheRecord | null {
+  const cache = readToolSupportCache();
+  const entry = cache[model];
+  if (!entry) return null;
+  // Validate the entry has required fields and a valid support level
+  if (!entry.support || !["native", "react", "none"].includes(entry.support)) return null;
+  return entry;
+}
+
+/**
+ * Cache a model's tool support level.
+ */
+function cacheToolSupport(model: string, support: ToolSupportLevel, family: string): void {
+  const cache = readToolSupportCache();
+  cache[model] = {
+    support,
+    testedAt: new Date().toISOString(),
+    family,
+  };
+  writeToolSupportCache(cache);
 }
 
 /**
  * Model testing extension for Pi Coding Agent.
- * Tests Ollama models for reasoning/thinking ability and tool usage capability
- * by calling the Ollama API directly (bypasses Pi's agent loop).
+ * Tests Ollama models for reasoning/thinking ability, tool usage capability,
+ * instruction following, and tool support level by calling the Ollama API
+ * directly (bypasses Pi's agent loop).
  *
  * Usage:
  *   /model-test              — test the current Pi model
@@ -40,39 +93,6 @@ export default function (pi: ExtensionAPI) {
   const OLLAMA_BASE = getOllamaBaseUrl();
 
   // ── helpers ──────────────────────────────────────────────────────────
-
-  function section(title: string): string {
-    return `\n── ${title} ${"─".repeat(Math.max(1, 60 - title.length - 4))}`;
-  }
-  function ok(msg: string): string { return `  ✅ ${msg}`; }
-  function fail(msg: string): string { return `  ❌ ${msg}`; }
-  function warn(msg: string): string { return `  ⚠️  ${msg}`; }
-  function info(msg: string): string { return `  ℹ️  ${msg}`; }
-
-  function msHuman(ms: number): string {
-    if (ms < 1000) return `${ms.toFixed(0)}ms`;
-    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-    return `${(ms / 60000).toFixed(1)}m`;
-  }
-
-  function truncate(s: string, max: number): string {
-    return s.length > max ? s.slice(0, max) + "..." : s;
-  }
-
-  /**
-   * Strip markdown code fences and escape remaining backticks
-   * so they don't create unwanted code blocks in the report output.
-   */
-  function sanitizeForReport(s: string): string {
-    // Remove code fence lines: ```json, ```text, ``` with trailing spaces/newlines
-    // Match ``` at start of line (with optional whitespace), optional lang tag, trailing whitespace to EOL
-    let cleaned = s.replace(/^\s*```[a-zA-Z]*[ \t]*\n?/gm, '');
-    // Remove any remaining standalone ``` (e.g. closing fences)
-    cleaned = cleaned.replace(/^\s*```[ \t]*\n?/gm, '');
-    // Normalize excessive whitespace (but keep single newlines)
-    cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
-    return cleaned;
-  }
 
   /**
    * Call Ollama /api/chat and return the parsed response.
@@ -506,6 +526,168 @@ The JSON object must have exactly these 4 keys:
     }
   }
 
+  // ── test: tool support detection ─────────────────────────────────────
+
+  /**
+   * Detect what level of tool support a model provides.
+   * Ported from AgentNova core/tool_cache.py + core/tool_parse.py.
+   *
+   * Levels:
+   *   - "native": Model returns tool_calls in the API response (structured tool calling)
+   *   - "react":   Model outputs "Action:" / "Action Input:" patterns (ReAct format)
+   *   - "none":    No tool support detected
+   *
+   * Results are cached to ~/.cache/agentnova/tool_support.json to avoid
+   * re-probing models on every run.
+   */
+  async function testToolSupport(
+    model: string,
+    family: string
+  ): Promise<{
+    level: ToolSupportLevel;
+    cached: boolean;
+    evidence: string;
+    elapsedMs: number;
+  }> {
+    // 1. Check cache first
+    const cached = getCachedToolSupport(model);
+    if (cached) {
+      return {
+        level: cached.support,
+        cached: true,
+        evidence: `cached (tested ${cached.testedAt})`,
+        elapsedMs: 0,
+      };
+    }
+
+    // 2. Probe the model with a tool-calling prompt
+    const tools = [
+      {
+        type: "function",
+        function: {
+          name: "get_weather",
+          description: "Get the current weather for a location",
+          parameters: {
+            type: "object",
+            properties: {
+              location: { type: "string", description: "City name" },
+              unit: { type: "string", enum: ["celsius", "fahrenheit"] },
+            },
+            required: ["location"],
+          },
+        },
+      },
+    ];
+
+    const body: any = {
+      model,
+      messages: [
+        {
+          role: "system",
+          content: "You are a helpful assistant with access to tools. When you need to look up information, use the available tools. Always use tools when asked about real-time data like weather.",
+        },
+        { role: "user", content: "What's the weather like in Tokyo right now? Use the get_weather tool to find out." },
+      ],
+      tools,
+      stream: false,
+      options: { num_predict: 1024, temperature: 0.1 },
+    };
+
+    try {
+      const start = Date.now();
+      const result = await pi.exec("curl", [
+        "-s", "--fail-with-body", "-X", "POST",
+        "--connect-timeout", "30",
+        "--max-time", "120",
+        `${OLLAMA_BASE}/api/chat`,
+        "-H", "Content-Type: application/json",
+        "-d", JSON.stringify(body),
+      ], { timeout: 130000 });
+      const elapsedMs = Date.now() - start;
+
+      if (result.code !== 0 || !result.stdout.trim()) {
+        // API error — treat as no support
+        const detail = result.stderr?.trim() || result.stdout?.trim() || "empty response";
+        const level: ToolSupportLevel = "none";
+        cacheToolSupport(model, level, family);
+        return { level, cached: false, evidence: `API error: ${truncate(detail, 100)}`, elapsedMs };
+      }
+
+      const parsed = JSON.parse(result.stdout);
+      const toolCalls = parsed?.message?.tool_calls;
+      const content = (parsed?.message?.content || "").trim();
+
+      // ── Check native tool support ────────────────────────────────
+      // Native: the API response contains tool_calls array
+      if (toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0) {
+        const fn = toolCalls[0].function || {};
+        const fnName = fn.name || "unknown";
+        let argsStr: string;
+        try {
+          const args = typeof fn.arguments === "string" ? JSON.parse(fn.arguments) : (fn.arguments || {});
+          argsStr = JSON.stringify(args);
+        } catch {
+          argsStr = String(fn.arguments);
+        }
+        const level: ToolSupportLevel = "native";
+        cacheToolSupport(model, level, family);
+        return {
+          level,
+          cached: false,
+          evidence: `API returned tool_calls: ${fnName}(${argsStr})`,
+          elapsedMs,
+        };
+      }
+
+      // ── Check ReAct format ──────────────────────────────────────
+      // ReAct patterns: "Action:", "Action Input:", "Thought:"
+      // Case-insensitive, may have extra whitespace or formatting
+      const reactPatterns = [
+        /^\s*Action:\s*/im,           // "Action: get_weather"
+        /^\s*Action Input:\s*/im,     // "Action Input: {"location": "Tokyo"}"
+        /^\s*Thought:\s*/im,          // "Thought: I need to look up the weather"
+        /Action:\s*\w+/i,            // "Action: get_weather" anywhere
+        /Action Input:\s*\{/i,       // "Action Input: {..." anywhere
+      ];
+
+      const hasReActPattern = reactPatterns.some(p => p.test(content));
+
+      if (hasReActPattern) {
+        const level: ToolSupportLevel = "react";
+        cacheToolSupport(model, level, family);
+        return {
+          level,
+          cached: false,
+          evidence: `ReAct format detected in text response`,
+          elapsedMs,
+        };
+      }
+
+      // ── Check for text-based tool invocation (softer signal) ─────
+      // Some models output tool-like JSON or structured calls in text
+      const textToolPatterns = [
+        /\bget_weather\b/i,                    // Model mentions the tool name
+        /\bfunction_call\b/i,                  // Explicit function call marker
+        /\btool_call\b/i,                      // Explicit tool call marker
+        /"name"\s*:\s*"get_weather"/,          // JSON with tool name
+      ];
+
+      const hasTextToolSignal = textToolPatterns.some(p => p.test(content));
+
+      // ── No tool support detected ─────────────────────────────────
+      const level: ToolSupportLevel = "none";
+      cacheToolSupport(model, level, family);
+      const evidenceDetail = hasTextToolSignal
+        ? `no structured tool calling (text mentions tool: ${truncate(content, 150)})`
+        : `no tool calling patterns (text: ${truncate(content, 150)})`;
+      return { level, cached: false, evidence: evidenceDetail, elapsedMs };
+    } catch (e: any) {
+      const level: ToolSupportLevel = "none";
+      cacheToolSupport(model, level, family);
+      return { level, cached: false, evidence: `error: ${e.message}`, elapsedMs: 0 };
+    }
+  }
+
   // ── get models to test ───────────────────────────────────────────────
 
   async function getOllamaModels(): Promise<string[]> {
@@ -573,7 +755,7 @@ The JSON object must have exactly these 4 keys:
   // ── run all tests on one model ───────────────────────────────────────
 
   const branding = [
-    `  ⚡ Pi Model Benchmark v1.0`,
+    `  ⚡ Pi Model Benchmark v1.1`,
     `  Written by VTSTech`,
     `  GitHub: https://github.com/VTSTech`,
     `  Website: www.vts-tech.org`,
@@ -613,8 +795,11 @@ The JSON object must have exactly these 4 keys:
       }
     } catch { /* ignore */ }
 
+    // Use detected family from shared utility (falls back to Ollama-reported family)
+    const detectedFamily = detectModelFamily(model);
+
     lines.push(info(`Size: ${modelSize}  |  Params: ${modelParams}  |  Quant: ${modelQuant}`));
-    lines.push(info(`Family: ${modelFamily}  |  Modified: ${modelModified}`));
+    lines.push(info(`Family: ${modelFamily}  |  Detected: ${detectedFamily}  |  Modified: ${modelModified}`));
 
     // 1. Reasoning test
     lines.push(section("REASONING TEST"));
@@ -708,6 +893,37 @@ The JSON object must have exactly these 4 keys:
     }
     lines.push(info(`Output: ${sanitizeForReport(instructions.output)}`));
 
+    // 5. Tool support detection
+    lines.push(section("TOOL SUPPORT DETECTION"));
+    lines.push(info("Probing model for tool calling capability (native / ReAct / none)"));
+    lines.push(info("Testing..."));
+
+    const toolSupport = await testToolSupport(model, detectedFamily);
+    lines.push(info(`Time: ${msHuman(toolSupport.elapsedMs)}`));
+
+    const supportLabel = (level: ToolSupportLevel): string => {
+      switch (level) {
+        case "native": return "NATIVE (structured API tool_calls)";
+        case "react":  return "REACT (Action:/Action Input: text format)";
+        case "none":   return "NONE (no tool support detected)";
+        default:       return "UNKNOWN";
+      }
+    };
+
+    if (toolSupport.cached) {
+      lines.push(info(`Result: ${supportLabel(toolSupport.level)} — from cache`));
+    } else {
+      if (toolSupport.level === "native") {
+        lines.push(ok(`Tool support: ${supportLabel(toolSupport.level)}`));
+      } else if (toolSupport.level === "react") {
+        lines.push(ok(`Tool support: ${supportLabel(toolSupport.level)}`));
+      } else {
+        lines.push(warn(`Tool support: ${supportLabel(toolSupport.level)}`));
+      }
+    }
+    lines.push(info(`Evidence: ${toolSupport.evidence}`));
+    lines.push(info(`Cache: ${TOOL_SUPPORT_CACHE_PATH}`));
+
     // Summary
     lines.push(section("SUMMARY"));
     const totalMs = Date.now() - totalStart;
@@ -716,6 +932,7 @@ The JSON object must have exactly these 4 keys:
       { name: "Thinking", pass: thinking.supported, score: thinking.supported ? "YES" : "NO" },
       { name: "Tool Usage", pass: tools.pass, score: tools.score },
       { name: "Instructions", pass: instructions.pass, score: instructions.score },
+      { name: "Tool Support", pass: toolSupport.level === "native" || toolSupport.level === "react", score: toolSupport.level.toUpperCase() },
     ];
     const passed = tests.filter(t => t.pass).length;
     const total = tests.length;
@@ -728,11 +945,11 @@ The JSON object must have exactly these 4 keys:
 
     // Recommendation
     lines.push(section("RECOMMENDATION"));
-    if (passed === 4) {
+    if (passed === 5) {
       lines.push(ok(`${model} is a STRONG model — full capability`));
-    } else if (passed >= 3) {
+    } else if (passed >= 4) {
       lines.push(ok(`${model} is a GOOD model — most capabilities work`));
-    } else if (passed >= 2) {
+    } else if (passed >= 3) {
       lines.push(warn(`${model} is USABLE — some capabilities are limited`));
     } else {
       lines.push(fail(`${model} is WEAK — limited capabilities for agent use`));
@@ -743,7 +960,7 @@ The JSON object must have exactly these 4 keys:
   // ── Register /model-test command ─────────────────────────────────────
 
   pi.registerCommand("model-test", {
-    description: "Test a model for reasoning, thinking, tool usage, and instruction following. Use: /model-test [model] or /model-test --all",
+    description: "Test a model for reasoning, thinking, tool usage, instruction following, and tool support level. Use: /model-test [model] or /model-test --all",
     getArgumentCompletions: async (prefix) => {
       try {
         const models = await getOllamaModels();
@@ -822,7 +1039,7 @@ The JSON object must have exactly these 4 keys:
   pi.registerTool({
     name: "model_test",
     label: "Model Test",
-    description: "Test an Ollama model for reasoning ability, thinking/reasoning token support, tool usage capability, and instruction following. Returns a detailed report with scores.",
+    description: "Test an Ollama model for reasoning ability, thinking/reasoning token support, tool usage capability, instruction following, and tool support level. Returns a detailed report with scores.",
     promptSnippet: "model_test - test a model's capabilities",
     promptGuidelines: [
       "When the user asks to test or evaluate a model, call model_test with the model name.",

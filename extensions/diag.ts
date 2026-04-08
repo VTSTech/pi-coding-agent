@@ -3,44 +3,23 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
+// ── Shared utilities (eliminate duplication) ──────────────────────────────
+import {
+  section, ok, fail, warn, info,
+  bytesHuman, msHuman, pct, padRight,
+} from "../shared/format";
+import { MODELS_JSON_PATH } from "../shared/ollama";
+import {
+  BLOCKED_COMMANDS, BLOCKED_URL_PATTERNS,
+  validatePath, isSafeUrl, sanitizeCommand, readRecentAuditEntries,
+} from "../shared/security";
+
 /**
  * Diagnostic extension for Pi Coding Agent.
  * Register as /diag slash command AND self_diagnostic tool (so small models can call it).
- * Checks: system resources, Ollama connectivity, models.json validity, extensions, themes, tools, context usage.
+ * Checks: system resources, Ollama connectivity, models.json validity, extensions, themes, tools, context usage, security.
  */
 export default function (pi: ExtensionAPI) {
-
-  // ── helpers ──────────────────────────────────────────────────────────
-
-  function section(title: string): string {
-    return `\n── ${title} ${"─".repeat(Math.max(1, 60 - title.length - 4))}`;
-  }
-
-  function ok(msg: string): string { return `  ✅ ${msg}`; }
-  function fail(msg: string): string { return `  ❌ ${msg}`; }
-  function warn(msg: string): string { return `  ⚠️  ${msg}`; }
-  function info(msg: string): string { return `  ℹ️  ${msg}`; }
-
-  function bytesHuman(bytes: number): string {
-    const units = ["B", "KB", "MB", "GB", "TB"];
-    let i = 0;
-    while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++; }
-    return `${bytes.toFixed(1)}${units[i]}`;
-  }
-
-  function msHuman(ms: number): string {
-    if (ms < 1000) return `${ms.toFixed(0)}ms`;
-    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-    return `${(ms / 60000).toFixed(1)}m`;
-  }
-
-  function pct(used: number, total: number): string {
-    return `${((used / total) * 100).toFixed(1)}%`;
-  }
-
-  function padRight(s: string, n: number): string {
-    return s + " ".repeat(Math.max(0, n - s.length));
-  }
 
   // ── core diagnostic logic ────────────────────────────────────────────
 
@@ -158,7 +137,7 @@ export default function (pi: ExtensionAPI) {
     // ── MODELS.JSON ──
     lines.push(section("MODELS.JSON"));
     const agentDir = path.join(os.homedir(), ".pi", "agent");
-    const modelsJsonPath = path.join(agentDir, "models.json");
+    const modelsJsonPath = MODELS_JSON_PATH;
     let configuredModels: string[] = [];
     let modelsJson: any = null;
 
@@ -266,6 +245,121 @@ export default function (pi: ExtensionAPI) {
       lines.push(warn(`Themes directory not found: ${themesDir}`));
     }
 
+    // ── SECURITY ──
+    lines.push(section("SECURITY"));
+
+    // a. Command blocklist status
+    const blockedCmdList = Array.from(BLOCKED_COMMANDS).sort();
+    lines.push(info(`Command blocklist: ${blockedCmdList.length} commands blocked`));
+    const exampleCmds = blockedCmdList.filter(c => ["rm", "sudo", "chmod", "curl", "wget", "eval"].includes(c));
+    if (exampleCmds.length > 0) {
+      lines.push(info(`  Examples: ${exampleCmds.join(", ")}`));
+    }
+    check(blockedCmdList.length > 0,
+      `Command blocklist active (${blockedCmdList.length} rules)`,
+      `Command blocklist is EMPTY — security risk!`);
+
+    // b. SSRF protection
+    const blockedPatterns = Array.from(BLOCKED_URL_PATTERNS).sort();
+    lines.push(info(`SSRF protection: ${blockedPatterns.length} hostname patterns blocked`));
+    const examplePatterns = blockedPatterns.filter(p =>
+      ["localhost", "127.0.0.1", "169.254.169.254", "10.", "192.168.", "internal."].includes(p)
+    );
+    if (examplePatterns.length > 0) {
+      lines.push(info(`  Examples: ${examplePatterns.join(", ")}`));
+    }
+    check(blockedPatterns.length > 0,
+      `SSRF protection active (${blockedPatterns.length} patterns)`,
+      `SSRF blocklist is EMPTY — vulnerability risk!`);
+
+    // Test SSRF with sample URLs
+    lines.push(info("SSRF validation tests:"));
+    const ssrfTests = [
+      { url: "http://localhost:8080/api", expectBlocked: true },
+      { url: "http://169.254.169.254/latest/meta-data/", expectBlocked: true },
+      { url: "http://192.168.1.1/admin", expectBlocked: true },
+      { url: "https://api.example.com/data", expectBlocked: false },
+    ];
+    for (const test of ssrfTests) {
+      const result = isSafeUrl(test.url);
+      if (test.expectBlocked && !result.safe) {
+        lines.push(ok(`  BLOCKED: ${test.url} → ${result.error}`));
+      } else if (!test.expectBlocked && result.safe) {
+        lines.push(ok(`  ALLOWED: ${test.url}`));
+      } else {
+        lines.push(fail(`  UNEXPECTED: ${test.url} → safe=${result.safe} (expected blocked=${test.expectBlocked})`));
+      }
+    }
+
+    // c. Path validation
+    lines.push(info("Path validation tests:"));
+    const pathTests = [
+      { p: "/etc/passwd", expectValid: false },
+      { p: "/etc/shadow", expectValid: false },
+      { p: "../../etc/hosts", expectValid: false },
+      { p: "./test.txt", expectValid: true },
+      { p: "/tmp/output.log", expectValid: true },
+      { p: process.cwd(), expectValid: true },
+    ];
+    for (const test of pathTests) {
+      const result = validatePath(test.p);
+      if (result.valid === test.expectValid) {
+        if (test.expectValid) {
+          lines.push(ok(`  ALLOWED: ${test.p}`));
+        } else {
+          lines.push(ok(`  BLOCKED: ${test.p} → ${result.error}`));
+        }
+      } else {
+        lines.push(fail(`  UNEXPECTED: ${test.p} → valid=${result.valid} (expected valid=${test.expectValid})`));
+      }
+    }
+
+    // d. Injection detection
+    lines.push(info("Command injection tests:"));
+    const cmdTests = [
+      { cmd: "ls; rm -rf /", expectSafe: false },
+      { cmd: "sudo chmod 777 /etc/passwd", expectSafe: false },
+      { cmd: "curl http://localhost/secret", expectSafe: false },
+      { cmd: "ls -la", expectSafe: true },
+      { cmd: "cat README.md", expectSafe: true },
+      { cmd: "echo hello", expectSafe: true },
+    ];
+    for (const test of cmdTests) {
+      const result = sanitizeCommand(test.cmd);
+      if (result.isSafe === test.expectSafe) {
+        if (test.expectSafe) {
+          lines.push(ok(`  PASS: "${test.cmd}" → allowed`));
+        } else {
+          lines.push(ok(`  BLOCKED: "${test.cmd}" → ${result.error}`));
+        }
+      } else {
+        lines.push(fail(`  UNEXPECTED: "${test.cmd}" → safe=${result.isSafe} (expected safe=${test.expectSafe})`));
+      }
+    }
+
+    // e. Audit log status
+    lines.push(info("Audit log status:"));
+    const auditEntries = readRecentAuditEntries(50);
+    const auditLogPath = path.join(os.homedir(), ".agentnova", "audit.log");
+    if (fs.existsSync(auditLogPath)) {
+      lines.push(ok(`Audit log exists: ${auditLogPath}`));
+      if (auditEntries.length > 0) {
+        lines.push(info(`  Recent entries: ${auditEntries.length} (last 50)`));
+        // Show the most recent 3 entries (type and timestamp if available)
+        const recentSample = auditEntries.slice(-3);
+        for (const entry of recentSample) {
+          const entryType = (entry.type ?? entry.action ?? entry.event ?? "unknown").toString();
+          const entryTime = (entry.timestamp ?? entry.time ?? "").toString();
+          lines.push(info(`  • [${entryTime ? entryTime + "] " : ""}${entryType}`));
+        }
+      } else {
+        lines.push(info("  No audit entries found (log is empty or unparseable)"));
+      }
+    } else {
+      lines.push(warn(`Audit log not found at ${auditLogPath}`));
+      lines.push(info("  → Audit logging will begin when security events occur"));
+    }
+
     // ── MODEL & CONTEXT ──
     lines.push(section("CURRENT SESSION"));
     const model = ctx.model;
@@ -326,7 +420,7 @@ export default function (pi: ExtensionAPI) {
   // ── Register /diag slash command ─────────────────────────────────────
 
   pi.registerCommand("diag", {
-    description: "Run a full system diagnostic (Ollama, models, extensions, themes, resources)",
+    description: "Run a full system diagnostic (Ollama, models, extensions, themes, resources, security)",
     handler: async (_args, ctx) => {
       if (!ctx.hasUI) {
         ctx.ui.notify("Diagnostic requires TUI mode", "error");
@@ -351,7 +445,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "self_diagnostic",
     label: "Self Diagnostic",
-    description: "Run a comprehensive diagnostic check on the Pi environment including system resources, Ollama status, model configuration, extensions, themes, and current session state. Use this whenever the user asks for a diagnostic, health check, or system status.",
+    description: "Run a comprehensive diagnostic check on the Pi environment including system resources, Ollama status, model configuration, extensions, themes, security posture, and current session state. Use this whenever the user asks for a diagnostic, health check, or system status.",
     promptSnippet: "self_diagnostic - run full system diagnostic check",
     promptGuidelines: [
       "When the user asks for a diagnostic, health check, or system test, call self_diagnostic.",

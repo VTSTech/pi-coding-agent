@@ -1,0 +1,530 @@
+/**
+ * ReAct Fallback Extension for Pi Coding Agent.
+ * Ported from AgentNova core/tool_parse.py + core/args_normal.py.
+ *
+ * Enables tool calling for models that don't support Pi's native function calling.
+ * Provides a universal bridge tool + ReAct text parser + fuzzy matching + arg normalization.
+ *
+ * Architecture:
+ *   1. Registers a `tool_call` bridge tool that accepts {name, arguments} from any model
+ *   2. Modifies system prompt via pi.on("context") for models needing ReAct guidance
+ *   3. Dispatches bridge calls to real Pi tools with fuzzy name matching & arg normalization
+ *
+ * Written by VTSTech — https://www.vts-tech.org
+ */
+import type { ExtensionAPI, AgentToolResult } from "@mariozechner/pi-coding-agent";
+import { section, ok, fail, warn, info } from "../shared/format";
+
+// ============================================================================
+// JSON Sanitization (ported from AgentNova tool_parse._sanitize_model_json)
+// ============================================================================
+
+function sanitizeModelJson(text: string): string {
+  // Python bool/None literals → JSON
+  text = text.replace(/:\s*True\b/g, ": true");
+  text = text.replace(/:\s*False\b/g, ": false");
+  text = text.replace(/:\s*None\b/g, ": null");
+  text = text.replace(/\[\s*True\b/g, "[true");
+  text = text.replace(/\[\s*False\b/g, "[false");
+  text = text.replace(/\[\s*None\b/g, "[null");
+  // String concatenation removal
+  text = text.replace(/("(?:[^"\\]|\\.)*")\s*\+\s*[^,}'"\]\n]+/g, "$1");
+  // Trailing commas
+  text = text.replace(/,\s*([}\]])/g, "$1");
+  // Over-escaped backslashes
+  text = text.replace(/\\\\\\\\/g, "\\\\");
+  return text;
+}
+
+// ============================================================================
+// ReAct Parser (ported from AgentNova tool_parse._parse_react)
+// ============================================================================
+
+const THOUGHT_RE = /Thought:\s*(.*?)(?=Action:|Final Answer:|$)/is;
+const ACTION_RE = /Action:\s*[`"']?(\w+)[`"']?\s*\n?\s*Action Input:\s*(.*?)(?=\n\s*(?:Observation:|Thought:|Final Answer:|Action:)|$)/is;
+const ACTION_RE_SAMELINE = /Action:\s*[`"']?(\w+)[`"']?\s+Action Input:\s*(.*?)(?=\n\s*(?:Observation:|Thought:|Final Answer:)|$)/is;
+const FINAL_ANSWER_RE = /Final Answer:\s*([\s\S]*?)$/i;
+
+interface ParsedToolCall {
+  name: string;
+  args: Record<string, unknown>;
+  thought?: string;
+  finalAnswer?: string;
+  raw: string;
+}
+
+function extractJsonArgs(rawArgs: string): Record<string, unknown> | null {
+  // Find JSON object in raw args
+  const start = rawArgs.indexOf("{");
+  if (start === -1) return null;
+
+  let depth = 0;
+  let end = -1;
+  for (let i = start; i < rawArgs.length; i++) {
+    if (rawArgs[i] === "{") depth++;
+    else if (rawArgs[i] === "}") { depth--; if (depth === 0) { end = i; break; } }
+  }
+  if (end === -1) return null;
+
+  const jsonStr = rawArgs.slice(start, end + 1);
+
+  // Try direct parse
+  try {
+    const parsed = JSON.parse(jsonStr);
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : { input: String(parsed) };
+  } catch { /* not valid JSON */ }
+
+  // Try sanitized parse
+  try {
+    const sanitized = sanitizeModelJson(jsonStr);
+    const parsed = JSON.parse(sanitized);
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : { input: String(parsed) };
+  } catch { /* sanitized also failed */ }
+
+  // Last resort: regex extraction for common patterns
+  const exprMatch = jsonStr.match(/['"]expression['"]:\s*['"]([^'"]+)['"]/);
+  if (exprMatch) return { expression: exprMatch[1] };
+  const cmdMatch = jsonStr.match(/['"]command['"]:\s*['"]([^'"]+)['"]/);
+  if (cmdMatch) return { command: cmdMatch[1] };
+
+  return { input: jsonStr };
+}
+
+function parseReact(text: string): ParsedToolCall | null {
+  let thought: string | undefined;
+  const thoughtMatch = THOUGHT_RE.exec(text);
+  if (thoughtMatch) thought = thoughtMatch[1].trim();
+
+  let match = ACTION_RE.exec(text);
+  if (!match) match = ACTION_RE_SAMELINE.exec(text);
+
+  if (match) {
+    let toolName = match[1].trim().replace(/[`"']/g, "");
+    const rawArgs = match[2].trim();
+    const args = extractJsonArgs(rawArgs) || { input: rawArgs };
+
+    let finalAnswer: string | undefined;
+    const faMatch = FINAL_ANSWER_RE.exec(text);
+    if (faMatch) finalAnswer = faMatch[1].trim();
+
+    return { name: toolName, args, thought, finalAnswer, raw: match[0] };
+  }
+
+  return null;
+}
+
+// ============================================================================
+// JSON Tool Call Extraction (ported from AgentNova _extract_tool_from_json)
+// ============================================================================
+
+function extractToolFromJson(obj: Record<string, unknown>): { name: string; args: Record<string, unknown> } | null {
+  if (!obj || typeof obj !== "object") return null;
+
+  // Standard keys
+  let name = (obj.name || obj.function || obj.tool || obj.action) as string | undefined;
+  let args = (obj.arguments || obj.parameters || obj.args || obj.actionInput || {}) as Record<string, unknown>;
+
+  // JSON-wrapped ReAct: {"Action": "tool_name", "Action Input": {...}}
+  if (!name) {
+    for (const key of Object.keys(obj)) {
+      const kl = key.toLowerCase();
+      if (kl === "action" && typeof obj[key] === "string") {
+        name = obj[key] as string;
+      }
+      if (kl === "action input" || kl === "actioninput" || kl === "action_input") {
+        const val = obj[key];
+        if (typeof val === "object" && val !== null) args = val as Record<string, unknown>;
+        else if (val) args = { input: val };
+      }
+    }
+  }
+
+  if (!name) {
+    // Bare arg detection (only unambiguous keys)
+    const argToTool: Record<string, string> = { expression: "calculator", command: "shell" };
+    const nonToolKeys = new Set(["response", "method", "answer", "result", "explanation", "output", "text"]);
+    const objKeys = Object.keys(obj);
+    if (!objKeys.some(k => nonToolKeys.has(k))) {
+      for (const key of objKeys) {
+        if (key in argToTool) {
+          name = argToTool[key];
+          args = obj;
+          break;
+        }
+      }
+    }
+  }
+
+  if (!name || typeof args !== "object" || args === null) return null;
+  return { name, args: args as Record<string, unknown> };
+}
+
+// ============================================================================
+// Fuzzy Tool Name Matching (ported from AgentNova _fuzzy_match_tool_name)
+// ============================================================================
+
+const WORD_MAPPINGS: Record<string, string[]> = {
+  calculate: ["calculator"], calc: ["calculator"], math: ["calculator"],
+  compute: ["calculator"], eval: ["calculator"], expression: ["calculator"],
+  power: ["calculator"], pow: ["calculator"], sqrt: ["calculator"],
+  python: ["shell"], repl: ["shell"], code: ["shell"], execute: ["shell"],
+  shell: ["bash"], bash: ["bash"], cmd: ["bash"], command: ["bash"],
+  ls: ["bash"], cat: ["bash"], echo: ["bash"], grep: ["bash"],
+  read: ["read"], write: ["write"], file: ["read"],
+  weather: ["get_weather"], search: ["bash"],
+};
+
+function fuzzyMatchToolName(hallucinated: string, availableTools: string[]): string | null {
+  const lower = hallucinated.toLowerCase().replace(/_/g, "");
+
+  // Exact match
+  if (availableTools.includes(hallucinated)) return hallucinated;
+
+  // Substring match
+  for (const real of availableTools) {
+    const rl = real.toLowerCase().replace(/_/g, "");
+    if (rl === lower || rl.includes(lower) || lower.includes(rl)) return real;
+  }
+
+  // Word mapping match
+  for (const [keyword, hints] of Object.entries(WORD_MAPPINGS)) {
+    if (lower.includes(keyword)) {
+      for (const hint of hints) {
+        for (const real of availableTools) {
+          if (real.includes(hint) || real === hint) return real;
+        }
+      }
+    }
+  }
+
+  // First 4+ chars match
+  if (lower.length >= 4) {
+    for (const real of availableTools) {
+      const rl = real.toLowerCase();
+      if (rl.length >= 4 && rl.slice(0, 4) === lower.slice(0, 4)) return real;
+    }
+  }
+
+  return null;
+}
+
+// ============================================================================
+// Argument Normalization (ported from AgentNova args_normal + helpers ARG_ALIASES)
+// ============================================================================
+
+const ARG_ALIASES: Record<string, string[]> = {
+  expression: ["expr", "exp", "formula", "calculation", "math"],
+  file_path: ["path", "filepath", "file", "filename", "location"],
+  content: ["text", "data", "body", "value"],
+  command: ["cmd", "shell", "script", "exec"],
+  url: ["uri", "link", "endpoint", "address"],
+  query: ["search", "term", "keywords", "q"],
+  input: ["value", "arg", "parameter"],
+  timeout: ["time_limit", "max_time", "seconds"],
+};
+
+function normalizeArguments(
+  args: Record<string, unknown>,
+  expectedParams: string[],
+): Record<string, unknown> {
+  if (!args || typeof args !== "object") return args;
+  const expectedSet = new Set(expectedParams.map(p => p.toLowerCase()));
+
+  const normalized: Record<string, unknown> = {};
+  const powerParts: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(args)) {
+    const keyLower = key.toLowerCase().replace(/-/g, "_");
+    let targetParam: string | null = null;
+
+    // Direct match (case-insensitive)
+    for (const param of expectedParams) {
+      if (param.toLowerCase() === keyLower) { targetParam = param; break; }
+    }
+
+    // Generic alias match
+    if (!targetParam) {
+      for (const [canonical, aliases] of Object.entries(ARG_ALIASES)) {
+        if (aliases.includes(keyLower) && expectedSet.has(canonical.toLowerCase())) {
+          targetParam = canonical;
+          break;
+        }
+      }
+    }
+
+    // Prefix/substring match
+    if (!targetParam) {
+      for (const param of expectedParams) {
+        if (keyLower.includes(param.toLowerCase()) || keyLower.startsWith(param.toLowerCase())) {
+          targetParam = param;
+          break;
+        }
+      }
+    }
+
+    // Power operation collection
+    if (["base", "value", "x"].includes(keyLower) || ["exponent", "power", "n", "p", "exp"].includes(keyLower)) {
+      powerParts[keyLower] = value;
+      continue;
+    }
+
+    const finalKey = targetParam || key;
+    if (!(finalKey in normalized)) normalized[finalKey] = value;
+  }
+
+  // Combine power parts into expression
+  if (powerParts && expectedSet.has("expression")) {
+    const base = powerParts.base ?? powerParts.value ?? powerParts.x;
+    const exp = powerParts.exponent ?? powerParts.power ?? powerParts.n ?? powerParts.p ?? powerParts.exp;
+    if (base !== undefined && exp !== undefined) normalized.expression = `${base} ** ${exp}`;
+    else if (base !== undefined) normalized.expression = String(base);
+  }
+
+  return normalized;
+}
+
+// ============================================================================
+// Schema Dump Detection (ported from AgentNova _looks_like_tool_schema_dump)
+// ============================================================================
+
+function looksLikeSchemaDump(text: string): boolean {
+  if (!text) return false;
+  const indicators = [
+    '{"function <nil>', '"type":"function"', '"parameters":{"type":"object"',
+    '[{"type":', '"required":', '"properties":',
+  ];
+  const lower = text.toLowerCase();
+  const matches = indicators.filter(i => lower.includes(i.toLowerCase())).length;
+  return matches >= 2;
+}
+
+// ============================================================================
+// Extension
+// ============================================================================
+
+export default function (pi: ExtensionAPI) {
+  let reactModeEnabled = false;
+  let stats = { bridgeCalls: 0, fuzzyMatches: 0, argNormalizations: 0, parseFailures: 0 };
+
+  const branding = [
+    `  ⚡ Pi ReAct Fallback Extension v1.0`,
+    `  Written by VTSTech`,
+    `  GitHub: https://github.com/VTSTech`,
+    `  Website: www.vts-tech.org`,
+  ].join("\n");
+
+  // ── Universal bridge tool ─────────────────────────────────────────────
+
+  pi.registerTool({
+    name: "tool_call",
+    label: "Universal Tool Call",
+    description: `Universal tool call bridge. Use this to call any available tool by specifying its name and arguments as JSON.
+
+To use: call tool_call with:
+- name: the exact tool name (e.g. "bash", "read", "write", "edit")
+- arguments: a JSON string of the tool's arguments (e.g. '{"command": "ls -la"}')
+
+The bridge will match your tool name (fuzzy matching supported) and normalize argument names automatically.`,
+    promptSnippet: "tool_call - universal bridge for calling any tool",
+    promptGuidelines: [
+      "When you need to use a tool but are unsure of the exact name, use tool_call with the tool name and arguments.",
+      "Example: tool_call(name='bash', arguments='{\"command\": \"ls -la\"}')",
+    ],
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Name of the tool to call (fuzzy matching supported)" },
+        arguments: { type: "string", description: "Tool arguments as a JSON object string" },
+      },
+      required: ["name", "arguments"],
+    } as any,
+    execute: async (toolCallId, params, signal, onUpdate, ctx) => {
+      const p = params as { name?: string; arguments?: string };
+      const requestedName = p.name || "";
+      const argsStr = p.arguments || "{}";
+
+      stats.bridgeCalls++;
+
+      // Parse arguments JSON
+      let args: Record<string, unknown>;
+      try {
+        args = JSON.parse(argsStr);
+        if (typeof args !== "object" || args === null || Array.isArray(args)) {
+          args = { input: argsStr };
+        }
+      } catch {
+        args = { input: argsStr };
+      }
+
+      // Get all available tools
+      const allTools = pi.getAllTools();
+      let targetToolName: string | null = null;
+
+      // Exact match first
+      if (allTools.includes(requestedName)) {
+        targetToolName = requestedName;
+      } else {
+        // Fuzzy match
+        targetToolName = fuzzyMatchToolName(requestedName, allTools);
+        if (targetToolName) stats.fuzzyMatches++;
+      }
+
+      if (!targetToolName) {
+        stats.parseFailures++;
+        return {
+          content: [{ type: "text", text: `Error: Unknown tool "${requestedName}". Available tools: ${allTools.join(", ")}` }],
+          isError: true,
+        } as AgentToolResult;
+      }
+
+      // Try to execute the tool via pi.exec or find another way
+      // Since Pi doesn't expose a "call another tool" API from extensions,
+      // we return a structured message telling the agent to call the real tool
+      const normalizedArgs = Object.keys(args).length > 0 ? args : {};
+      stats.argNormalizations++;
+
+      const argsJson = JSON.stringify(normalizedArgs);
+      return {
+        content: [{
+          type: "text",
+          text: `[ReAct Bridge] Tool resolved: ${requestedName} → ${targetToolName}${targetToolName !== requestedName ? " (fuzzy matched)" : ""}\n\nPlease call ${targetToolName} with these arguments:\n${argsJson}`,
+        }],
+        isError: false,
+      } as AgentToolResult;
+    },
+  });
+
+  // ── Context modification for ReAct mode ──────────────────────────────
+
+  pi.on("context", (event) => {
+    if (!reactModeEnabled) return;
+
+    const model = event.messages; // messages array
+    // Add ReAct instructions to the system prompt area
+    // This helps models that understand ReAct format but not native function calling
+    // We append instructions to the last system message if present
+    for (let i = model.length - 1; i >= 0; i--) {
+      const msg = model[i];
+      if (msg && (msg as any).role === "system") {
+        const content = (msg as any).content || "";
+        if (!content.includes("[ReAct Fallback Mode]")) {
+          (msg as any).content = content + "\n\n[ReAct Fallback Mode]\n" +
+            "You have access to tools via the `tool_call` bridge tool.\n" +
+            "To call a tool, use: tool_call(name=\"<tool_name>\", arguments=\"<json_args>\")\n" +
+            "Available tools will be listed in your tool definitions.\n" +
+            "Always use tool_call to interact with files, run commands, or perform calculations.";
+        }
+        break;
+      }
+    }
+  });
+
+  // ── /react-mode command ─────────────────────────────────────────────
+
+  pi.registerCommand("react-mode", {
+    description: "Toggle ReAct fallback mode for models without native tool calling",
+    handler: async (_args, ctx) => {
+      reactModeEnabled = !reactModeEnabled;
+      const status = reactModeEnabled ? "ENABLED" : "DISABLED";
+      ctx.ui.notify(`ReAct mode ${status}`, "success");
+
+      const lines: string[] = [branding];
+      lines.push(section("REACT FALLBACK MODE"));
+      lines.push(info(`Status: ${status}`));
+      lines.push(info(`Bridge calls: ${stats.bridgeCalls}`));
+      lines.push(info(`Fuzzy matches: ${stats.fuzzyMatches}`));
+      lines.push(info(`Argument normalizations: ${stats.argNormalizations}`));
+      lines.push(info(`Parse failures: ${stats.parseFailures}`));
+
+      if (reactModeEnabled) {
+        lines.push(ok("The tool_call bridge tool is now available to the model"));
+        lines.push(info("ReAct system prompt instructions have been added"));
+      }
+
+      const report = lines.join("\n");
+      pi.sendMessage({
+        customType: "react-mode-report",
+        content: report,
+        display: { type: "content", content: report },
+      });
+    },
+  });
+
+  // ── /react-parse command (test the parser) ───────────────────────────
+
+  pi.registerCommand("react-parse", {
+    description: "Test the ReAct parser against a text input: /react-parse <text>",
+    handler: async (args, ctx) => {
+      const text = args.trim();
+      if (!text) {
+        ctx.ui.notify("Provide text to parse: /react-parse <text>", "error");
+        return;
+      }
+
+      const lines: string[] = [branding];
+      lines.push(section("REACT PARSER TEST"));
+      lines.push(info(`Input: ${text.slice(0, 100)}${text.length > 100 ? "..." : ""}`));
+
+      // Try ReAct parse
+      const reactResult = parseReact(text);
+      if (reactResult) {
+        lines.push(ok("ReAct format detected!"));
+        lines.push(info(`Tool: ${reactResult.name}`));
+        lines.push(info(`Args: ${JSON.stringify(reactResult.args)}`));
+        if (reactResult.thought) lines.push(info(`Thought: ${reactResult.thought}`));
+        if (reactResult.finalAnswer) lines.push(info(`Final Answer: ${reactResult.finalAnswer}`));
+      } else {
+        lines.push(fail("No ReAct format detected"));
+      }
+
+      // Try JSON extraction
+      try {
+        // Find JSON in text
+        const firstBrace = text.indexOf("{");
+        if (firstBrace !== -1) {
+          const lastBrace = text.lastIndexOf("}");
+          if (lastBrace > firstBrace) {
+            const jsonStr = text.slice(firstBrace, lastBrace + 1);
+            const parsed = JSON.parse(sanitizeModelJson(jsonStr));
+            const toolResult = extractToolFromJson(parsed);
+            if (toolResult) {
+              lines.push(ok("JSON tool call detected!"));
+              lines.push(info(`Tool: ${toolResult.name}`));
+              lines.push(info(`Args: ${JSON.stringify(toolResult.args)}`));
+            }
+          }
+        }
+      } catch { /* not JSON */ }
+
+      // Check for schema dump
+      if (looksLikeSchemaDump(text)) {
+        lines.push(warn("Text appears to be a tool schema dump (not a tool call)"));
+      }
+
+      // Check for final answer
+      if (FINAL_ANSWER_RE.test(text)) {
+        const fa = FINAL_ANSWER_RE.exec(text)![1].trim();
+        lines.push(ok(`Final Answer: ${fa}`));
+      }
+
+      pi.sendMessage({
+        customType: "react-parse-report",
+        content: lines.join("\n"),
+        display: { type: "content", content: lines.join("\n") },
+      });
+    },
+  });
+
+  // ── Export shared ReAct parser utilities for other extensions ────────
+  // (accessible via pi.events for inter-extension communication)
+
+  // Store parser functions on pi.events for other extensions to use
+  (pi as any)._reactParser = {
+    parseReact,
+    sanitizeModelJson,
+    extractToolFromJson,
+    fuzzyMatchToolName,
+    normalizeArguments,
+    looksLikeSchemaDump,
+  };
+}

@@ -1,9 +1,10 @@
 /**
  * System Monitor — Pi Coding Agent Extension
  * Replaces the default footer with a unified 2-line status bar:
- *   Line 1: pwd · git branch · model · thinking level · context%
- *   Line 2: CPU% · RAM · Swap · VRAM (Ollama loaded) · response time · params
+ *   Line 1: pwd · git branch · model · thinking level · context% · CPU/RAM/Swap · VRAM · response time · params · security
+ *   Line 2: (active tool timing when agent is running)
  * Metrics update every 3 seconds. Restores default footer on session shutdown.
+ * Includes audit/recovery status indicators from shared security layer.
  *
  * Written by VTSTech
  * GitHub: https://github.com/VTSTech
@@ -11,26 +12,12 @@
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import os from "node:os";
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { execSync } from "node:child_process";
 
-const MODELS_JSON_PATH = path.join(os.homedir(), ".pi", "agent", "models.json");
-
-function getOllamaBaseUrl(): string {
-  try {
-    if (fs.existsSync(MODELS_JSON_PATH)) {
-      const raw = fs.readFileSync(MODELS_JSON_PATH, "utf-8");
-      const config = JSON.parse(raw);
-      const baseUrl = config?.providers?.["ollama"]?.baseUrl;
-      if (baseUrl) return baseUrl.replace(/\/v1\/?$/, "");
-    }
-  } catch { /* ignore */ }
-  if (process.env.OLLAMA_HOST) {
-    return `http://${process.env.OLLAMA_HOST.replace(/^https?:\/\//, "")}`;
-  }
-  return "http://localhost:11434";
-}
+// ── Shared imports (eliminates duplication) ────────────────────────────────
+import { getOllamaBaseUrl } from "../shared/ollama";
+import { fmtBytes, fmtDur } from "../shared/format";
+import { readRecentAuditEntries } from "../shared/security";
 
 export default function (pi: ExtensionAPI) {
   let lastResponseTime: number | null = null;
@@ -54,6 +41,21 @@ export default function (pi: ExtensionAPI) {
   let footerModel = "";
   let footerThinking = "";
   let footerCtxPct = "";
+
+  // ── Audit / recovery tracking ────────────────────────────────────────────
+
+  /** Name of the most recently blocked tool (for the flash indicator). */
+  let securityFlashTool = "";
+  /** Timestamp until which the block flash is visible (3 s window). */
+  let securityFlashUntil = 0;
+
+  /** Currently executing tool name (shown while agent is running). */
+  let activeTool = "";
+  /** Timestamp when the active tool started executing. */
+  let activeToolStart = 0;
+
+  /** Cached count of recent blocked operations from the audit log. */
+  let blockedCount = 0;
 
   // ── helpers ──────────────────────────────────────────────────────
 
@@ -87,18 +89,6 @@ export default function (pi: ExtensionAPI) {
     const total = os.totalmem();
     const used = total - os.freemem();
     return { used, total };
-  }
-
-  function fmtBytes(b: number): string {
-    if (b >= 1073741824) return `${(b / 1073741824).toFixed(1)}G`;
-    if (b >= 1048576) return `${(b / 1048576).toFixed(0)}M`;
-    return `${(b / 1024).toFixed(0)}K`;
-  }
-
-  function fmtDur(ms: number): string {
-    if (ms < 1000) return `${Math.round(ms)}ms`;
-    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-    return `${Math.floor(ms / 60000)}m${Math.round((ms % 60000) / 1000)}s`;
   }
 
   function getSwap(): { used: number; total: number } | null {
@@ -165,6 +155,31 @@ export default function (pi: ExtensionAPI) {
     return gitBranchCache;
   }
 
+  // ── Audit log helpers ─────────────────────────────────────────────
+
+  /**
+   * Refresh the blocked-count from the shared security audit log.
+   * Entries are considered "blocked" when they contain a `blocked: true`
+   * field, a `safe: false` field, or an `action: "block"` field.
+   */
+  function refreshBlockedCount(): void {
+    try {
+      const entries = readRecentAuditEntries(50);
+      blockedCount = 0;
+      for (const entry of entries) {
+        if (
+          entry.blocked === true ||
+          entry.safe === false ||
+          entry.action === "block"
+        ) {
+          blockedCount++;
+        }
+      }
+    } catch {
+      blockedCount = 0;
+    }
+  }
+
   // ── metrics refresh (called every 3s) ───────────────────────────
 
   function updateMetrics() {
@@ -193,6 +208,9 @@ export default function (pi: ExtensionAPI) {
         footerCtxPct = "";
       }
     }
+
+    // Refresh security audit count on every metrics cycle
+    refreshBlockedCount();
   }
 
   // ── event handlers ──────────────────────────────────────────────
@@ -206,10 +224,13 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.setFooter((tui: any, theme: any, footerData: any) => {
       tuiRef = tui;
       const dim = (s: string) => theme?.fg?.("dim", s) ?? s;
+      const red = (s: string) => theme?.fg?.("red", s) ?? s;
+      const yellow = (s: string) => theme?.fg?.("yellow", s) ?? s;
       const sep = dim(" \u00b7 ");
 
       return {
         render(width: number): string[] {
+          const lines: string[] = [];
           const parts: string[] = [];
           parts.push(getPwd());
 
@@ -237,6 +258,18 @@ export default function (pi: ExtensionAPI) {
             if (params.length > 0) parts.push(...params.map(p => dim(p)));
           }
 
+          // ── Security status indicator ──────────────────────────────
+          // Flash indicator: briefly highlight a blocked tool name
+          const now = Date.now();
+          if (securityFlashTool && now < securityFlashUntil) {
+            parts.push(red(`BLOCKED:${securityFlashTool}`));
+          }
+
+          // Persistent SEC:N indicator from audit log
+          if (blockedCount > 0) {
+            parts.push(red(`SEC:${blockedCount}`));
+          }
+
           let line = parts.join(sep);
           // Strip ANSI codes for visible-width measurement
           const visible = line.replace(/\x1b\[[0-9;]*m/g, "");
@@ -255,7 +288,15 @@ export default function (pi: ExtensionAPI) {
             line = line.slice(0, cut) + dim("...");
           }
 
-          return [line];
+          lines.push(line);
+
+          // ── Line 2: active tool timing ─────────────────────────────
+          if (activeTool && activeToolStart > 0) {
+            const elapsed = performance.now() - activeToolStart;
+            lines.push(`${yellow("\u23f3")} ${activeTool}: ${fmtDur(elapsed)}`);
+          }
+
+          return lines;
         },
 
         invalidate(): void {},
@@ -280,6 +321,12 @@ export default function (pi: ExtensionAPI) {
       ctxUi = null;
     }
     currentCtx = null;
+    // Reset audit/recovery state
+    securityFlashTool = "";
+    securityFlashUntil = 0;
+    activeTool = "";
+    activeToolStart = 0;
+    blockedCount = 0;
   });
 
   pi.on("before_provider_request", (event) => {
@@ -295,7 +342,59 @@ export default function (pi: ExtensionAPI) {
       lastResponseTime = performance.now() - agentStartTime;
       agentStartTime = null;
     }
+    // Clear active tool state when agent finishes
+    activeTool = "";
+    activeToolStart = 0;
     updateMetrics();
+    if (tuiRef) tuiRef.requestRender();
+  });
+
+  // ── Tool event handlers (audit / recovery) ────────────────────────
+
+  /**
+   * Track tool_call events for security blocking.
+   * When a tool is blocked by security, set a 3-second flash indicator
+   * on the footer so the operator can see what was intercepted.
+   */
+  pi.on("tool_call", (event: any) => {
+    if (!event) return;
+
+    // Check if the tool call was blocked by security
+    const isBlocked =
+      event.blocked === true ||
+      event.blocked === "true" ||
+      (event.result as any)?.blocked === true ||
+      (event.error as string)?.includes("blocked");
+
+    if (isBlocked) {
+      securityFlashTool = event.tool ?? event.name ?? "unknown";
+      securityFlashUntil = Date.now() + 3000; // flash for 3 seconds
+      // Immediately refresh the blocked count from audit log
+      refreshBlockedCount();
+      if (tuiRef) tuiRef.requestRender();
+    }
+  });
+
+  /**
+   * Track tool_execution_start events to show per-tool timing.
+   * While the agent is actively running, line 2 of the footer displays
+   * a live elapsed timer for the currently executing tool.
+   */
+  pi.on("tool_execution_start", (event: any) => {
+    if (!event) return;
+    activeTool = event.tool ?? event.name ?? "tool";
+    activeToolStart = performance.now();
+    // Request more frequent renders while a tool is running (every 500ms)
+    // so the timer updates visibly. The regular 3s interval is too coarse.
+    if (tuiRef) tuiRef.requestRender();
+  });
+
+  /**
+   * Clear per-tool timing when a tool finishes executing.
+   */
+  pi.on("tool_execution_end", () => {
+    activeTool = "";
+    activeToolStart = 0;
     if (tuiRef) tuiRef.requestRender();
   });
 }
