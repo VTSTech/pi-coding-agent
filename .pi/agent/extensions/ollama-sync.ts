@@ -66,7 +66,7 @@ function getProviderConfig(existing: PiModelsJson) {
   const ollama = existing.providers["ollama"];
   return {
     baseUrl: ollama?.baseUrl ?? DEFAULT_OLLAMA_URL + "/v1",
-    api: ollama?.api ?? "openai-responses",
+    api: ollama?.api ?? "openai-completions",
     apiKey: ollama?.apiKey ?? "ollama",
     compat: ollama?.compat ?? {
       supportsDeveloperRole: false,
