@@ -81,10 +81,10 @@ export default function (pi: ExtensionAPI) {
     model: string,
     messages: Array<{ role: string; content: string }>,
     options: Record<string, unknown> = {},
-    timeoutMs = 120000
+    timeoutMs = 360000
   ): Promise<{ response: any; elapsedMs: number }> {
     const start = Date.now();
-    const body: any = { model, messages, stream: false, options: { num_predict: 512, temperature: 0.0, ...options } };
+    const body: any = { model, messages, stream: false, options: { num_predict: 1024, temperature: 0.1, ...options } };
     const result = await pi.exec("curl", [
       "-s", "-X", "POST",
       `${OLLAMA_BASE}/api/chat`,
@@ -253,7 +253,7 @@ export default function (pi: ExtensionAPI) {
       ],
       tools,
       stream: false,
-      options: { num_predict: 256, temperature: 0.0 },
+      options: { num_predict: 1024, temperature: 0.1 },
     };
 
     try {
@@ -263,7 +263,7 @@ export default function (pi: ExtensionAPI) {
         `${OLLAMA_BASE}/api/chat`,
         "-H", "Content-Type: application/json",
         "-d", JSON.stringify(body),
-      ], { timeout: 120000 });
+      ], { timeout: 240000 });
       const elapsedMs = Date.now() - start;
 
       if (result.code !== 0) {
@@ -392,7 +392,7 @@ The JSON object must have exactly these 4 keys:
     try {
       const { response, elapsedMs } = await ollamaChat(model, [
         { role: "user", content: prompt },
-      ], { num_predict: 512 });
+      ], { num_predict: 1024 });
 
       const msg = (response?.message?.content || "").trim();
 
