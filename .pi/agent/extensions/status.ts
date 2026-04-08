@@ -41,6 +41,7 @@ export default function (pi: ExtensionAPI) {
   let prevCpuInfo = getCpuSnapshot();
   let lastPayload: Record<string, any> | null = null;
   let tuiRef: any = null;
+  let gitBranchCache = "";
 
   // Cached metrics
   let cpuUsage = 0;
@@ -153,6 +154,17 @@ export default function (pi: ExtensionAPI) {
     return cwd;
   }
 
+  function getGitBranch(): string {
+    if (gitBranchCache) return gitBranchCache;
+    try {
+      const branch = execSync("git rev-parse --abbrev-ref HEAD 2>/dev/null", {
+        encoding: "utf-8", timeout: 3000,
+      }).trim();
+      if (branch) gitBranchCache = branch;
+    } catch { /* not a git repo */ }
+    return gitBranchCache;
+  }
+
   // ── metrics refresh (called every 3s) ───────────────────────────
 
   function updateMetrics() {
@@ -200,10 +212,16 @@ export default function (pi: ExtensionAPI) {
         render(width: number): string[] {
           const parts: string[] = [];
           parts.push(getPwd());
-          try {
-            const branch = footerData?.getGitBranch?.();
-            if (branch) parts.push(dim(branch));
-          } catch { /* no git */ }
+
+          // Git branch — try framework API first, fall back to git command
+          let branch = "";
+          try { branch = footerData?.getGitBranch?.() || ""; } catch { /* no api */ }
+          if (!branch) branch = getGitBranch();
+          if (branch) parts.push(dim(branch));
+
+          // Active model from agent context
+          if (footerModel) parts.push(dim(footerModel));
+
           if (footerThinking && footerThinking !== "off") parts.push(dim(footerThinking));
           if (footerCtxPct) parts.push(footerCtxPct);
 
@@ -212,7 +230,7 @@ export default function (pi: ExtensionAPI) {
           if (hasSwap && swapUsed > 0) {
             parts.push(`Swap ${fmtBytes(swapUsed)}/${fmtBytes(swapTotal)}`);
           }
-          if (ollamaLoaded) parts.push(`${ollamaLoaded}`);
+          //if (ollamaLoaded) parts.push(`${ollamaLoaded}`);
           if (lastResponseTime !== null) parts.push(`Resp ${fmtDur(lastResponseTime)}`);
           if (lastPayload) {
             const params = extractParams(lastPayload);
