@@ -417,8 +417,9 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 |-------|--------|-------|-----------|----------|-------|-------------|-------|
 | `granite4:350m` | 352M | BF16 | ❌ WEAK | ❌ | ✅ STRONG | ✅ STRONG | **2/4** |
 | `qwen3:0.6b` | 752M | Q4_K_M | ⏳ pending* | ✅ | ✅ STRONG | ✅ STRONG | **—** |
-| `qwen2.5-coder:1.5b` | 1.5B | Q4_K_M | ⏳ pending | ❌ | ✅ STRONG | ✅ STRONG | **—** |
-| `llama3.2:1b` | 1.2B | Q8_0 | ⏳ pending | ❌ | ✅ STRONG | ✅ STRONG | **—** |
+| `qwen2.5-coder:1.5b` | 1.5B | Q4_K_M | ❌ WEAK | ❌ | ✅ STRONG | ✅ STRONG | **2/4** |
+| `llama3.2:1b` | 1.2B | Q8_0 | ❌ WEAK | ❌ | ✅ STRONG | ✅ STRONG | **2/4** |
+| `nchapman/dolphin3.0-llama3:1b` | 1.2B | Q4_K_M | ❌ WEAK | ❌ | ⛔ N/A | ✅ STRONG | **1/4** |
 | `qwen2.5-coder:0.5b-instruct-q4_k_m` | 494M | Q4_K_M | ❌ WEAK | ❌ | ✅ MODERATE | ✅ STRONG | **2/4** |
 | `qwen2.5:0.5b` | 494M | Q4_K_M | ❌ WEAK | ❌ | ✅ STRONG | ✅ STRONG | **2/4** |
 | `qwen:0.5b` | 620M | Q4_0 | ❌ WEAK | ❌ | ❌ FAIL | ✅ MODERATE | **1/4** |
@@ -428,6 +429,8 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 | `smollm:135m` | 135M | Q4_0 | ❌ WEAK | ❌ | ❌ FAIL | ❌ FAIL | **0/4** |
 
 > *qwen3:0.6b scored 3/4 previously but needs re-test — the snail puzzle reasoning score was not captured before a timeout issue. The `think:true` fallback in the latest update should now handle this correctly.
+>
+> ⛔ = model does not support tool calls (Ollama API returns error). Scored as 0 for tool usage.
 
 ---
 
