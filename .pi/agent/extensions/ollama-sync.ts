@@ -153,9 +153,10 @@ export default function (pi: ExtensionAPI) {
           return m;
         });
 
-        // Write back
+        // Write back — use the actual URL we synced from
         existing.providers["ollama"] = {
           ...config,
+          baseUrl: ollamaBaseUrl + "/v1",
           models: mergedModels,
         };
         await writeModelsJson(existing);
@@ -236,7 +237,7 @@ export default function (pi: ExtensionAPI) {
           return m;
         });
 
-        existing.providers["ollama"] = { ...config, models: mergedModels };
+        existing.providers["ollama"] = { ...config, baseUrl: ollamaBaseUrl + "/v1", models: mergedModels };
         await writeModelsJson(existing);
 
         return {
