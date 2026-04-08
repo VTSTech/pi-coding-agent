@@ -81,7 +81,7 @@ Four tests per model:
 
 | Test | Method | Scoring |
 |------|--------|---------|
-| **Reasoning** | "17 sheep, all but 9 die" logic puzzle — answer extracted as the last number in the response | STRONG / WEAK / FAIL |
+| **Reasoning** | Snail wall puzzle — "climbs 3ft/day, slides 2ft/night, 10ft wall" — answer extracted as the last number in the response (never appears in the prompt, preventing false positives) | STRONG / WEAK / FAIL |
 | **Thinking** | Extended thinking/reasoning token support (`<think` tags or native API) — "Multiply 37 × 43" prompt | SUPPORTED / NOT SUPPORTED |
 | **Tool Usage** | Tool call generation — detects both native Ollama `tool_calls` API and JSON tool calls embedded in text responses | STRONG / MODERATE / WEAK / FAIL |
 | **Instruction Following** | Strict JSON output format compliance — 4 specific keys with typed values, automatic repair of truncated output | STRONG / MODERATE / WEAK / FAIL |
@@ -380,18 +380,18 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 
 | Model | Params | Quant | Reasoning | Thinking | Tools | Instructions | Score |
 |-------|--------|-------|-----------|----------|-------|-------------|-------|
-| `granite4:350m` | 352M | BF16 | ✅ STRONG | ❌ | ✅ STRONG | ✅ STRONG | **3/4** |
-| `qwen3:0.6b` | 752M | Q4_K_M | ❌ FAIL | ✅ | ✅ STRONG | ✅ STRONG | **3/4** |
-| `qwen2.5-coder:1.5b` | 1.5B | Q4_K_M | ❌ WEAK | ❌ | ✅ STRONG | ✅ STRONG | **2/4** |
-| `llama3.2:1b` | 1.2B | Q8_0 | ❌ WEAK | ❌ | ✅ STRONG | ✅ STRONG | **2/4** |
-| `qwen2.5-coder:0.5b-instruct-q4_k_m` | 494M | Q4_K_M | ❌ WEAK | ❌ | ✅ MODERATE | ✅ STRONG | **2/4** |
-| `qwen:0.5b` | 620M | Q4_0 | ❌ WEAK | ❌ | ❌ FAIL | ✅ MODERATE | **1/4** |
-| `qwen2:0.5b` | 494M | Q4_0 | ❌ WEAK | ❌ | ❌ FAIL | ✅ STRONG | **1/4** |
-| `functiongemma:270m` | 268M | Q8_0 | ❌ FAIL | ❌ | ✅ STRONG | ❌ FAIL | **1/4** |
-| `gemma3:270m` | 268M | Q8_0 | ❌ FAIL | ❌ | ❌ FAIL | ❌ FAIL | **0/4** |
-| `smollm:135m` | 135M | Q4_0 | ❌ FAIL | ❌ | ❌ FAIL | ❌ FAIL | **0/4** |
+| `granite4:350m` | 352M | BF16 | ⏳ pending | ❌ | ✅ STRONG | ✅ STRONG | **—** |
+| `qwen3:0.6b` | 752M | Q4_K_M | ⏳ pending | ✅ | ✅ STRONG | ✅ STRONG | **—** |
+| `qwen2.5-coder:1.5b` | 1.5B | Q4_K_M | ⏳ pending | ❌ | ✅ STRONG | ✅ STRONG | **—** |
+| `llama3.2:1b` | 1.2B | Q8_0 | ⏳ pending | ❌ | ✅ STRONG | ✅ STRONG | **—** |
+| `qwen2.5-coder:0.5b-instruct-q4_k_m` | 494M | Q4_K_M | ⏳ pending | ❌ | ✅ MODERATE | ✅ STRONG | **—** |
+| `qwen:0.5b` | 620M | Q4_0 | ⏳ pending | ❌ | ❌ FAIL | ✅ MODERATE | **—** |
+| `qwen2:0.5b` | 494M | Q4_0 | ⏳ pending | ❌ | ❌ FAIL | ✅ STRONG | **—** |
+| `functiongemma:270m` | 268M | Q8_0 | ⏳ pending | ❌ | ✅ STRONG | ❌ FAIL | **—** |
+| `gemma3:270m` | 268M | Q8_0 | ⏳ pending | ❌ | ❌ FAIL | ❌ FAIL | **—** |
+| `smollm:135m` | 135M | Q4_0 | ⏳ pending | ❌ | ❌ FAIL | ❌ FAIL | **—** |
 
-> **Scoring notes:** Reasoning uses the model's last number as its answer — the "all but 9 die" puzzle requires understanding that 9 survive. Models calculating 17-9=8 get WEAK; correct answer of 9 with reasoning words gets STRONG. Thinking test checks for `<think` tag support or native reasoning tokens. Tool usage detects both native Ollama `tool_calls` and JSON tool calls in text. Instruction following includes automatic JSON repair for truncated output. MODERATE tool usage means the tool name was correct but arguments were wrong (e.g., pasted the JSON schema instead of actual values).
+> Reasoning scores marked pending — re-test needed with the new snail wall puzzle. Other scores (thinking, tools, instructions) remain valid.
 
 ---
 
