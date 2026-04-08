@@ -143,8 +143,11 @@ export default function (pi: ExtensionAPI) {
       // Check for reasoning patterns (step-by-step, because, therefore, etc.)
       // Note: "17 -" alone is NOT reasoning, it's just restating the problem
       const reasoningPatterns = ["because", "therefore", "since", "step", "subtract", "minus",
-        "remaining", "alive", "survive"];
-      const hasReasoning = reasoningPatterns.some(w => msg.toLowerCase().includes(w));
+        "remaining", "alive", "survive", "find the", "left"];
+      const hasReasoningWords = reasoningPatterns.some(w => msg.toLowerCase().includes(w));
+      // Also detect numbered step patterns (e.g. "1. Find... 2. Subtract... 3. Therefore...")
+      const hasNumberedSteps = /^\s*\d+\.\s/m.test(msg);
+      const hasReasoning = hasReasoningWords || hasNumberedSteps;
 
       let score: string;
       let pass: boolean;
@@ -604,8 +607,13 @@ Create a JSON object with these exact keys:
         lines.push(info(`Raw response: ${sanitizeForReport(tools.response)}`));
       }
     } else if (tools.score === "FAIL") {
-      lines.push(fail(`Tool call: none — model responded in text instead (${tools.score})`));
-      lines.push(info(`Text response: ${sanitizeForReport(tools.response)}`));
+      const hasResponse = tools.response && tools.response.trim().length > 0;
+      lines.push(fail(`Tool call: none — ${hasResponse ? "model responded in text instead" : "model returned empty response"} (${tools.score})`));
+      if (hasResponse) {
+        lines.push(info(`Text response: ${sanitizeForReport(tools.response)}`));
+      } else {
+        lines.push(info("Text response: (empty)"));
+      }
     } else {
       lines.push(fail(`Error: ${tools.toolCall}`));
     }
