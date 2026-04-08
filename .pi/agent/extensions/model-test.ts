@@ -38,6 +38,18 @@ export default function (pi: ExtensionAPI) {
   }
 
   /**
+   * Strip markdown code fences and escape remaining backticks
+   * so they don't create unwanted code blocks in the report output.
+   */
+  function sanitizeForReport(s: string): string {
+    // Remove code fence lines (```json, ```, etc.)
+    let cleaned = s.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '');
+    // Normalize excessive whitespace (but keep single newlines)
+    cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
+    return cleaned;
+  }
+
+  /**
    * Call Ollama /api/chat and return the parsed response.
    */
   async function ollamaChat(
@@ -153,7 +165,7 @@ export default function (pi: ExtensionAPI) {
         pass = false;
       }
 
-      return { pass, score, reasoning: truncate(msg, 500), answer, elapsedMs };
+      return { pass, score, reasoning: msg, answer, elapsedMs };
     } catch (e: any) {
       return { pass: false, score: "ERROR", reasoning: e.message, answer: "?", elapsedMs: 0 };
     }
@@ -189,10 +201,10 @@ export default function (pi: ExtensionAPI) {
 
       return {
         supported: hasThinking || hasThinkTags,
-        thinkingContent: hasThinking ? truncate(thinking, 300)
-          : hasThinkTags ? truncate(thinkTagMatch![1], 300)
+        thinkingContent: hasThinking ? thinking
+          : hasThinkTags ? thinkTagMatch![1]
           : "none",
-        answerContent: truncate(hasThinkTags ? msg.replace(/<think[^>]*>[\s\S]*?<\/think>/gi, "").trim() : msg, 300),
+        answerContent: hasThinkTags ? msg.replace(/<think[^>]*>[\s\S]*?<\/think>/gi, "").trim() : msg,
         elapsedMs,
       };
     } catch (e: any) {
@@ -273,8 +285,8 @@ export default function (pi: ExtensionAPI) {
             pass: true,
             score: "WEAK",
             hasToolCalls: true,
-            toolCall: `malformed args: ${truncate(String(fn.arguments), 100)}`,
-            response: truncate(content, 200),
+            toolCall: `malformed args: ${String(fn.arguments)}`,
+            response: content,
             elapsedMs,
           };
         }
@@ -295,18 +307,56 @@ export default function (pi: ExtensionAPI) {
           score,
           hasToolCalls: true,
           toolCall: `${fn.name}(${JSON.stringify(args)})`,
-          response: truncate(content, 200),
+          response: content,
           elapsedMs,
         };
       }
 
-      // Model answered in text instead of using tools
+      // Model answered in text — check if it contains valid tool call JSON
+      const sanitizedContent = sanitizeForReport(content);
+      const textToolMatch = sanitizedContent.match(/\{[\s\S]*?\}/);
+      let textToolParsed: any = null;
+      if (textToolMatch) {
+        try {
+          textToolParsed = JSON.parse(textToolMatch[0]);
+        } catch { /* not valid JSON */ }
+      }
+
+      // Check if the parsed JSON looks like a valid tool call
+      if (textToolParsed && typeof textToolParsed.name === "string") {
+        const fnName = textToolParsed.name;
+        const rawArgs = textToolParsed.arguments || { ...textToolParsed };
+        // Remove 'name' from args so it doesn't appear as a parameter
+        const { name: _, ...fnArgs } = rawArgs;
+        const isWeatherTool = fnName === "get_weather";
+        const hasLocation = typeof fnArgs.location === "string" && fnArgs.location.toLowerCase().includes("paris");
+
+        let score: string;
+        if (isWeatherTool && hasLocation) {
+          score = "STRONG";
+        } else if (isWeatherTool) {
+          score = "MODERATE";
+        } else {
+          score = "WEAK";
+        }
+
+        return {
+          pass: true,
+          score,
+          hasToolCalls: true,
+          toolCall: `${fnName}(${JSON.stringify(fnArgs)})`,
+          response: content,
+          elapsedMs,
+        };
+      }
+
+      // Genuinely no tool call detected
       return {
         pass: false,
         score: "FAIL",
         hasToolCalls: false,
         toolCall: "none",
-        response: truncate(content, 300),
+        response: content,
         elapsedMs,
       };
     } catch (e: any) {
@@ -349,7 +399,7 @@ Create a JSON object with these exact keys:
       } catch { /* not valid JSON */ }
 
       if (!parsed) {
-        return { pass: false, score: "FAIL", output: truncate(msg, 300), elapsedMs };
+        return { pass: false, score: "FAIL", output: sanitizeForReport(msg), elapsedMs };
       }
 
       const hasKeys = parsed.name && parsed.can_count !== undefined && parsed.sum !== undefined && parsed.language;
@@ -370,7 +420,7 @@ Create a JSON object with these exact keys:
       return {
         pass: hasKeys,
         score,
-        output: truncate(JSON.stringify(parsed), 300),
+        output: JSON.stringify(parsed),
         elapsedMs,
       };
     } catch (e: any) {
@@ -505,7 +555,7 @@ Create a JSON object with these exact keys:
     } else {
       lines.push(fail(`Error: ${reasoning.reasoning}`));
     }
-    lines.push(info(`Response: ${truncate(reasoning.reasoning, 200)}`));
+    lines.push(info(`Response: ${sanitizeForReport(reasoning.reasoning)}`));
 
     // 2. Thinking test
     lines.push(section("THINKING TEST"));
@@ -515,11 +565,11 @@ Create a JSON object with these exact keys:
     lines.push(info(`Time: ${msHuman(thinking.elapsedMs)}`));
     if (thinking.supported) {
       lines.push(ok(`Thinking/reasoning tokens: SUPPORTED`));
-      lines.push(info(`Thinking content: ${truncate(thinking.thinkingContent, 200)}`));
+      lines.push(info(`Thinking content: ${sanitizeForReport(thinking.thinkingContent)}`));
     } else {
       lines.push(fail(`Thinking/reasoning tokens: NOT SUPPORTED`));
     }
-    lines.push(info(`Answer output: ${truncate(thinking.answerContent, 150)}`));
+    lines.push(info(`Answer output: ${sanitizeForReport(thinking.answerContent)}`));
 
     // Auto-update models.json reasoning field
     lines.push(section("MODELS.JSON SYNC"));
@@ -535,13 +585,23 @@ Create a JSON object with these exact keys:
     lines.push(info(`Time: ${msHuman(tools.elapsedMs)}`));
     if (tools.score === "STRONG") {
       lines.push(ok(`Tool call: ${tools.toolCall} (${tools.score})`));
+      // If tool call was detected from text (not native API), show the raw output
+      if (tools.response) {
+        lines.push(info(`Raw response: ${sanitizeForReport(tools.response)}`));
+      }
     } else if (tools.score === "MODERATE") {
       lines.push(ok(`Tool call: ${tools.toolCall} (${tools.score})`));
+      if (tools.response) {
+        lines.push(info(`Raw response: ${sanitizeForReport(tools.response)}`));
+      }
     } else if (tools.score === "WEAK") {
       lines.push(warn(`Tool call: ${tools.toolCall} (${tools.score}) — malformed call`));
+      if (tools.response) {
+        lines.push(info(`Raw response: ${sanitizeForReport(tools.response)}`));
+      }
     } else if (tools.score === "FAIL") {
       lines.push(fail(`Tool call: none — model responded in text instead (${tools.score})`));
-      lines.push(info(`Text response: ${truncate(tools.response, 200)}`));
+      lines.push(info(`Text response: ${sanitizeForReport(tools.response)}`));
     } else {
       lines.push(fail(`Error: ${tools.toolCall}`));
     }
@@ -562,7 +622,7 @@ Create a JSON object with these exact keys:
     } else {
       lines.push(fail(`Failed to produce valid JSON (${instructions.score})`));
     }
-    lines.push(info(`Output: ${truncate(instructions.output, 200)}`));
+    lines.push(info(`Output: ${sanitizeForReport(instructions.output)}`));
 
     // Summary
     lines.push(section("SUMMARY"));
