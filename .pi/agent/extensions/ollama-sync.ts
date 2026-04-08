@@ -5,7 +5,15 @@ import { join } from "node:path";
 import os from "node:os";
 
 const MODELS_FILE = join(os.homedir(), ".pi", "agent", "models.json");
-const DEFAULT_OLLAMA_URL = "http://localhost:11434";
+
+function getDefaultOllamaUrl(): string {
+  // Check OLLAMA_HOST env var first (set by Ollama itself), then fall back to localhost
+  return process.env.OLLAMA_HOST
+    ? `http://${process.env.OLLAMA_HOST.replace(/^https?:\/\//, "")}`
+    : "http://localhost:11434";
+}
+
+const DEFAULT_OLLAMA_URL = getDefaultOllamaUrl();
 
 const BRANDING = [
   `  ⚡ Pi Ollama Sync v1.0`,
@@ -89,14 +97,23 @@ function isReasoningModel(name: string): boolean {
 
 export default function (pi: ExtensionAPI) {
   pi.registerCommand("ollama-sync", {
-    description: "Sync models from Ollama into models.json",
-    async handler(_args, ctx) {
+    description: "Sync models from Ollama into models.json. Use: /ollama-sync [url]",
+    getArgumentCompletions: async () => [
+      { label: DEFAULT_OLLAMA_URL, description: `Default Ollama URL (from $OLLAMA_HOST or localhost)` },
+    ],
+    async handler(args, ctx) {
+      const arg = args.trim();
+      const overrideUrl = arg || undefined;
       ctx.ui.setStatus("ollama-sync", "Fetching models from Ollama...");
 
       try {
         const existing = await readModelsJson();
         const config = getProviderConfig(existing);
-        const ollamaBaseUrl = config.baseUrl?.replace(/\/v1$/, "") ?? DEFAULT_OLLAMA_URL;
+
+        // URL priority: CLI arg > models.json baseUrl > env var / localhost
+        const ollamaBaseUrl = overrideUrl
+          ? overrideUrl.replace(/\/v1$/, "").replace(/\/+$/, "")
+          : config.baseUrl?.replace(/\/v1$/, "") ?? DEFAULT_OLLAMA_URL;
 
         const models = await fetchOllamaModels(ollamaBaseUrl);
 
@@ -145,6 +162,7 @@ export default function (pi: ExtensionAPI) {
 
         // Build report with branding
         const lines: string[] = [""];
+        lines.push(`  Ollama: ${ollamaBaseUrl}`);
         lines.push(`  Synced ${newModels.length} models from Ollama`);
         if (added.length > 0) {
           lines.push(`  Added: ${added.map(m => m.id).join(", ")}`);
@@ -186,14 +204,22 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "ollama_sync",
     label: "Ollama Sync",
-    description: "Sync available models from a local Ollama instance into Pi's models.json config file.\n\n" + BRANDING,
-    parameters: {},
-    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-      try {
-        const existing = await readModelsJson();
-        const config = getProviderConfig(existing);
-        const ollamaBaseUrl = config.baseUrl?.replace(/\/v1$/, "") ?? DEFAULT_OLLAMA_URL;
+    description: "Sync available models from an Ollama instance into Pi's models.json config file. Supports local or remote Ollama.\n\n" + BRANDING,
+    parameters: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "Ollama base URL (e.g. http://192.168.1.100:11434). If omitted, uses models.json or OLLAMA_HOST env var." },
+      },
+    } as any,
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const overrideUrl = (params as any)?.url as string | undefined;
+      const existing = await readModelsJson();
+      const config = getProviderConfig(existing);
+      const ollamaBaseUrl = overrideUrl
+        ? overrideUrl.replace(/\/v1$/, "").replace(/\/+$/, "")
+        : config.baseUrl?.replace(/\/v1$/, "") ?? DEFAULT_OLLAMA_URL;
 
+      try {
         const models = await fetchOllamaModels(ollamaBaseUrl);
         const sorted = [...models].sort((a, b) => a.size - b.size);
         const newModels = sorted.map((m) => ({
@@ -214,7 +240,7 @@ export default function (pi: ExtensionAPI) {
         await writeModelsJson(existing);
 
         return {
-          content: [{ type: "text", text: `${BRANDING}\n\nSynced ${newModels.length} models to ${MODELS_FILE}. Run /reload to pick up changes.` }],
+          content: [{ type: "text", text: `${BRANDING}\n\nSynced ${newModels.length} models from ${ollamaBaseUrl} to ${MODELS_FILE}. Run /reload to pick up changes.` }],
           details: { models: newModels },
         };
       } catch (err: any) {
