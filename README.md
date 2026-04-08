@@ -27,6 +27,22 @@ Everything here is battle-tested on real hardware with real small models — no 
 
 ---
 
+## 🔌 Remote Ollama Support
+
+All extensions support **remote Ollama instances** out of the box — no extra configuration needed. The Ollama URL is resolved automatically from `models.json`:
+
+```
+models.json ollama provider baseUrl  →  OLLAMA_HOST env var  →  http://localhost:11434
+```
+
+This means you can:
+- Run Ollama on a separate machine and tunnel it (e.g., Cloudflare Tunnel, Tailscale, SSH)
+- Use `/ollama-sync https://your-tunnel-url` to sync models from a remote instance
+- The sync writes the remote URL back into `models.json` so all other extensions (`model-test`, `status`, `diag`) automatically use it
+- Set `OLLAMA_HOST` as an environment variable fallback if no `models.json` config exists
+
+---
+
 ## Extensions
 
 All extensions are installed by copying them to `~/.pi/agent/extensions/` and restarting Pi.
@@ -72,95 +88,82 @@ Four tests per model:
 
 Features:
 - Calls Ollama `/api/chat` directly — no Pi agent round-trip
+- **Automatic remote Ollama URL** — reads from `models.json`, no manual config
 - Retrieves model metadata (size, params, quantization, family) from `/api/tags`
 - **Auto-updates `models.json`** reasoning field based on thinking test results
 - **Text-based tool call detection** — models that output tool call JSON as text (instead of using the native API) are still correctly identified and scored
 - **JSON repair** — automatically fixes truncated JSON output (missing closing braces) from `num_predict` limits
+- **Thinking token fallback** — models that put reasoning in thinking tokens (e.g., qwen3) are detected even when `content` is empty
 - **Complete response display** — full model responses are shown with markdown code fences stripped for clean rendering
 - Tab-completion for model names in the `/model-test` command
 - Final recommendation: STRONG / GOOD / USABLE / WEAK
 
 Sample output:
 ```
- [model-test-report]                                                                                                      
-                                                                                                                          
-   ⚡ Pi Model Benchmark v1.0                                                                                             
-   Written by VTSTech                                                                                                     
-   GitHub: https://github.com/VTSTech                                                                                     
-   Website: www.vts-tech.org (http://www.vts-tech.org)                                                                    
-                                                                                                                          
- ── MODEL: granite4:350m ────────────────────────────────────                                                             
-   ℹ️  Size: 676 MB  |  Params: 352.38M  |  Quant: BF16                                                                   
-   ℹ️  Family: granite  |  Modified: 4/8/2026                                                                             
-                                                                                                                          
- ── REASONING TEST ──────────────────────────────────────────                                                             
-   ℹ️  Prompt: "A farmer has 17 sheep. All but 9 die. How many left?"                                                     
-   ℹ️  Testing...                                                                                                         
-   ℹ️  Time: 4.8s                                                                                                         
-   ✅ Answer: 9 —  Correct with clear reasoning (STRONG)                                                                   
-   ℹ️  Response: The farmer has 9 sheep left.                                                                             
-                                                                                                                          
- ── THINKING TEST ───────────────────────────────────────────                                                             
-   ℹ️  Prompt: "Multiply 37 by 43. Explain your reasoning step by step."                                                  
-   ℹ️  Time: 18.6s                                                                                                        
-   ❌  Thinking/reasoning tokens: NOT SUPPORTED                                                                            
-   ℹ️  Answer output: To multiply 37 by 43, we can use the standard multiplication algorithm.                             
-                                                                                                                          
- Step 1: Multiply the ones digit of the second number (3) by the first number (7).                                        
-    7 x 3 = 21                                                                                                            
-                                                                                                                          
- Step 2: Write down the result in the ones place.                                                                         
-    7 x 43 = 301                                                                                                          
-                                                                                                                          
- Step 3: Multiply the tens digit of the second number (4) by both numbers and add them together.                          
-    7 x 4 = 28                                                                                                            
-    3 x 4 = 12                                                                                                            
-    Add these results together:                                                                                           
-    28 + 12 = 40                                                                                                          
-                                                                                                                          
- Step 4: Write down the result in the tens place.                                                                         
-    301 + 40 = 341                                                                                                        
-                                                                                                                          
- Therefore, 37 multiplied by 43 equals 1,413.                                                                             
-                                                                                                                          
- ── MODELS.JSON SYNC ────────────────────────────────────────                                                             
-   ℹ️  reasoning already "false" for granite4:350m — no change                                                            
-                                                                                                                          
- ── TOOL USAGE TEST ─────────────────────────────────────────                                                             
-   ℹ️  Prompt: "What's the weather in Paris?" (with get_weather tool available)                                           
-   ℹ️  Testing...                                                                                                         
-   ℹ️  Time: 7.2s                                                                                                         
-   ✅  Tool call: get_weather({"location":"Paris"}) (STRONG)                                                               
-                                                                                                                          
- ── INSTRUCTION FOLLOWING TEST ──────────────────────────────                                                             
-   ℹ️  Prompt: Respond with ONLY a JSON object with keys: name, can_count, sum (15+27), language                          
-   ℹ️  Testing...                                                                                                         
-   ℹ️  Time: 4.6s                                                                                                         
-   ✅  JSON output valid with correct values (STRONG)                                                                      
-   ℹ️  Output: {"name":"AI Assistant","can_count":true,"sum":42,"language":"English"}                                     
-                                                                                                                          
- ── SUMMARY ─────────────────────────────────────────────────                                                             
-   ✅  Reasoning: STRONG                                                                                                   
-   ❌  Thinking: NO                                                                                                        
-   ✅  Tool Usage: STRONG                                                                                                  
-   ✅  Instructions: STRONG                                                                                                
-   ℹ️  Total time: 35.3s                                                                                                  
-   ℹ️  Score: 3/4 tests passed                                                                                            
-                                                                                                                          
- ── RECOMMENDATION ──────────────────────────────────────────                                                             
-   ✅ granite4:350m is a GOOD model —  most capabilities work
+ [model-test-report]
+
+   ⚡ Pi Model Benchmark v1.0
+   Written by VTSTech
+   GitHub: https://github.com/VTSTech
+   Website: www.vts-tech.org
+
+ ── MODEL: granite4:350m ────────────────────────────────────
+   ℹ️  Size: 676 MB  |  Params: 352.38M  |  Quant: BF16
+   ℹ️  Family: granite  |  Modified: 4/8/2026
+
+ ── REASONING TEST ──────────────────────────────────────────
+   ℹ️  Prompt: "A farmer has 17 sheep. All but 9 die. How many left?"
+   ℹ️  Testing...
+   ℹ️  Time: 6.2s
+   ✅ Answer: 9 — Correct with clear reasoning (STRONG)
+   ℹ️  Response: The farmer has 9 sheep left.
+
+ ── THINKING TEST ───────────────────────────────────────────
+   ℹ️  Prompt: "Multiply 37 by 43. Explain your reasoning step by step."
+   ℹ️  Time: 20.1s
+   ❌ Thinking/reasoning tokens: NOT SUPPORTED
+
+ ── MODELS.JSON SYNC ────────────────────────────────────────
+   ℹ️  reasoning already "false" for granite4:350m — no change
+
+ ── TOOL USAGE TEST ─────────────────────────────────────────
+   ℹ️  Prompt: "What's the weather in Paris?" (with get_weather tool available)
+   ℹ️  Testing...
+   ℹ️  Time: 6.9s
+   ✅ Tool call: get_weather({"location":"Paris"}) (STRONG)
+
+ ── INSTRUCTION FOLLOWING TEST ──────────────────────────────
+   ℹ️  Prompt: Respond with ONLY a JSON object with keys: name, can_count, sum (15+27), language
+   ℹ️  Testing...
+   ℹ️  Time: 5.2s
+   ✅ JSON output valid with correct values (STRONG)
+   ℹ️  Output: {"name":"AI Assistant","can_count":true,"sum":42,"language":"English"}
+
+ ── SUMMARY ─────────────────────────────────────────────────
+   ✅ Reasoning: STRONG
+   ❌ Thinking: NO
+   ✅ Tool Usage: STRONG
+   ✅ Instructions: STRONG
+   ℹ️  Total time: 39.0s
+   ℹ️  Score: 3/4 tests passed
+
+ ── RECOMMENDATION ──────────────────────────────────────────
+   ✅ granite4:350m is a GOOD model — most capabilities work
 ```
 
 ### 🔄 Ollama Sync (`ollama-sync.ts`)
 
-**Auto-populate models.json with all available Ollama models.**
+**Auto-populate models.json with all available Ollama models — works with local and remote instances.**
 
 ```bash
-/ollama-sync
+/ollama-sync                                    # Sync from models.json URL (or localhost)
+/ollama-sync https://your-tunnel-url            # Sync from a specific remote URL
 ```
 
-- Queries `http://localhost:11434/api/tags` for available models
-- Preserves existing provider config (baseUrl, apiKey, compat settings)
+- Queries Ollama `/api/tags` for available models (local or remote)
+- **Writes the actual Ollama URL back** into `models.json` so other extensions pick it up automatically
+- URL priority: CLI argument → existing `models.json` baseUrl → `OLLAMA_HOST` env → localhost
+- Preserves existing provider config (apiKey, compat settings)
 - Defaults to `openai-completions` API mode (correct for Ollama's `/v1/chat/completions` endpoint)
 - Sorts models by size (smallest first)
 - Auto-detects reasoning-capable models (deepseek-r1, qwq, o1, o3, think, reason)
@@ -185,7 +188,7 @@ Sample output:
 - **CPU%** — per-core delta via `os.cpus()`
 - **RAM** — used/total via `os.totalmem()` / `os.freemem()`
 - **Swap** — used/total from `/proc/meminfo` (shown only when swap is active)
-- **VRAM** — Ollama model currently loaded in memory via `ollama ps`
+- **Loaded model** — Ollama model currently loaded in memory via `/api/ps` (works with remote Ollama)
 - **Response time** — agent loop duration via `agent_start`/`agent_end` events
 - **Generation params** — temperature, top_p, top_k, max tokens, num_predict, context size captured via `before_provider_request` interception
 
@@ -224,7 +227,7 @@ Install by copying to `~/.pi/agent/themes/matrix.json`.
 ### Prerequisites
 
 - [Pi Coding Agent](https://github.com/badlogic/pi-mono) installed
-- [Ollama](https://ollama.com) running locally
+- [Ollama](https://ollama.com) running locally or on a remote machine
 
 ### Install Extensions
 
@@ -248,7 +251,8 @@ pi -c
 
 ```bash
 # 1. Sync your Ollama models into Pi
-/ollama-sync
+/ollama-sync                              # Local Ollama
+/ollama-sync https://your-tunnel-url      # Remote Ollama (e.g., Cloudflare Tunnel)
 
 # 2. Reload Pi to pick up changes
 /reload
@@ -259,6 +263,20 @@ pi -c
 # 4. Benchmark your models
 /model-test --all
 ```
+
+### Remote Ollama Setup
+
+If Ollama is running on a different machine, expose it via a tunnel and point Pi at it:
+
+```bash
+# On the Ollama machine — create a tunnel (example with cloudflared)
+cloudflared tunnel --url http://localhost:11434
+
+# In Pi — sync models from the tunnel URL
+/ollama-sync https://your-tunnel-url.trycloudflare.com
+```
+
+The URL gets saved to `models.json` and all extensions use it automatically. No need to set `OLLAMA_HOST` or pass the URL again.
 
 ### Recommended models.json
 
@@ -279,7 +297,7 @@ pi -c
 }
 ```
 
-> Use `/ollama-sync` to auto-populate the models array from your Ollama instance.
+> Use `/ollama-sync` to auto-populate the models array and set the correct `baseUrl` from your Ollama instance.
 
 ### Recommended settings.json
 
@@ -358,17 +376,22 @@ subprocess.Popen(["ollama", "serve"])
 
 ## Tested Models
 
-Benchmarks run with `/model-test` on Google Colab CPU (2x Xeon @ 2.20GHz, 12GB RAM):
+Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via remote Ollama over Cloudflare Tunnel:
 
 | Model | Params | Quant | Reasoning | Thinking | Tools | Instructions | Score |
 |-------|--------|-------|-----------|----------|-------|-------------|-------|
 | `granite4:350m` | 352M | BF16 | ✅ STRONG | ❌ | ✅ STRONG | ✅ STRONG | **3/4** |
+| `qwen3:0.6b` | 752M | Q4_K_M | ❌ FAIL | ✅ | ✅ STRONG | ✅ STRONG | **3/4** |
 | `qwen2.5-coder:1.5b` | 1.5B | Q4_K_M | ❌ WEAK | ❌ | ✅ STRONG | ✅ STRONG | **2/4** |
 | `llama3.2:1b` | 1.2B | Q8_0 | ❌ WEAK | ❌ | ✅ STRONG | ✅ STRONG | **2/4** |
+| `qwen2.5-coder:0.5b-instruct-q4_k_m` | 494M | Q4_K_M | ❌ WEAK | ❌ | ✅ MODERATE | ✅ STRONG | **2/4** |
+| `qwen:0.5b` | 620M | Q4_0 | ❌ WEAK | ❌ | ❌ FAIL | ✅ MODERATE | **1/4** |
+| `qwen2:0.5b` | 494M | Q4_0 | ❌ WEAK | ❌ | ❌ FAIL | ✅ STRONG | **1/4** |
+| `functiongemma:270m` | 268M | Q8_0 | ❌ FAIL | ❌ | ✅ STRONG | ❌ FAIL | **1/4** |
 | `gemma3:270m` | 268M | Q8_0 | ❌ FAIL | ❌ | ❌ FAIL | ❌ FAIL | **0/4** |
-| `functiongemma:270m` | 268M | Q8_0 | — | — | — | — | — |
+| `smollm:135m` | 135M | Q4_0 | ❌ FAIL | ❌ | ❌ FAIL | ❌ FAIL | **0/4** |
 
-> Reasoning test uses the model's last number as its answer. The "all but 9 die" puzzle requires understanding that 9 survive — models that calculate 17-9=8 get WEAK, while models that correctly state 9 get STRONG. Thinking test checks for `<think` tag support or native reasoning tokens. Tool usage detects both native Ollama `tool_calls` and JSON tool calls embedded in text. Instruction following includes automatic JSON repair for truncated output.
+> **Scoring notes:** Reasoning uses the model's last number as its answer — the "all but 9 die" puzzle requires understanding that 9 survive. Models calculating 17-9=8 get WEAK; correct answer of 9 with reasoning words gets STRONG. Thinking test checks for `<think` tag support or native reasoning tokens. Tool usage detects both native Ollama `tool_calls` and JSON tool calls in text. Instruction following includes automatic JSON repair for truncated output. MODERATE tool usage means the tool name was correct but arguments were wrong (e.g., pasted the JSON schema instead of actual values).
 
 ---
 
