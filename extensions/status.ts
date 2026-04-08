@@ -230,7 +230,7 @@ export default function (pi: ExtensionAPI) {
           if (hasSwap && swapUsed > 0) {
             parts.push(`Swap ${fmtBytes(swapUsed)}/${fmtBytes(swapTotal)}`);
           }
-          //if (ollamaLoaded) parts.push(`${ollamaLoaded}`);
+          if (ollamaLoaded) parts.push(`${ollamaLoaded}`);
           if (lastResponseTime !== null) parts.push(`Resp ${fmtDur(lastResponseTime)}`);
           if (lastPayload) {
             const params = extractParams(lastPayload);
