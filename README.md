@@ -380,18 +380,19 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 
 | Model | Params | Quant | Reasoning | Thinking | Tools | Instructions | Score |
 |-------|--------|-------|-----------|----------|-------|-------------|-------|
-| `granite4:350m` | 352M | BF16 | ⏳ pending | ❌ | ✅ STRONG | ✅ STRONG | **—** |
-| `qwen3:0.6b` | 752M | Q4_K_M | ⏳ pending | ✅ | ✅ STRONG | ✅ STRONG | **—** |
+| `granite4:350m` | 352M | BF16 | ❌ WEAK | ❌ | ✅ STRONG | ✅ STRONG | **2/4** |
+| `qwen3:0.6b` | 752M | Q4_K_M | ❌ FAIL | ✅ | ✅ STRONG | ✅ STRONG | **3/4** |
 | `qwen2.5-coder:1.5b` | 1.5B | Q4_K_M | ⏳ pending | ❌ | ✅ STRONG | ✅ STRONG | **—** |
 | `llama3.2:1b` | 1.2B | Q8_0 | ⏳ pending | ❌ | ✅ STRONG | ✅ STRONG | **—** |
-| `qwen2.5-coder:0.5b-instruct-q4_k_m` | 494M | Q4_K_M | ⏳ pending | ❌ | ✅ MODERATE | ✅ STRONG | **—** |
-| `qwen:0.5b` | 620M | Q4_0 | ⏳ pending | ❌ | ❌ FAIL | ✅ MODERATE | **—** |
-| `qwen2:0.5b` | 494M | Q4_0 | ⏳ pending | ❌ | ❌ FAIL | ✅ STRONG | **—** |
-| `functiongemma:270m` | 268M | Q8_0 | ⏳ pending | ❌ | ✅ STRONG | ❌ FAIL | **—** |
-| `gemma3:270m` | 268M | Q8_0 | ⏳ pending | ❌ | ❌ FAIL | ❌ FAIL | **—** |
-| `smollm:135m` | 135M | Q4_0 | ⏳ pending | ❌ | ❌ FAIL | ❌ FAIL | **—** |
+| `qwen2.5-coder:0.5b-instruct-q4_k_m` | 494M | Q4_K_M | ❌ WEAK | ❌ | ✅ MODERATE | ✅ STRONG | **2/4** |
+| `qwen2.5:0.5b` | 494M | Q4_K_M | ❌ WEAK | ❌ | ✅ STRONG | ✅ STRONG | **2/4** |
+| `qwen:0.5b` | 620M | Q4_0 | ❌ WEAK | ❌ | ❌ FAIL | ✅ MODERATE | **1/4** |
+| `qwen2:0.5b` | 494M | Q4_0 | ❌ WEAK | ❌ | ❌ FAIL | ✅ STRONG | **1/4** |
+| `functiongemma:270m` | 268M | Q8_0 | ❌ WEAK | ❌ | ✅ STRONG | ❌ FAIL | **1/4** |
+| `gemma3:270m` | 268M | Q8_0 | ❌ WEAK | ❌ | ❌ FAIL | ❌ FAIL | **0/4** |
+| `smollm:135m` | 135M | Q4_0 | ❌ WEAK | ❌ | ❌ FAIL | ❌ FAIL | **0/4** |
 
-> Reasoning scores marked pending — re-test needed with the new snail wall puzzle. Other scores (thinking, tools, instructions) remain valid.
+> Reasoning scores pending for qwen2.5-coder:1.5b and llama3.2:1b — re-test needed with the new snail wall puzzle. Other scores remain valid.
 
 ---
 
