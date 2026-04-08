@@ -131,16 +131,27 @@ Sample output:
 
 ### 📊 System Monitor (`status.ts`)
 
-**Real-time system resource monitoring in the Pi status bar.**
+**Replaces the Pi footer with a unified status bar showing system metrics, model info, and generation params.**
 
 ```
-CPU 54% · RAM 5.2G/12.7G · Resp 5m24s · max:16384
+~/project · main · CPU 54% · RAM 5.2G/12.7G · Swap 128M/2.0G · granite4:350m · Resp 5m24s · temp:0.0 · max:16384 · 1.2%/128k
 ```
 
-- CPU usage via `os.cpus()` delta (refreshes every 3s)
-- RAM usage via `os.totalmem()` and `os.freemem()`
-- Response time via `agent_start`/`agent_end` event timing
-- Generation parameters captured via `before_provider_request` interception
+**Line 1 displays:**
+- **Working directory** — compact `~`-relative path
+- **Git branch** — current branch name (dimmed)
+- **Thinking level** — shown when active (off is hidden)
+- **Context usage** — percentage and window size (`1.2%/128k`)
+
+**System metrics (update every 3s):**
+- **CPU%** — per-core delta via `os.cpus()`
+- **RAM** — used/total via `os.totalmem()` / `os.freemem()`
+- **Swap** — used/total from `/proc/meminfo` (shown only when swap is active)
+- **VRAM** — Ollama model currently loaded in memory via `ollama ps`
+- **Response time** — agent loop duration via `agent_start`/`agent_end` events
+- **Generation params** — temperature, top_p, top_k, max tokens, num_predict, context size captured via `before_provider_request` interception
+
+Restores the default footer on session shutdown.
 
 ---
 
