@@ -94,11 +94,11 @@ export default function (pi: ExtensionAPI) {
 
     if (isRemoteOllama) {
       // Remote Ollama — probe via HTTP instead of CLI
+      const ollamaRoot = ollamaBaseUrl.replace(/\/v1\/?$/, "");
       lines.push(info(`Remote Ollama detected: ${ollamaBaseUrl}`));
       try {
         const startTime = Date.now();
-        const versionUrl = ollamaBaseUrl.replace(/\/v1\s*$/, "/api/version");
-        const versionRes = await fetch(versionUrl, { signal: AbortSignal.timeout(10000) });
+        const versionRes = await fetch(`${ollamaRoot}/api/version`, { signal: AbortSignal.timeout(10000) });
         const latency = Date.now() - startTime;
         if (versionRes.ok) {
           const versionData = await versionRes.json();
@@ -114,8 +114,7 @@ export default function (pi: ExtensionAPI) {
 
       if (ollamaOk) {
         try {
-          const tagsUrl = ollamaBaseUrl.replace(/\/v1\s*$/, "/api/tags");
-          const tagsRes = await fetch(tagsUrl, { signal: AbortSignal.timeout(15000) });
+          const tagsRes = await fetch(`${ollamaRoot}/api/tags`, { signal: AbortSignal.timeout(15000) });
           if (tagsRes.ok) {
             const tagsData = await tagsRes.json();
             ollamaModels = (tagsData.models || []).map((m: any) => m.name || m.model).filter(Boolean);
@@ -127,8 +126,7 @@ export default function (pi: ExtensionAPI) {
 
         // Check currently loaded model via /api/ps
         try {
-          const psUrl = ollamaBaseUrl.replace(/\/v1\s*$/, "/api/ps");
-          const psRes = await fetch(psUrl, { signal: AbortSignal.timeout(10000) });
+          const psRes = await fetch(`${ollamaRoot}/api/ps`, { signal: AbortSignal.timeout(10000) });
           if (psRes.ok) {
             const psData = await psRes.json();
             const loaded = psData.models || [];
