@@ -340,7 +340,7 @@ export default function (pi: ExtensionAPI) {
     // e. Audit log status
     lines.push(info("Audit log status:"));
     const auditEntries = readRecentAuditEntries(50);
-    const auditLogPath = path.join(os.homedir(), ".agentnova", "audit.log");
+    const auditLogPath = path.join(os.homedir(), ".pi", "agent", "audit.log");
     if (fs.existsSync(auditLogPath)) {
       lines.push(ok(`Audit log exists: ${auditLogPath}`));
       if (auditEntries.length > 0) {

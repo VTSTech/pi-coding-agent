@@ -13,7 +13,7 @@ import type { ToolSupportLevel } from "../shared/types";
 
 // ── Tool support cache ──────────────────────────────────────────────────
 
-const TOOL_SUPPORT_CACHE_DIR = path.join(os.homedir(), ".cache", "agentnova");
+const TOOL_SUPPORT_CACHE_DIR = path.join(os.homedir(), ".pi", "agent", "cache");
 const TOOL_SUPPORT_CACHE_PATH = path.join(TOOL_SUPPORT_CACHE_DIR, "tool_support.json");
 
 interface ToolSupportCacheRecord {
@@ -537,7 +537,7 @@ The JSON object must have exactly these 4 keys:
    *   - "react":   Model outputs "Action:" / "Action Input:" patterns (ReAct format)
    *   - "none":    No tool support detected
    *
-   * Results are cached to ~/.cache/agentnova/tool_support.json to avoid
+   * Results are cached to ~/.pi/agent/cache/tool_support.json to avoid
    * re-probing models on every run.
    */
   async function testToolSupport(

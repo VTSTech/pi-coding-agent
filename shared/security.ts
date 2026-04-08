@@ -248,7 +248,7 @@ export function sanitizeCommand(
 // ============================================================================
 
 /** Default audit log directory. */
-const AUDIT_DIR = path.join(os.homedir(), ".agentnova");
+const AUDIT_DIR = path.join(os.homedir(), ".pi", "agent");
 const AUDIT_LOG_PATH = path.join(AUDIT_DIR, "audit.log");
 
 /** Append an audit entry to the JSON-lines log file. */
