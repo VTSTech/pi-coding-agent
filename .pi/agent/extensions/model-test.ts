@@ -139,10 +139,6 @@ export default function (pi: ExtensionAPI) {
         const lastMatch = lastSheepMatch[lastSheepMatch.length - 1];
         answer = lastMatch.match(/(\d+)/)![1];
         answerConfidence = 0.5;
-        // Use the LAST "= <number>" occurrence
-        const lastEquals = equalsMatch[equalsMatch.length - 1];
-        answer = lastEquals.match(/(\d+)/)![1];
-        answerConfidence = 0.7;
       } else if (allNumbers.length > 0) {
         // Use the last number in the response
         answer = allNumbers[allNumbers.length - 1];
@@ -407,17 +403,35 @@ Create a JSON object with these exact keys:
     try {
       const { response, elapsedMs } = await ollamaChat(model, [
         { role: "user", content: prompt },
-      ], { num_predict: 256 });
+      ], { num_predict: 512 });
 
       const msg = (response?.message?.content || "").trim();
 
-      // Try to parse as JSON
+      // Try to parse as JSON (with repair for truncated output)
       let parsed: any = null;
+      let repairNote = "";
       try {
         // Strip markdown fences if present
         const cleaned = msg.replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
         parsed = JSON.parse(cleaned);
-      } catch { /* not valid JSON */ }
+      } catch {
+        // Attempt JSON repair — add missing closing braces/brackets
+        // (common when model output is truncated by num_predict limit)
+        const cleaned = msg.replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
+        const openBraces = (cleaned.match(/\{/g) || []).length;
+        const closeBraces = (cleaned.match(/\}/g) || []).length;
+        const openBrackets = (cleaned.match(/\[/g) || []).length;
+        const closeBrackets = (cleaned.match(/\]/g) || []).length;
+        if (openBraces > closeBraces || openBrackets > closeBrackets) {
+          const repaired = cleaned
+            + "}".repeat(Math.max(0, openBraces - closeBraces))
+            + "]".repeat(Math.max(0, openBrackets - closeBrackets));
+          try {
+            parsed = JSON.parse(repaired);
+            repairNote = " (repaired truncated JSON)";
+          } catch { /* repair failed too */ }
+        }
+      }
 
       if (!parsed) {
         return { pass: false, score: "FAIL", output: sanitizeForReport(msg), elapsedMs };
@@ -441,7 +455,7 @@ Create a JSON object with these exact keys:
       return {
         pass: hasKeys,
         score,
-        output: JSON.stringify(parsed),
+        output: JSON.stringify(parsed) + repairNote,
         elapsedMs,
       };
     } catch (e: any) {
