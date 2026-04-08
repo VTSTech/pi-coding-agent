@@ -219,7 +219,7 @@ export default function (pi: ExtensionAPI) {
       ],
       tools,
       stream: false,
-      options: { num_predict: 256, temperature: 0.0 },
+      options: { num_predict: 512, temperature: 0.0 },
     };
 
     try {
