@@ -278,6 +278,32 @@ Sample output (cloud provider):
    ✅ openai/gpt-oss-120b:free is a STRONG model via openrouter
 ```
 
+### 🔀 API Mode Switcher (`api.ts`)
+
+**Runtime switching of API modes, base URLs, thinking settings, and compat flags in `models.json`.**
+
+Supports all 10 Pi API modes:
+`anthropic-messages` · `openai-completions` · `openai-responses` · `azure-openai-responses` · `openai-codex-responses` · `mistral-conversations` · `google-generative-ai` · `google-gemini-cli` · `google-vertex` · `bedrock-converse-stream`
+
+```bash
+/api                   # Show current provider config (mode, URL, compat flags)
+/api mode <mode>       # Switch API mode (partial match supported)
+/api url <url>         # Switch base URL
+/api think on|off|auto # Toggle thinking for all models in provider
+/api compat <key>      # View compat flags
+/api compat <key> <val> # Set compat flag
+/api modes             # List all 10 supported API modes
+/api providers         # List all configured providers
+/api reload            # Hint to run /reload
+```
+
+**Features:**
+- **Partial mode matching** — `/api mode openai-r` matches `openai-responses`
+- **Auto-detect local provider** — targets the first `localhost`/`ollama` provider by default
+- **Batch thinking toggle** — set `reasoning: true/false` across all models at once
+- **Compat flag management** — get/set `supportsDeveloperRole`, `thinkingFormat`, `maxTokensField`, etc.
+- Tab-completion for sub-commands
+
 ### 🔒 Security (`security.ts`)
 
 **Command, path, and network security layer for Pi's tool execution.**
@@ -531,6 +557,7 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 | `qwen2.5-coder:0.5b-instruct-q4_k_m` | ✅ STRONG | ✅ STRONG | ✅ STRONG | REACT | **5/6** |
 | `granite4:350m` | ✅ STRONG | ✅ MODERATE | ✅ STRONG | NATIVE | **4/6** |
 | `qwen3:1.7b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | NATIVE | **4/6** |
+| `qwen3.5:0.8b` | ✅ STRONG | ❌ ERROR | ❌ ERROR | NATIVE | **2/6** |
 | `qwen2.5:0.5b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | NATIVE | **4/6** |
 | `llama3.2:1b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | NATIVE | **4/6** |
 | `qwen2.5-coder:1.5b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | REACT | **4/6** |
@@ -565,6 +592,7 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 ```
 pi-coding-agent/
 ├── extensions/
+│   ├── api.ts                # API mode switcher — modes, URLs, thinking, compat flags
 │   ├── diag.ts              # System diagnostic suite
 │   ├── model-test.ts        # Model benchmark — Ollama & cloud providers
 │   ├── ollama-sync.ts       # Ollama ↔ models.json sync
