@@ -146,7 +146,7 @@ Six tests per model:
 | **Tool Usage** | Native tool call generation — sends Ollama `/api/chat` with `tools` array, detects structured `tool_calls` in API response | STRONG / MODERATE / WEAK / FAIL |
 | **ReAct Parsing** | ReAct-style text tool calling — sends prompt with ReAct format instructions but NO native tools, parses `Thought:` / `Action:` / `Action Input:` patterns from text response. Validates JSON args extraction and handles markdown code fence wrapping. | STRONG / MODERATE / WEAK / FAIL |
 | **Instruction Following** | Strict JSON output format compliance — 4 specific keys with typed values, automatic repair of truncated output | STRONG / MODERATE / WEAK / FAIL |
-| **Tool Support** | Combined probe classifying the model as `native` (structured API tool_calls), `react` (text-based tool calling), or `none`. Results cached to `~/.pi/agent/cache/tool_support.json` to avoid repeated probing. | NATIVE / REACT / NONE |
+| **Tool Support** | Combined probe classifying the model as `native` (structured API tool_calls), `react` (text-based tool calling including ReAct patterns or JSON tool calls in text), or `none`. Code fences are stripped before pattern matching. Results cached to `~/.pi/agent/cache/tool_support.json` to avoid repeated probing. | NATIVE / REACT / NONE |
 
 Features:
 - Calls Ollama `/api/chat` directly — no Pi agent round-trip
@@ -156,10 +156,12 @@ Features:
 - Retrieves model metadata (size, params, quantization, family) from `/api/tags`
 - **Auto-updates `models.json`** reasoning field based on thinking test results
 - **Markdown code fence stripping** — handles models that wrap their ReAct Action Input in ```json fences
+- **Multiple ReAct format variants** — standard (`Action: tool\nAction Input: {json}`), same-line, natural language Action lines, parenthetical (`Action: tool(arg: val)`)
+- **HTML response truncation** — detects HTML error pages (e.g., Cloudflare 524) and truncates to one line
 - **JSON repair** — automatically fixes truncated JSON output (missing closing braces) from `num_predict` limits
 - **Thinking token fallback** — models that put reasoning in thinking tokens (e.g., qwen3) are detected even when `content` is empty
-- **Complete response display** — full model responses are shown with markdown code fences stripped for clean rendering
-- **Model family detection** — identifies 20+ model families (qwen, llama, gemma, granite, phi, mistral, etc.)
+- **Complete response display** — full model responses shown with code fences stripped and HTML truncated for clean rendering
+- **Model family detection** — identifies 20+ model families from Ollama API metadata (qwen, llama, gemma, granite, phi, mistral, etc.)
 - Tab-completion for model names in the `/model-test` command
 - Final recommendation: STRONG / GOOD / USABLE / WEAK
 
@@ -516,19 +518,22 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 | Model | Params | Quant | Reasoning | Thinking | Tools | ReAct | Instructions | Support | Score |
 |-------|--------|-------|-----------|----------|-------|-------|-------------|---------|-------|
 | `qwen2.5:0.5b` | 494M | Q4_K_M | ❌ WEAK | ❌ | ✅ STRONG | ✅ STRONG | ✅ STRONG | native | **4/6** |
+| `llama3.2:1b` | 1.2B | Q8_0 | ✅ STRONG | ❌ | ✅ STRONG | ✅ STRONG | ✅ STRONG | react | **4/6** |
+| `qwen2.5-coder:1.5b` | 1.5B | Q4_K_M | ❌ WEAK | ❌ | ✅ STRONG | ✅ STRONG | ✅ STRONG | react | **4/6** |
+| `qwen3:0.6b` | 752M | Q4_K_M | ❌ ERROR* | ❌ | ✅ STRONG | ✅ STRONG | ✅ STRONG | native | **4/6** |
 | `granite4:350m` | 352M | BF16 | ❌ WEAK | ❌ | ✅ STRONG | ❌ | ✅ STRONG | native | **3/6** |
-| `qwen3:0.6b` | 752M | Q4_K_M | ⏳ pending | ✅ | ✅ STRONG | — | ✅ STRONG | — | **—** |
 | `functiongemma:270m` | 268M | Q8_0 | ❌ WEAK | ❌ | ✅ STRONG | ❌ | ❌ FAIL | native | **2/6** |
-| `qwen2.5-coder:1.5b` | 1.5B | Q4_K_M | ❌ WEAK | ❌ | ✅ STRONG | — | ✅ STRONG | native | **—** |
-| `llama3.2:1b` | 1.2B | Q8_0 | ❌ WEAK | ❌ | ✅ STRONG | — | ✅ STRONG | native | **—** |
+| `nchapman/dolphin3.0-qwen2.5:0.5b` | 494M | Q4_K_M | ❌ WEAK | ❌ | ⛔ N/A | ✅ STRONG | ✅ STRONG | none | **2/6** |
+| `qwen2.5-coder:0.5b` | 494M | Q4_K_M | ❌ WEAK | ❌ | ✅ MODERATE | — | ✅ STRONG | native | **—** |
 | `qwen:0.5b` | 620M | Q4_0 | ❌ WEAK | ❌ | ❌ FAIL | ❌ | ✅ MODERATE | none | **1/6** |
 | `gemma3:270m` | 268M | Q8_0 | ❌ WEAK | ❌ | ❌ FAIL | ✅ MODERATE | ❌ FAIL | none | **1/6** |
-| `qwen2.5-coder:0.5b` | 494M | Q4_K_M | ❌ WEAK | ❌ | ✅ MODERATE | — | ✅ STRONG | native | **—** |
 | `qwen2:0.5b` | 494M | Q4_0 | ❌ WEAK | ❌ | ❌ FAIL | — | ✅ STRONG | none | **—** |
-| `nchapman/dolphin3.0-llama3:1b` | 1.2B | Q4_K_M | ❌ WEAK | ❌ | ⛔ N/A | — | ✅ STRONG | none | **—** |
+| `nchapman/dolphin3.0-llama3:1b` | 1.2B | Q4_K_M | ❌ WEAK | ❌ | ⛔ N/A | ❌ | ✅ STRONG | none | **1/6** |
 | `smollm:135m` | 135M | Q4_0 | ❌ WEAK | ❌ | ❌ FAIL | ❌ | ❌ FAIL | none | **0/6** |
 
 > ⛔ = model does not support tool calls (Ollama API returns error). Scored as FAIL for tool usage. Models not yet re-tested with v1.1 (ReAct + Tool Support tests) show `—` for those columns.
+>\* qwen3:0.6b has thinking support but the Cloudflare tunnel (100s timeout) expired during reasoning/thinking tests. Previous successful run confirmed thinking SUPPORTED with correct 37×43=1591 calculation.
+> llama3.2:1b and qwen2.5-coder:1.5b output tool call JSON in text without native API tool_calls — classified as `react` support.
 
 ---
 
