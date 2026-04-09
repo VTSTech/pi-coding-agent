@@ -427,10 +427,13 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 | `functiongemma:270m` | ❌ WEAK | ❌ | ✅ STRONG | ❌ FAIL | **1/4** |
 | `gemma3:270m` | ❌ WEAK | ❌ | ❌ FAIL | ❌ FAIL | **0/4** |
 | `smollm:135m` | ❌ WEAK | ❌ | ❌ FAIL | ❌ FAIL | **0/4** |
+| `ishumilin/deepseek-r1-coder-tools:1.5b` | ❌ ERROR† | ❌ | ❌ FAIL | ❌ FAIL | **0/6** |
 
 > *qwen3:0.6b scored 3/4 previously but needs re-test — the snail puzzle reasoning score was not captured before a timeout issue. The `think:true` fallback in the latest update should now handle this correctly.
 >
 > ⛔ = model does not support tool calls (Ollama API returns error). Scored as 0 for tool usage.
+>
+> † = curl 22 error (Cloudflare Tunnel 524 timeout). Model likely needs a re-test on a stable connection.
 
 ---
 
