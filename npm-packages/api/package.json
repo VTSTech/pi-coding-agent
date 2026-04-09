@@ -5,6 +5,7 @@
   "main": "api.js",
   "keywords": ["pi-package", "pi-extensions"],
   "license": "MIT",
+  "access": "public",
   "author": "VTSTech",
   "homepage": "https://www.vts-tech.org",
   "repository": {
