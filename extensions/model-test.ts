@@ -813,7 +813,10 @@ The JSON object must have exactly these 4 keys:
       }
 
       // ── Check for text-based tool invocation (softer signal) ─────
-      // Some models output tool-like JSON or structured calls in text
+      // Some models output tool-like JSON or structured calls in text.
+      // Strip code fences first so they don't interfere with pattern matching.
+      const strippedContent = content.replace(/^\s*```\w*\s*/gm, "").replace(/```\s*$/gm, "").trim();
+
       const textToolPatterns = [
         /\bget_weather\b/i,                    // Model mentions the tool name
         /\bfunction_call\b/i,                  // Explicit function call marker
@@ -821,14 +824,33 @@ The JSON object must have exactly these 4 keys:
         /"name"\s*:\s*"get_weather"/,          // JSON with tool name
       ];
 
-      const hasTextToolSignal = textToolPatterns.some(p => p.test(content));
+      const hasTextToolSignal = textToolPatterns.some(p => p.test(strippedContent));
+
+      // Check if the model output looks like a valid tool call JSON
+      // (even if not using the API tool_calls mechanism)
+      const hasJsonToolCall = /"name"\s*:\s*"get_weather"/i.test(strippedContent)
+        && /"arguments"\s*:\s*\{/i.test(strippedContent);
+
+      if (hasJsonToolCall) {
+        // Model outputs structured tool call JSON in text — classify as react
+        // since the react-fallback parser can handle this format
+        const level: ToolSupportLevel = "react";
+        cacheToolSupport(model, level, family);
+        return {
+          level,
+          cached: false,
+          evidence: `JSON tool call in text (no native API tool_calls — will use react-fallback)`,
+          elapsedMs,
+        };
+      }
 
       // ── No tool support detected ─────────────────────────────────
       const level: ToolSupportLevel = "none";
       cacheToolSupport(model, level, family);
+      const cleanContent = truncate(strippedContent, 150);
       const evidenceDetail = hasTextToolSignal
-        ? `no structured tool calling (text mentions tool: ${truncate(content, 150)})`
-        : `no tool calling patterns (text: ${truncate(content, 150)})`;
+        ? `no structured tool calling (text mentions tool: ${cleanContent})`
+        : `no tool calling patterns (text: ${cleanContent})`;
       return { level, cached: false, evidence: evidenceDetail, elapsedMs };
     } catch (e: any) {
       const level: ToolSupportLevel = "none";
