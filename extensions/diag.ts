@@ -24,7 +24,7 @@ export default function (pi: ExtensionAPI) {
   // ── core diagnostic logic ────────────────────────────────────────────
 
   const branding = [
-    `  ⚡ Pi Diagnostics v1.0.2`,
+    `  ⚡ Pi Diagnostics v1.0.3`,
     `  Written by VTSTech`,
     `  GitHub: https://github.com/VTSTech`,
     `  Website: www.vts-tech.org`,
