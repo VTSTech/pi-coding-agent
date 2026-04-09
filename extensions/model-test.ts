@@ -966,7 +966,10 @@ The JSON object must have exactly these 4 keys:
     } else if (reasoning.score === "FAIL") {
       lines.push(fail(`Answer: ${reasoning.answer} — No reasoning detected (${reasoning.score})`));
     } else {
-      lines.push(fail(`Error: ${reasoning.reasoning}`));
+      const errMsg = reasoning.reasoning.includes("<!DOCTYPE") || reasoning.reasoning.includes("<html")
+        ? reasoning.reasoning.split("\n")[0].slice(0, 100) + "..." 
+        : truncate(reasoning.reasoning, 300);
+      lines.push(fail(`Error: ${errMsg}`));
     }
     lines.push(info(`Response: ${sanitizeForReport(reasoning.reasoning)}`));
 
