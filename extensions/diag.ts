@@ -424,24 +424,48 @@ export default function (pi: ExtensionAPI) {
       lines.push(info(`Model: ${model.id || "unknown"}`));
       lines.push(info(`Provider: ${model.provider || "unknown"}`));
 
-      // ── API Mode (reuse modelsJson from MODELS.JSON section if parsed) ──
-      if (modelsJson) {
-        const providerCfg = (modelsJson.providers || {})[model.provider];
-        if (providerCfg) {
-          const apiMode = providerCfg.api || "not set";
-          const baseUrl = providerCfg.baseUrl || "not set";
-          lines.push(info(`API mode: ${apiMode}`));
-          lines.push(info(`Base URL: ${baseUrl}`));
-          if (providerCfg.apiKey) {
-            lines.push(info(`API key: ****${String(providerCfg.apiKey).slice(-4)}`));
-          }
-        } else {
-          lines.push(info(`API mode: unknown — provider "${model.provider}" not found in models.json`));
+      // ── API Mode detection (3-tier: models.json → built-in providers → unknown) ──
+      // Pi has two provider layers:
+      //   1. Built-in providers (openrouter, anthropic, google, etc.) configured by Pi internally
+      //   2. User-defined providers in models.json (e.g. ollama)
+      // The ExtensionAPI does not expose a getProviderConfig() method, so we maintain a
+      // lookup table for known built-in providers and fall back to models.json for user ones.
+      const BUILTIN_PROVIDERS: Record<string, { api: string; baseUrl: string }> = {
+        openrouter:    { api: "openai-completions", baseUrl: "https://openrouter.ai/api/v1" },
+        anthropic:     { api: "anthropic-messages", baseUrl: "https://api.anthropic.com" },
+        google:        { api: "gemini",             baseUrl: "https://generativelanguage.googleapis.com" },
+        openai:        { api: "openai-completions", baseUrl: "https://api.openai.com" },
+        groq:          { api: "openai-completions", baseUrl: "https://api.groq.com" },
+        deepseek:      { api: "openai-completions", baseUrl: "https://api.deepseek.com" },
+        mistral:       { api: "openai-completions", baseUrl: "https://api.mistral.ai" },
+        xai:           { api: "openai-completions", baseUrl: "https://api.x.ai" },
+        together:      { api: "openai-completions", baseUrl: "https://api.together.xyz" },
+        fireworks:     { api: "openai-completions", baseUrl: "https://api.fireworks.ai" },
+        cohere:        { api: "cohere-chat",        baseUrl: "https://api.cohere.com" },
+      };
+
+      const providerName = model.provider || "";
+      const userProviderCfg = modelsJson ? (modelsJson.providers || {})[providerName] : null;
+
+      if (userProviderCfg) {
+        // Tier 1: User-defined provider from models.json
+        const apiMode = userProviderCfg.api || "not set";
+        const baseUrl = userProviderCfg.baseUrl || "not set";
+        lines.push(info(`API mode: ${apiMode} (models.json)`));
+        lines.push(info(`Base URL: ${baseUrl}`));
+        if (userProviderCfg.apiKey) {
+          lines.push(info(`API key: ****${String(userProviderCfg.apiKey).slice(-4)}`));
         }
-      } else if (fs.existsSync(modelsJsonPath)) {
-        lines.push(info(`API mode: unknown — could not parse models.json`));
+      } else if (BUILTIN_PROVIDERS[providerName]) {
+        // Tier 2: Known built-in provider
+        const builtin = BUILTIN_PROVIDERS[providerName];
+        lines.push(info(`API mode: ${builtin.api} (built-in: ${providerName})`));
+        lines.push(info(`Base URL: ${builtin.baseUrl}`));
+      } else if (providerName) {
+        // Tier 3: Unknown provider
+        lines.push(info(`API mode: unknown — provider "${providerName}" not in models.json or built-in list`));
       } else {
-        lines.push(info(`API mode: unknown — models.json not found`));
+        lines.push(info(`API mode: unknown — no provider configured`));
       }
 
       lines.push(info(`Context window: ${model.contextWindow ?? "unknown"}`));
