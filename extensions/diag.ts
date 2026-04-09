@@ -259,15 +259,21 @@ export default function (pi: ExtensionAPI) {
     const activeTools = pi.getActiveTools();
     const allTools = pi.getAllTools();
 
-    if (fs.existsSync(extensionsDir)) {
-      const extFiles = fs.readdirSync(extensionsDir).filter(f =>
-        f.endsWith(".ts") || f.endsWith(".js")
-      );
-      lines.push(info(`Extension files in ${extensionsDir}: ${extFiles.length}`));
-      extFiles.forEach(f => lines.push(info(`  • ${f}`)));
-      check(extFiles.length > 0, `${extFiles.length} extension(s) found`, "No extensions found");
+    // Built-in Pi tools: read, bash, edit, write — anything beyond that comes from extensions
+    const builtinTools = new Set(["read", "bash", "edit", "write"]);
+    const extensionToolCount = activeTools.filter(t => !builtinTools.has(t)).length;
+    const localExtFiles = fs.existsSync(extensionsDir)
+      ? fs.readdirSync(extensionsDir).filter(f => f.endsWith(".ts") || f.endsWith(".js"))
+      : [];
+    lines.push(info(`Extension files in ${extensionsDir}: ${localExtFiles.length}`));
+    localExtFiles.forEach(f => lines.push(info(`  • ${f}`)));
+    if (localExtFiles.length > 0) {
+      check(true, `${localExtFiles.length} local extension(s) found`);
+    } else if (extensionToolCount > 0) {
+      lines.push(info(`${extensionToolCount} extension tool(s) loaded from Pi package`));
+      check(true, `${extensionToolCount} extension(s) active via Pi package`);
     } else {
-      lines.push(warn(`Extensions directory not found: ${extensionsDir}`));
+      check(false, "", "No extensions found");
     }
 
     lines.push(info(`Active tools: ${activeTools.length}`));
