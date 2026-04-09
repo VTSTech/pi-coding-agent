@@ -2,10 +2,16 @@
  * Shared security utilities for Pi Coding Agent extensions.
  * Ported from AgentNova core/helpers.py — security layer.
  *
- * Provides: command blocklist, path validation, SSRF protection,
- * injection detection, URL validation, audit logging.
+ * Provides comprehensive security controls including:
+ * - Command blocklist validation
+ * - Path validation (filesystem escape prevention)
+ * - SSRF protection (internal IP blocking)
+ * - Shell injection detection
+ * - URL validation
+ * - Audit logging
  *
- * Written by VTSTech — https://www.vts-tech.org
+ * @module shared/security
+ * @writtenby VTSTech — https://www.vts-tech.org
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -15,7 +21,30 @@ import os from "node:os";
 // Command Blocklist
 // ============================================================================
 
-/** Blocked shell commands — ported from AgentNova BLOCKED_COMMANDS. */
+/**
+ * Set of blocked shell commands that should never be executed.
+ *
+ * Ported from AgentNova's `BLOCKED_COMMANDS` configuration.
+ * Commands are blocked based on their base name (path prefixes are stripped).
+ *
+ * Categories:
+ * - **System modification**: rm, rmdir, format, fdisk, mkfs, dd, shred
+ * - **Privilege escalation**: sudo, su, doas, pkexec
+ * - **Network attacks**: nmap, nc, netcat, telnet
+ * - **Package management**: apt, yum, dnf, pacman, pip, npm
+ * - **Process control**: kill, killall, systemctl
+ * - **User management**: useradd, userdel, passwd
+ * - **Dangerous shell features**: exec, eval, source
+ * - **Filesystem**: mount, umount, chown, chmod
+ * - **Shell escapes**: vi, vim, nano, emacs, less, more
+ *
+ * @example
+ * ```typescript
+ * if (BLOCKED_COMMANDS.has("rm")) {
+ *   console.log("rm command is blocked");
+ * }
+ * ```
+ */
 export const BLOCKED_COMMANDS: ReadonlySet<string> = new Set([
   // System modification
   "rm", "rmdir", "del", "format", "fdisk", "mkfs",
@@ -43,7 +72,30 @@ export const BLOCKED_COMMANDS: ReadonlySet<string> = new Set([
 // SSRF Protection
 // ============================================================================
 
-/** Blocked URL hostname patterns — ported from AgentNova BLOCKED_URL_PATTERNS. */
+/**
+ * Set of blocked URL hostname patterns for SSRF protection.
+ *
+ * Ported from AgentNova's `BLOCKED_URL_PATTERNS` configuration.
+ * These patterns are matched against URL hostnames to prevent
+ * Server-Side Request Forgery attacks.
+ *
+ * Categories:
+ * - **Loopback**: localhost, 127.0.0.1, 0.0.0.0, ::1
+ * - **RFC1918 private ranges**: 10.x, 192.168.x, 172.16-31.x
+ * - **Cloud metadata endpoints**: 169.254.169.254 (AWS, GCP, Azure)
+ * - **Internal service patterns**: internal., local., private., intranet.
+ *
+ * @example
+ * ```typescript
+ * // Check if a URL hostname matches a blocked pattern
+ * const hostname = "169.254.169.254";
+ * for (const pattern of BLOCKED_URL_PATTERNS) {
+ *   if (hostname === pattern || hostname.startsWith(pattern)) {
+ *     console.log(`Blocked: matches ${pattern}`);
+ *   }
+ * }
+ * ```
+ */
 export const BLOCKED_URL_PATTERNS: ReadonlySet<string> = new Set([
   // Loopback
   "localhost", "127.0.0.1", "0.0.0.0", "::1",
@@ -62,17 +114,45 @@ export const BLOCKED_URL_PATTERNS: ReadonlySet<string> = new Set([
 // Path Validation
 // ============================================================================
 
-/** System directories that file tools must not access. */
+/**
+ * System directories that file tools must not access.
+ *
+ * These directories are protected to prevent accidental or malicious
+ * modification of critical system files.
+ */
 const CRITICAL_SYSTEM_DIRS = [
   "/etc", "/root", "/var", "/usr", "/bin", "/sbin", "/boot", "/dev", "/proc", "/sys",
 ];
 
 /**
  * Validate a file path for security.
- * Ported from AgentNova validate_path().
  *
- * Checks: empty paths, UNC paths, path traversal, system directories.
- * Allows: /tmp, /var/tmp, /home, CWD, and custom allowed directories.
+ * Performs multiple security checks on a file path:
+ * 1. Rejects empty paths
+ * 2. Rejects UNC paths (Windows network paths)
+ * 3. Detects path traversal attempts (../)
+ * 4. Blocks access to critical system directories
+ * 5. Blocks access to sensitive files (.ssh, .gnupg, etc.)
+ * 6. Restricts to allowed directories
+ *
+ * @param filePath - The file path to validate
+ * @param allowedDirs - Optional array of additional allowed directories
+ * @returns Object with `valid` boolean and `error` message if invalid
+ *
+ * @example
+ * ```typescript
+ * // Valid path in allowed directory
+ * validatePath("/home/user/project/file.txt");
+ * // Returns: { valid: true, error: "" }
+ *
+ * // Invalid path traversal attempt
+ * validatePath("../../../etc/passwd");
+ * // Returns: { valid: false, error: "Path traversal detected..." }
+ *
+ * // Invalid system directory
+ * validatePath("/etc/shadow");
+ * // Returns: { valid: false, error: "Access to system directory denied: /etc" }
+ * ```
  */
 export function validatePath(
   filePath: string,
@@ -145,7 +225,31 @@ export function validatePath(
 
 /**
  * Validate a URL for SSRF protection.
- * Ported from AgentNova is_safe_url().
+ *
+ * Checks a URL for security violations:
+ * 1. Rejects empty URLs
+ * 2. Validates URL format
+ * 3. Only allows http and https schemes
+ * 4. Blocks hostnames matching SSRF patterns
+ *
+ * @param url - The URL to validate
+ * @param blockSsrf - Whether to apply SSRF blocking rules (default: true)
+ * @returns Object with `safe` boolean and `error` message if unsafe
+ *
+ * @example
+ * ```typescript
+ * // Valid external URL
+ * isSafeUrl("https://api.example.com/data");
+ * // Returns: { safe: true, error: "" }
+ *
+ * // Blocked internal URL
+ * isSafeUrl("http://localhost:8080/admin");
+ * // Returns: { safe: false, error: "SSRF protection: blocked hostname pattern 'localhost'" }
+ *
+ * // Blocked cloud metadata endpoint
+ * isSafeUrl("http://169.254.169.254/latest/meta-data/");
+ * // Returns: { safe: false, error: "SSRF protection: blocked hostname pattern '169.254.169.254'" }
+ * ```
  */
 export function isSafeUrl(
   url: string,
@@ -187,7 +291,12 @@ export function isSafeUrl(
 // Command Sanitization & Injection Detection
 // ============================================================================
 
-/** Injection regex patterns — ported from AgentNova sanitize_command(). */
+/**
+ * Regex patterns for detecting shell injection attempts.
+ *
+ * These patterns detect common shell metacharacter sequences that
+ * could be used to inject additional commands.
+ */
 const INJECTION_PATTERNS: RegExp[] = [
   /;\s*\w+/,         // Command chaining
   /\|\s*\w+/,        // Piping to another command
@@ -203,9 +312,30 @@ const INJECTION_PATTERNS: RegExp[] = [
 
 /**
  * Sanitize and validate a shell command.
- * Ported from AgentNova sanitize_command().
  *
- * Returns { isSafe, error, command }.
+ * Performs comprehensive security checks on a command string:
+ * 1. Rejects empty commands
+ * 2. Extracts and checks the base command against blocklist
+ * 3. Detects newline injection
+ * 4. Checks for shell metacharacter injection patterns
+ *
+ * @param command - The command string to validate
+ * @returns Object with `isSafe`, `error`, and sanitized `command`
+ *
+ * @example
+ * ```typescript
+ * // Safe command
+ * sanitizeCommand("ls -la /home/user");
+ * // Returns: { isSafe: true, error: "", command: "ls -la /home/user" }
+ *
+ * // Blocked command
+ * sanitizeCommand("rm -rf /");
+ * // Returns: { isSafe: false, error: "Blocked command: rm", command: "" }
+ *
+ * // Injection attempt
+ * sanitizeCommand("ls; rm -rf /");
+ * // Returns: { isSafe: false, error: "Potential injection pattern detected", command: "" }
+ * ```
  */
 export function sanitizeCommand(
   command: string,
@@ -251,7 +381,26 @@ export function sanitizeCommand(
 const AUDIT_DIR = path.join(os.homedir(), ".pi", "agent");
 const AUDIT_LOG_PATH = path.join(AUDIT_DIR, "audit.log");
 
-/** Append an audit entry to the JSON-lines log file. */
+/**
+ * Append an audit entry to the JSON-lines log file.
+ *
+ * Each entry is written as a single line of JSON, making the log
+ * easy to parse and analyze. Log write failures are silently
+ * ignored since logging is non-critical.
+ *
+ * @param entry - The audit entry to write
+ *
+ * @example
+ * ```typescript
+ * appendAuditEntry({
+ *   timestamp: new Date().toISOString(),
+ *   toolName: "bash",
+ *   action: "blocked",
+ *   rule: "command_blocklist",
+ *   detail: "Blocked command: rm",
+ * });
+ * ```
+ */
 export function appendAuditEntry(entry: Record<string, unknown>): void {
   try {
     if (!fs.existsSync(AUDIT_DIR)) {
@@ -262,7 +411,26 @@ export function appendAuditEntry(entry: Record<string, unknown>): void {
   } catch { /* log write failure is non-critical */ }
 }
 
-/** Read recent audit entries (last N lines). */
+/**
+ * Read recent audit entries from the log file.
+ *
+ * Reads the last N lines from the JSON-lines audit log and
+ * parses each line as JSON. Invalid lines are returned as
+ * empty objects.
+ *
+ * @param count - Maximum number of entries to return (default: 50)
+ * @returns Array of parsed audit entries
+ *
+ * @example
+ * ```typescript
+ * const recent = readRecentAuditEntries(10);
+ * for (const entry of recent) {
+ *   if (entry.action === "blocked") {
+ *     console.log(`Blocked: ${entry.toolName} - ${entry.detail}`);
+ *   }
+ * }
+ * ```
+ */
 export function readRecentAuditEntries(count = 50): Array<Record<string, unknown>> {
   try {
     if (!fs.existsSync(AUDIT_LOG_PATH)) return [];
@@ -284,7 +452,21 @@ export function readRecentAuditEntries(count = 50): Array<Record<string, unknown
 
 /**
  * Check a bash tool call for security violations.
- * Validates the command string against blocklist and injection patterns.
+ *
+ * Validates the command string against the blocklist and injection
+ * patterns. Returns a security check result indicating whether
+ * the operation should be allowed.
+ *
+ * @param input - The tool input object containing a "command" or "cmd" field
+ * @returns Object with `safe`, `rule`, and `detail` fields
+ *
+ * @example
+ * ```typescript
+ * const result = checkBashToolInput({ command: "ls -la" });
+ * if (!result.safe) {
+ *   console.log(`Blocked by ${result.rule}: ${result.detail}`);
+ * }
+ * ```
  */
 export function checkBashToolInput(
   input: Record<string, unknown>,
@@ -301,7 +483,18 @@ export function checkBashToolInput(
 
 /**
  * Check a file tool call for path violations.
- * Validates file_path, path, or output_path against sensitive directories.
+ *
+ * Validates all recognized path fields (file_path, path, output_path,
+ * filePath, inputPath) against sensitive directories and allowed paths.
+ *
+ * @param input - The tool input object containing path fields
+ * @returns Object with `safe`, `rule`, and `detail` fields
+ *
+ * @example
+ * ```typescript
+ * const result = checkFileToolInput({ file_path: "/etc/passwd" });
+ * // Returns: { safe: false, rule: "path_validation", detail: "Access to system directory denied: /etc" }
+ * ```
  */
 export function checkFileToolInput(
   input: Record<string, unknown>,
@@ -322,7 +515,18 @@ export function checkFileToolInput(
 
 /**
  * Check an HTTP tool call for SSRF violations.
- * Validates URL against blocked hostname patterns.
+ *
+ * Validates the URL against blocked hostname patterns to prevent
+ * Server-Side Request Forgery attacks.
+ *
+ * @param input - The tool input object containing a "url" or "uri" field
+ * @returns Object with `safe`, `rule`, and `detail` fields
+ *
+ * @example
+ * ```typescript
+ * const result = checkHttpToolInput({ url: "http://169.254.169.254/" });
+ * // Returns: { safe: false, rule: "ssrf_protection", detail: "SSRF protection: blocked..." }
+ * ```
  */
 export function checkHttpToolInput(
   input: Record<string, unknown>,
@@ -339,7 +543,20 @@ export function checkHttpToolInput(
 
 /**
  * Scan any tool's arguments for shell injection patterns.
- * Checks all string values for metacharacter injection.
+ *
+ * Checks all string values in the input object for dangerous
+ * metacharacter sequences that could be used for injection attacks.
+ *
+ * @param input - The tool input object to scan
+ * @returns Object with `safe`, `rule`, and `detail` fields
+ *
+ * @example
+ * ```typescript
+ * const result = checkInjectionPatterns({
+ *   expression: "1 + $(cat /etc/passwd)"
+ * });
+ * // Returns: { safe: false, rule: "injection_detection", detail: "Suspicious pattern in argument 'expression'" }
+ * ```
  */
 export function checkInjectionPatterns(
   input: Record<string, unknown>,
