@@ -444,6 +444,155 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
+  // ── test: ReAct parsing ────────────────────────────────────────────
+
+  /**
+   * Test whether a model can produce parseable ReAct-format tool calls
+   * (without native tool_calls API). This tests the text-based
+   * "Action:" / "Action Input:" format that react-fallback.ts parses.
+   *
+   * Results are cached to ~/.pi/agent/cache/react_support.json to avoid
+   * re-probing models on every run.
+   */
+  async function testReactParsing(model: string): Promise<{
+    pass: boolean;
+    score: string;
+    toolCall: string;
+    thought: string;
+    response: string;
+    elapsedMs: number;
+  }> {
+    // ReAct prompt — NO tools in the request, force model to use text format
+    const systemPrompt = [
+      "You are a helpful assistant with access to tools.",
+      "When you need to use a tool, you MUST output in this EXACT format:",
+      "Thought: <your reasoning about what to do>",
+      "Action: <tool_name>",
+      "Action Input: <JSON object with arguments>",
+      "Do NOT output anything after the Action Input line.",
+      "The available tools are: get_weather (parameters: location: string), calculate (parameters: expression: string).",
+    ].join("\n");
+
+    const body: any = {
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: "What's the weather like in Tokyo? Use the get_weather tool." },
+      ],
+      stream: false,
+      options: { num_predict: 1024, temperature: 0.1 },
+    };
+
+    try {
+      const start = Date.now();
+      const result = await pi.exec("curl", [
+        "-s", "--fail-with-body", "-X", "POST",
+        "--connect-timeout", "30",
+        "--max-time", "9999",
+        `${OLLAMA_BASE}/api/chat`,
+        "-H", "Content-Type: application/json",
+        "-d", JSON.stringify(body),
+      ], { timeout: 50000 });
+      const elapsedMs = Date.now() - start;
+
+      if (result.code !== 0) {
+        const detail = result.stderr?.trim() || result.stdout?.trim() || "unknown error";
+        return { pass: false, score: "ERROR", toolCall: `curl error: ${result.code}: ${detail}`, thought: "", response: "", elapsedMs };
+      }
+
+      if (!result.stdout.trim()) throw new Error("Empty response from Ollama");
+      const parsed = JSON.parse(result.stdout);
+      const content = (parsed?.message?.content || "").trim();
+
+      if (!content) {
+        return { pass: false, score: "FAIL", toolCall: "empty response", thought: "", response: "", elapsedMs };
+      }
+
+      // ── Parse ReAct format using same patterns as react-fallback.ts ──
+      const THOUGHT_RE = /Thought:\s*(.*?)(?=Action:|Final Answer:|$)/is;
+      const ACTION_RE = /Action:\s*[`"']?(\w+)[`"']?\s*\n?\s*Action Input:\s*(.*?)(?=\n\s*(?:Observation:|Thought:|Final Answer:|Action:)|$)/is;
+      const ACTION_RE_SAMELINE = /Action:\s*[`"']?(\w+)[`"']?\s+Action Input:\s*(.*?)(?=\n\s*(?:Observation:|Thought:|Final Answer:)|$)/is;
+
+      let thought = "";
+      const thoughtMatch = THOUGHT_RE.exec(content);
+      if (thoughtMatch) thought = thoughtMatch[1].trim();
+
+      let match = ACTION_RE.exec(content);
+      if (!match) match = ACTION_RE_SAMELINE.exec(content);
+
+      if (match) {
+        const toolName = match[1].trim().replace(/[`"']/g, "");
+        const rawArgs = match[2].trim();
+
+        // Try to extract JSON args
+        let argsParsed = false;
+        let argsStr = rawArgs;
+        const jsonStart = rawArgs.indexOf("{");
+        if (jsonStart !== -1) {
+          let depth = 0;
+          let jsonEnd = -1;
+          for (let i = jsonStart; i < rawArgs.length; i++) {
+            if (rawArgs[i] === "{") depth++;
+            else if (rawArgs[i] === "}") { depth--; if (depth === 0) { jsonEnd = i; break; } }
+          }
+          if (jsonEnd !== -1) {
+            const jsonStr = rawArgs.slice(jsonStart, jsonEnd + 1);
+            try {
+              JSON.parse(jsonStr);
+              argsParsed = true;
+              argsStr = jsonStr;
+            } catch { /* args not valid JSON */ }
+          }
+        }
+
+        // Score: correct tool name + valid args = STRONG, correct tool = MODERATE, any action = WEAK
+        let score: string;
+        const isWeatherTool = toolName.toLowerCase().includes("get_weather") || toolName.toLowerCase() === "get_weather";
+        if (isWeatherTool && argsParsed) {
+          score = "STRONG";
+        } else if (isWeatherTool) {
+          score = "MODERATE";
+        } else {
+          score = "WEAK";
+        }
+
+        return {
+          pass: true,
+          score,
+          toolCall: `${toolName}(${argsStr})`,
+          thought,
+          response: content,
+          elapsedMs,
+        };
+      }
+
+      // No ReAct patterns found
+      // Check if model still tried to call a tool in some other way
+      const hasToolMention = /\bget_weather\b/i.test(content) || /\btool\b/i.test(content);
+      if (hasToolMention) {
+        return {
+          pass: false,
+          score: "FAIL",
+          toolCall: "none — model mentioned tool but not in ReAct format",
+          thought: "",
+          response: content,
+          elapsedMs,
+        };
+      }
+
+      return {
+        pass: false,
+        score: "FAIL",
+        toolCall: "none",
+        thought: "",
+        response: content,
+        elapsedMs,
+      };
+    } catch (e: any) {
+      return { pass: false, score: "ERROR", toolCall: `error: ${e.message}`, thought: "", response: "", elapsedMs: 0 };
+    }
+  }
+
   // ── test: instruction following ──────────────────────────────────────
 
   /**
@@ -875,7 +1024,38 @@ The JSON object must have exactly these 4 keys:
       lines.push(fail(`Error: ${tools.toolCall}`));
     }
 
-    // 4. Instruction following test
+    // 4. ReAct parsing test
+    lines.push(section("REACT PARSING TEST"));
+    lines.push(info("Prompt: \"What's the weather in Tokyo?\" (ReAct format, no native tools)"));
+    lines.push(info("Testing..."));
+
+    const react = await testReactParsing(model);
+    lines.push(info(`Time: ${msHuman(react.elapsedMs)}`));
+    if (react.score === "STRONG") {
+      lines.push(ok(`ReAct parsed: ${react.toolCall} (${react.score})`));
+      if (react.thought) {
+        lines.push(info(`Thought: ${sanitizeForReport(react.thought)}`));
+      }
+    } else if (react.score === "MODERATE") {
+      lines.push(ok(`ReAct parsed: ${react.toolCall} (${react.score})`));
+      if (react.thought) {
+        lines.push(info(`Thought: ${sanitizeForReport(react.thought)}`));
+      }
+    } else if (react.score === "WEAK") {
+      lines.push(warn(`ReAct parsed: ${react.toolCall} (${react.score}) — wrong tool or malformed args`));
+      if (react.thought) {
+        lines.push(info(`Thought: ${sanitizeForReport(react.thought)}`));
+      }
+    } else if (react.score === "FAIL") {
+      lines.push(fail(`ReAct parsing: ${react.toolCall} (${react.score})`));
+      if (react.response) {
+        lines.push(info(`Response: ${sanitizeForReport(react.response)}`));
+      }
+    } else {
+      lines.push(fail(`Error: ${react.toolCall}`));
+    }
+
+    // 5. Instruction following test
     lines.push(section("INSTRUCTION FOLLOWING TEST"));
     lines.push(info('Prompt: Respond with ONLY a JSON object with keys: name, can_count, sum (15+27), language'));
     lines.push(info("Testing..."));
@@ -893,7 +1073,7 @@ The JSON object must have exactly these 4 keys:
     }
     lines.push(info(`Output: ${sanitizeForReport(instructions.output)}`));
 
-    // 5. Tool support detection
+    // 6. Tool support detection
     lines.push(section("TOOL SUPPORT DETECTION"));
     lines.push(info("Probing model for tool calling capability (native / ReAct / none)"));
     lines.push(info("Testing..."));
@@ -931,6 +1111,7 @@ The JSON object must have exactly these 4 keys:
       { name: "Reasoning", pass: reasoning.score === "STRONG" || reasoning.score === "MODERATE", score: reasoning.score },
       { name: "Thinking", pass: thinking.supported, score: thinking.supported ? "YES" : "NO" },
       { name: "Tool Usage", pass: tools.pass, score: tools.score },
+      { name: "ReAct Parse", pass: react.pass, score: react.score },
       { name: "Instructions", pass: instructions.pass, score: instructions.score },
       { name: "Tool Support", pass: toolSupport.level === "native" || toolSupport.level === "react", score: toolSupport.level.toUpperCase() },
     ];
@@ -945,11 +1126,11 @@ The JSON object must have exactly these 4 keys:
 
     // Recommendation
     lines.push(section("RECOMMENDATION"));
-    if (passed === 5) {
+    if (passed === 6) {
       lines.push(ok(`${model} is a STRONG model — full capability`));
-    } else if (passed >= 4) {
+    } else if (passed >= 5) {
       lines.push(ok(`${model} is a GOOD model — most capabilities work`));
-    } else if (passed >= 3) {
+    } else if (passed >= 4) {
       lines.push(warn(`${model} is USABLE — some capabilities are limited`));
     } else {
       lines.push(fail(`${model} is WEAK — limited capabilities for agent use`));
