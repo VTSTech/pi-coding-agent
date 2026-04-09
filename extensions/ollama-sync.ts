@@ -14,7 +14,7 @@ import { section, ok, fail, warn, info } from "../shared/format";
 // ── Branding ──────────────────────────────────────────────────────────────
 
 const BRANDING = [
-  `  ⚡ Pi Ollama Sync v1.0`,
+  `  ⚡ Pi Ollama Sync v1.0.2`,
   `  Written by VTSTech`,
   `  GitHub: https://github.com/VTSTech`,
   `  Website: www.vts-tech.org`,
