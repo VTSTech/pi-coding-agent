@@ -2,19 +2,48 @@
  * Shared Ollama utilities for Pi Coding Agent extensions.
  * Eliminates getOllamaBaseUrl() duplication across model-test, ollama-sync, status.
  *
- * Written by VTSTech — https://www.vts-tech.org
+ * @module shared/ollama
+ * @writtenby VTSTech — https://www.vts-tech.org
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import os from "node:os";
 
-// ── Constants ────────────────────────────────────────────────────────────
+// ============================================================================
+// Constants
+// ============================================================================
 
-/** Path to Pi's models.json config. */
-export const MODELS_JSON_PATH = path.join(os.homedir(), ".pi", "agent", "models.json");
+/**
+ * Path to Pi's models.json configuration file.
+ *
+ * This file contains the provider configurations and model definitions
+ * used by Pi to connect to various LLM backends (Ollama, OpenAI, etc.).
+ *
+ * @example
+ * ```typescript
+ * console.log(MODELS_JSON_PATH);
+ * // Output: "/home/user/.pi/agent/models.json"
+ * ```
+ */
+export const MODELS_JSON_PATH: string = path.join(os.homedir(), ".pi", "agent", "models.json");
 
-// ── Types ────────────────────────────────────────────────────────────────
+// ============================================================================
+// Types
+// ============================================================================
 
+/**
+ * Model information returned by Ollama's /api/tags endpoint.
+ *
+ * Contains metadata about a pulled model including its name, size,
+ * quantization level, and model family.
+ *
+ * @property name - The model's tag name (e.g., "qwen3:0.6b", "llama3.2:1b")
+ * @property model - Alternative model identifier (often same as name)
+ * @property modified_at - ISO 8601 timestamp of when the model was last modified
+ * @property size - Model file size in bytes
+ * @property digest - SHA256 digest of the model
+ * @property details - Additional model metadata
+ */
 export interface OllamaModel {
   name: string;
   model: string;
@@ -31,10 +60,38 @@ export interface OllamaModel {
   };
 }
 
+/**
+ * Pi's models.json configuration structure.
+ *
+ * Contains provider configurations keyed by provider name (e.g., "ollama", "openai").
+ * Each provider has a base URL, API mode, and list of available models.
+ *
+ * @example
+ * ```json
+ * {
+ *   "providers": {
+ *     "ollama": {
+ *       "baseUrl": "http://localhost:11434/v1",
+ *       "api": "openai-completions",
+ *       "models": [{ "id": "qwen3:0.6b" }]
+ *     }
+ *   }
+ * }
+ * ```
+ */
 export interface PiModelsJson {
   providers: Record<string, PiProviderConfig>;
 }
 
+/**
+ * Configuration for a single provider in models.json.
+ *
+ * @property baseUrl - The base URL for the provider's API (e.g., "http://localhost:11434/v1")
+ * @property api - The API mode to use (e.g., "openai-completions", "anthropic-messages")
+ * @property apiKey - Optional API key for authentication
+ * @property compat - Compatibility settings for non-standard APIs
+ * @property models - List of models available from this provider
+ */
 export interface PiProviderConfig {
   baseUrl?: string;
   api?: string;
@@ -43,6 +100,16 @@ export interface PiProviderConfig {
   models: PiModelEntry[];
 }
 
+/**
+ * Entry for a single model in Pi's configuration.
+ *
+ * @property id - The model identifier (e.g., "qwen3:0.6b")
+ * @property reasoning - Whether the model supports extended thinking/reasoning
+ * @property toolSupport - Level of tool support ("native", "react", "none")
+ * @property modelFamily - The model family (e.g., "qwen3", "llama", "granite")
+ * @property parameterSize - Human-readable parameter count (e.g., "352M", "1.5B")
+ * @property quantizationLevel - Quantization type (e.g., "Q4_K_M", "BF16")
+ */
 export interface PiModelEntry {
   id: string;
   reasoning?: boolean;
@@ -53,13 +120,40 @@ export interface PiModelEntry {
   [key: string]: unknown;
 }
 
-// ── Ollama base URL resolution ───────────────────────────────────────────
+// ============================================================================
+// Ollama Base URL Resolution
+// ============================================================================
 
 /**
- * Resolve the Ollama base URL using the three-tier priority chain:
- *   1. models.json → providers.ollama.baseUrl (strip /v1)
- *   2. OLLAMA_HOST environment variable
- *   3. http://localhost:11434
+ * Resolve the Ollama base URL using the three-tier priority chain.
+ *
+ * This function determines the correct Ollama API endpoint by checking
+ * multiple sources in order of precedence:
+ *
+ * 1. **models.json** - Checks `providers.ollama.baseUrl` in Pi's config
+ * 2. **OLLAMA_HOST** - Falls back to the environment variable
+ * 3. **localhost** - Uses the default `http://localhost:11434`
+ *
+ * The function automatically strips the `/v1` suffix from URLs since
+ * different endpoints need different path handling.
+ *
+ * @returns The resolved Ollama base URL without trailing slash
+ *
+ * @example
+ * ```typescript
+ * // With models.json configured
+ * getOllamaBaseUrl();
+ * // Returns: "https://abc123.trycloudflare.com"
+ *
+ * // With OLLAMA_HOST env var
+ * process.env.OLLAMA_HOST = "192.168.1.100:11434";
+ * getOllamaBaseUrl();
+ * // Returns: "http://192.168.1.100:11434"
+ *
+ * // Default fallback
+ * getOllamaBaseUrl();
+ * // Returns: "http://localhost:11434"
+ * ```
  */
 export function getOllamaBaseUrl(): string {
   try {
@@ -79,9 +173,25 @@ export function getOllamaBaseUrl(): string {
   return "http://localhost:11434";
 }
 
-// ── Models.json I/O ─────────────────────────────────────────────────────
+// ============================================================================
+// Models.json I/O
+// ============================================================================
 
-/** Read and parse models.json. Returns empty structure if not found. */
+/**
+ * Read and parse Pi's models.json configuration file.
+ *
+ * Safely reads the configuration file, returning an empty structure
+ * if the file doesn't exist or contains invalid JSON.
+ *
+ * @returns The parsed models.json configuration, or an empty structure
+ *
+ * @example
+ * ```typescript
+ * const config = readModelsJson();
+ * const ollamaModels = config.providers["ollama"]?.models || [];
+ * console.log(`Found ${ollamaModels.length} Ollama models`);
+ * ```
+ */
 export function readModelsJson(): PiModelsJson {
   try {
     if (fs.existsSync(MODELS_JSON_PATH)) {
@@ -92,7 +202,24 @@ export function readModelsJson(): PiModelsJson {
   return { providers: {} };
 }
 
-/** Write models.json back to disk. */
+/**
+ * Write Pi's models.json configuration back to disk.
+ *
+ * Creates the configuration directory if it doesn't exist,
+ * then writes the configuration as formatted JSON with a trailing newline.
+ *
+ * @param data - The configuration object to write
+ *
+ * @example
+ * ```typescript
+ * const config = readModelsJson();
+ * config.providers["ollama"] = {
+ *   baseUrl: "http://localhost:11434/v1",
+ *   models: [{ id: "qwen3:0.6b" }]
+ * };
+ * writeModelsJson(config);
+ * ```
+ */
 export function writeModelsJson(data: PiModelsJson): void {
   const dir = path.dirname(MODELS_JSON_PATH);
   if (!fs.existsSync(dir)) {
@@ -101,9 +228,28 @@ export function writeModelsJson(data: PiModelsJson): void {
   fs.writeFileSync(MODELS_JSON_PATH, JSON.stringify(data, null, 2) + "\n", "utf-8");
 }
 
-// ── Ollama API helpers ───────────────────────────────────────────────────
+// ============================================================================
+// Ollama API Helpers
+// ============================================================================
 
-/** Fetch model list from Ollama /api/tags using native fetch. */
+/**
+ * Fetch the list of available models from an Ollama instance.
+ *
+ * Queries the `/api/tags` endpoint to get all pulled models with their
+ * metadata (size, quantization, family, etc.).
+ *
+ * @param baseUrl - The Ollama base URL (without /v1 suffix)
+ * @returns Array of model objects from Ollama
+ * @throws Error if the request fails or Ollama returns an error status
+ *
+ * @example
+ * ```typescript
+ * const models = await fetchOllamaModels("http://localhost:11434");
+ * for (const model of models) {
+ *   console.log(`${model.name}: ${model.details.parameter_size}`);
+ * }
+ * ```
+ */
 export async function fetchOllamaModels(baseUrl: string): Promise<OllamaModel[]> {
   const res = await fetch(`${baseUrl}/api/tags`, {
     signal: AbortSignal.timeout(5000),
@@ -113,7 +259,23 @@ export async function fetchOllamaModels(baseUrl: string): Promise<OllamaModel[]>
   return data.models ?? [];
 }
 
-/** Check if an Ollama model name suggests reasoning capability. */
+/**
+ * Check if an Ollama model name suggests reasoning capability.
+ *
+ * Examines the model name for patterns that indicate support for
+ * extended thinking/reasoning tokens (e.g., deepseek-r1, qwq, o1, o3).
+ *
+ * @param name - The model name to check
+ * @returns `true` if the model name suggests reasoning capability
+ *
+ * @example
+ * ```typescript
+ * isReasoningModel("deepseek-r1:1.5b");  // true
+ * isReasoningModel("qwq:32b");           // true
+ * isReasoningModel("qwen3:0.6b");        // false (qwen3 has thinking but not in name)
+ * isReasoningModel("llama3.2:1b");       // false
+ * ```
+ */
 export function isReasoningModel(name: string): boolean {
   const lower = name.toLowerCase();
   return (
@@ -126,11 +288,31 @@ export function isReasoningModel(name: string): boolean {
   );
 }
 
-// ── Model family detection ───────────────────────────────────────────────
+// ============================================================================
+// Model Family Detection
+// ============================================================================
 
 /**
- * Detect model family from model name.
- * Ported from AgentNova core/model_family_config.py — detect_family().
+ * Detect the model family from a model name.
+ *
+ * Ported from AgentNova's `core/model_family_config.py` `detect_family()`.
+ * Uses substring matching against known model name patterns to determine
+ * the family for template/prompt selection purposes.
+ *
+ * The order of checks matters: more specific patterns (e.g., "qwen3.5")
+ * are checked before general ones (e.g., "qwen").
+ *
+ * @param modelName - The model name to analyze
+ * @returns The detected family identifier, or "unknown" if no match
+ *
+ * @example
+ * ```typescript
+ * detectModelFamily("qwen3.5:0.8b");     // "qwen35"
+ * detectModelFamily("qwen3:0.6b");       // "qwen3"
+ * detectModelFamily("llama3.2:1b");      // "llama"
+ * detectModelFamily("granite4:350m");    // "granite"
+ * detectModelFamily("unknown-model");    // "unknown"
+ * ```
  */
 export function detectModelFamily(modelName: string): string {
   const name = modelName.toLowerCase();
