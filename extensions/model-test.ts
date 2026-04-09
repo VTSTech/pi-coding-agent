@@ -155,6 +155,9 @@ const CONFIG = {
   // Provider API settings
   PROVIDER_TIMEOUT_MS: 120000,       // 2 minutes for cloud provider API calls
   PROVIDER_TOOL_TIMEOUT_MS: 60000,   // 60 seconds for tool usage tests on providers
+
+  // Rate limiting
+  TEST_DELAY_MS: 30000,              // 30 seconds between tests to avoid rate limiting
 } as const;
 
 // ── Tool support cache ──────────────────────────────────────────────────
@@ -241,6 +244,17 @@ export default function (pi: ExtensionAPI) {
   const OLLAMA_BASE = getOllamaBaseUrl();
 
   // ── helpers ──────────────────────────────────────────────────────────
+
+  /**
+   * Sleep for the configured test delay to avoid rate limiting.
+   * Returns the delay message line to append to the report.
+   */
+  async function rateLimitDelay(lines: string[]): Promise<void> {
+    if (CONFIG.TEST_DELAY_MS > 0) {
+      lines.push(info(`Waiting ${msHuman(CONFIG.TEST_DELAY_MS)} to avoid rate limiting...`));
+      await new Promise(r => setTimeout(r, CONFIG.TEST_DELAY_MS));
+    }
+  }
 
   /**
    * Call Ollama /api/chat and return the parsed response.
@@ -1621,6 +1635,7 @@ The JSON object must have exactly these 4 keys:
     // 2. Thinking test
     lines.push(section("THINKING TEST"));
     lines.push(info('Prompt: "Multiply 37 by 43. Explain your reasoning step by step."'));
+    await rateLimitDelay(lines);
 
     const thinking = await testThinking(model);
     lines.push(info(`Time: ${msHuman(thinking.elapsedMs)}`));
@@ -1641,6 +1656,7 @@ The JSON object must have exactly these 4 keys:
     lines.push(section("TOOL USAGE TEST"));
     lines.push(info("Prompt: \"What's the weather in Paris?\" (with get_weather tool available)"));
     lines.push(info("Testing..."));
+    await rateLimitDelay(lines);
 
     const tools = await testToolUsage(model);
     lines.push(info(`Time: ${msHuman(tools.elapsedMs)}`));
@@ -1676,6 +1692,7 @@ The JSON object must have exactly these 4 keys:
     lines.push(section("REACT PARSING TEST"));
     lines.push(info("Prompt: \"What's the weather in Tokyo?\" (ReAct format, no native tools)"));
     lines.push(info("Testing..."));
+    await rateLimitDelay(lines);
 
     const react = await testReactParsing(model);
     lines.push(info(`Time: ${msHuman(react.elapsedMs)}`));
@@ -1707,6 +1724,7 @@ The JSON object must have exactly these 4 keys:
     lines.push(section("INSTRUCTION FOLLOWING TEST"));
     lines.push(info('Prompt: Respond with ONLY a JSON object with keys: name, can_count, sum (15+27), language'));
     lines.push(info("Testing..."));
+    await rateLimitDelay(lines);
 
     const instructions = await testInstructionFollowing(model);
     lines.push(info(`Time: ${msHuman(instructions.elapsedMs)}`));
@@ -1725,6 +1743,7 @@ The JSON object must have exactly these 4 keys:
     lines.push(section("TOOL SUPPORT DETECTION"));
     lines.push(info("Probing model for tool calling capability (native / ReAct / none)"));
     lines.push(info("Testing..."));
+    await rateLimitDelay(lines);
 
     const toolSupport = await testToolSupport(model, detectedFamily);
     lines.push(info(`Time: ${msHuman(toolSupport.elapsedMs)}`));
@@ -1830,6 +1849,7 @@ The JSON object must have exactly these 4 keys:
     lines.push(section("REASONING TEST"));
     lines.push(info("Prompt: A snail climbs 3ft up a wall each day, slides 2ft back each night. Wall is 10ft. How many days?"));
     lines.push(info("Testing..."));
+    await rateLimitDelay(lines);
 
     const reasoning = await testReasoningProvider(providerInfo, model);
     lines.push(info(`Time: ${msHuman(reasoning.elapsedMs)}`));
@@ -1853,6 +1873,7 @@ The JSON object must have exactly these 4 keys:
     lines.push(section("INSTRUCTION FOLLOWING TEST"));
     lines.push(info('Prompt: Respond with ONLY a JSON object with keys: name, can_count, sum (15+27), language'));
     lines.push(info("Testing..."));
+    await rateLimitDelay(lines);
 
     const instructions = await testInstructionFollowingProvider(providerInfo, model);
     lines.push(info(`Time: ${msHuman(instructions.elapsedMs)}`));
@@ -1871,6 +1892,7 @@ The JSON object must have exactly these 4 keys:
     lines.push(section("TOOL USAGE TEST"));
     lines.push(info("Prompt: \"What's the weather in Paris?\" (with get_weather tool available)"));
     lines.push(info("Testing..."));
+    await rateLimitDelay(lines);
 
     const toolTest = await testToolUsageProvider(providerInfo, model);
     lines.push(info(`Time: ${msHuman(toolTest.elapsedMs)}`));
