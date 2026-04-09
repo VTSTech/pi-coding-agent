@@ -512,6 +512,7 @@ export default function (pi: ExtensionAPI) {
       const THOUGHT_RE = /Thought:\s*(.*?)(?=Action:|Final Answer:|$)/is;
       const ACTION_RE = /Action:\s*[`"']?(\w+)[`"']?\s*\n?\s*Action Input:\s*(.*?)(?=\n\s*(?:Observation:|Thought:|Final Answer:|Action:)|$)/is;
       const ACTION_RE_SAMELINE = /Action:\s*[`"']?(\w+)[`"']?\s+Action Input:\s*(.*?)(?=\n\s*(?:Observation:|Thought:|Final Answer:)|$)/is;
+      const ACTION_RE_LOOSE = /Action:\s*(.+?)\n\s*Action Input:\s*(.*?)(?=\n\s*(?:Observation:|Thought:|Final Answer:|Action:)|$)/is;
 
       let thought = "";
       const thoughtMatch = THOUGHT_RE.exec(content);
@@ -520,8 +521,23 @@ export default function (pi: ExtensionAPI) {
       let match = ACTION_RE.exec(content);
       if (!match) match = ACTION_RE_SAMELINE.exec(content);
 
+      // Loose fallback: Action line contains natural language (e.g., "Action: Open the get_weather tool.")
+      let looseMatch = false;
+      if (!match) match = ACTION_RE_LOOSE.exec(content), looseMatch = true;
+
       if (match) {
-        const toolName = match[1].trim().replace(/[`"']/g, "");
+        let toolName = match[1].trim().replace(/[`"']/g, "");
+
+        // If matched by loose regex, extract tool name from the action text
+        if (looseMatch) {
+          const actionText = toolName.toLowerCase();
+          if (actionText.includes("get_weather")) toolName = "get_weather";
+          else {
+            const toolWords = actionText.match(/\b[a-z][a-z0-9]*(?:[_-][a-z0-9]+)+\b/gi) || [];
+            if (toolWords.length > 0) toolName = toolWords[0];
+          }
+        }
+
         const rawArgs = match[2].trim().replace(/^```\w*\s*/gm, "").replace(/```\s*$/gm, "").trim();
 
         // Try to extract JSON args
