@@ -428,25 +428,23 @@ subprocess.Popen(["ollama", "serve"])
 
 ## Tested Models
 
-Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via remote Ollama over Cloudflare Tunnel. The reasoning test uses the **snail wall puzzle** (answer: 8, never appears in the prompt).
+Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via remote Ollama over Cloudflare Tunnel.
 
-| Model | Reasoning | Thinking | Tools | ReAct | Instructions | Tool Support | Score |
-|-------|-----------|----------|-------|-------|-------------|--------------|-------|
-| `granite4:350m` | ❌ WEAK | ❌ | ✅ STRONG | ✅ MODERATE | ✅ STRONG | NATIVE | **4/6** |
-| `qwen3:0.6b` | ⚠️ ERROR* | ❌ | ✅ STRONG | ✅ STRONG | ✅ STRONG | NATIVE | **4/6** |
-| `qwen2.5-coder:1.5b` | ❌ WEAK | ❌ | ✅ STRONG | — | ✅ STRONG | NATIVE | **2/4** |
-| `llama3.2:1b` | ❌ WEAK | ❌ | ✅ STRONG | — | ✅ STRONG | NATIVE | **2/4** |
-| `nchapman/dolphin3.0-llama3:1b` | ❌ WEAK | ❌ | ⛔ N/A | — | ✅ STRONG | NONE | **1/4** |
-| `qwen2.5-coder:0.5b-instruct-q4_k_m` | ❌ WEAK | ❌ | ✅ MODERATE | — | ✅ STRONG | NATIVE | **2/4** |
-| `qwen2.5:0.5b` | ❌ WEAK | ❌ | ✅ STRONG | ✅ STRONG | ✅ STRONG | NATIVE | **4/6** |
-| `qwen:0.5b` | ❌ WEAK | ❌ | ❌ FAIL | — | ✅ MODERATE | NONE | **1/4** |
-| `qwen2:0.5b` | ❌ WEAK | ❌ | ❌ FAIL | — | ✅ STRONG | NONE | **1/4** |
-| `functiongemma:270m` | ❌ WEAK | ❌ | ✅ STRONG | — | ❌ FAIL | NATIVE | **1/4** |
-| `gemma3:270m` | ❌ WEAK | ❌ | ❌ FAIL | — | ❌ FAIL | NONE | **0/4** |
-| `smollm:135m` | ❌ WEAK | ❌ | ❌ FAIL | — | ❌ FAIL | NONE | **0/4** |
+| Model | Tools | ReAct | Instructions | Tool Support | Score |
+|-------|-------|-------|--------------|--------------|-------|
+| `granite4:350m` | ✅ STRONG | ✅ MODERATE | ✅ STRONG | NATIVE | **4/6** |
+| `qwen3:0.6b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | NATIVE | **4/6** |
+| `qwen2.5:0.5b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | NATIVE | **4/6** |
+| `qwen2.5-coder:1.5b` | ✅ STRONG | — | ✅ STRONG | NATIVE | **2/4** |
+| `qwen2.5-coder:0.5b-instruct-q4_k_m` | ✅ MODERATE | — | ✅ STRONG | NATIVE | **2/4** |
+| `llama3.2:1b` | ✅ STRONG | — | ✅ STRONG | NATIVE | **2/4** |
+| `nchapman/dolphin3.0-llama3:1b` | ⛔ N/A | — | ✅ STRONG | NONE | **1/4** |
+| `qwen:0.5b` | ❌ FAIL | — | ✅ MODERATE | NONE | **1/4** |
+| `qwen2:0.5b` | ❌ FAIL | — | ✅ STRONG | NONE | **1/4** |
+| `functiongemma:270m` | ✅ STRONG | — | ❌ FAIL | NATIVE | **1/4** |
+| `gemma3:270m` | ❌ FAIL | — | ❌ FAIL | NONE | **0/4** |
+| `smollm:135m` | ❌ FAIL | — | ❌ FAIL | NONE | **0/4** |
 
-> *qwen3:0.6b reasoning test failed due to tunnel error (curl exited 22 — HTTP error from Cloudflare Tunnel), not model capability. The model passed all other tests including native tool calling, ReAct parsing, and instruction following. Total test time: 10 minutes.
->
 > ⛔ = model does not support tool calls (Ollama API returns error). Scored as 0 for tool usage.
 >
 > **Tool Support Levels:**
