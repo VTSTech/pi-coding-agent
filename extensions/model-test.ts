@@ -522,7 +522,7 @@ export default function (pi: ExtensionAPI) {
 
       if (match) {
         const toolName = match[1].trim().replace(/[`"']/g, "");
-        const rawArgs = match[2].trim();
+        const rawArgs = match[2].trim().replace(/^```\w*\s*/gm, "").replace(/```\s*$/gm, "").trim();
 
         // Try to extract JSON args
         let argsParsed = false;

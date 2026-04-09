@@ -100,7 +100,7 @@ function parseReact(text: string): ParsedToolCall | null {
 
   if (match) {
     let toolName = match[1].trim().replace(/[`"']/g, "");
-    const rawArgs = match[2].trim();
+    const rawArgs = match[2].trim().replace(/^```\w*\s*/gm, "").replace(/```\s*$/gm, "").trim();
     const args = extractJsonArgs(rawArgs) || { input: rawArgs };
 
     let finalAnswer: string | undefined;
