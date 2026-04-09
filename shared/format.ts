@@ -67,11 +67,24 @@ export function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max) + "..." : s;
 }
 
-/** Strip markdown code fences so they don't render in reports. */
-export function sanitizeForReport(s: string): string {
+/** Strip markdown code fences and truncate large/HTML content for clean report output. */
+export function sanitizeForReport(s: string, maxLines = 40): string {
   let cleaned = s.replace(/^\s*```[a-zA-Z]*[ \t]*\n?/gm, "");
   cleaned = cleaned.replace(/^\s*```[ \t]*\n?/gm, "");
   cleaned = cleaned.replace(/\n{3,}/g, "\n\n").trim();
+
+  // Detect HTML content (error pages, curl failures) and truncate to first few lines
+  if (/<[a-z][\s\S]*>/i.test(cleaned) && cleaned.includes("</")) {
+    const firstLine = cleaned.split("\n")[0];
+    return truncate(firstLine, 200) + "\n  ℹ️  (HTML response truncated)";
+  }
+
+  // Cap line count for any large output
+  const lines = cleaned.split("\n");
+  if (lines.length > maxLines) {
+    cleaned = lines.slice(0, maxLines).join("\n") + `\n  ℹ️  (truncated, ${lines.length - maxLines} more lines)`;
+  }
+
   return cleaned;
 }
 
