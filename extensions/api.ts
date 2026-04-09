@@ -128,15 +128,15 @@ export default function (pi: ExtensionAPI) {
         case "show":
           return showConfig(provider);
         case "mode":
-          return setMode(provider.name, rest);
+          return setMode(ctx, provider.name, rest);
         case "url":
-          return setUrl(provider.name, rest);
+          return setUrl(ctx, provider.name, rest);
         case "think":
-          return setThink(provider.name, rest);
+          return setThink(ctx, provider.name, rest);
         case "compat":
-          return handleCompat(provider.name, rest);
+          return handleCompat(ctx, provider.name, rest);
         case "reload":
-          return reloadConfig();
+          return reloadConfig(ctx);
         case "modes":
           return listModes();
         case "providers":
@@ -182,7 +182,7 @@ export default function (pi: ExtensionAPI) {
     });
   }
 
-  function setMode(providerName: string, mode: string) {
+  function setMode(ctx: any, providerName: string, mode: string) {
     if (!mode) {
       ctx.ui.notify("Usage: /api mode <mode>. Use /api modes to list available modes.", "error");
       return;
@@ -226,7 +226,7 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.notify(`API mode set to ${matched}`, "success");
   }
 
-  function setUrl(providerName: string, url: string) {
+  function setUrl(ctx: any, providerName: string, url: string) {
     if (!url) {
       ctx.ui.notify("Usage: /api url <base-url>", "error");
       return;
@@ -264,7 +264,7 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.notify(`Base URL set to ${normalizedUrl}`, "success");
   }
 
-  function setThink(providerName: string, value: string) {
+  function setThink(ctx: any, providerName: string, value: string) {
     if (!value) {
       ctx.ui.notify("Usage: /api think <on|off|auto>", "error");
       return;
@@ -333,7 +333,7 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.notify(`Thinking set to ${valLower} for ${models.length} model(s)`, "success");
   }
 
-  function handleCompat(providerName: string, args: string) {
+  function handleCompat(ctx: any, providerName: string, args: string) {
     const parts = args.split(/\s+/);
     const key = parts[0];
     const value = parts.slice(1).join(" ");
@@ -430,7 +430,7 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.notify(`Compat flag ${key} set to ${JSON.stringify(parsedValue)}`, "success");
   }
 
-  function reloadConfig() {
+  function reloadConfig(ctx: any) {
     // Pi's built-in /reload command re-reads models.json.
     // We can't invoke it directly, but we can notify the user.
     const lines: string[] = [branding];
