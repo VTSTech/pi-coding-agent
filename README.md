@@ -541,9 +541,9 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 | `functiongemma:270m` | ✅ STRONG | ❌ FAIL | ❌ FAIL | NATIVE | **2/6** |
 | `nchapman/dolphin3.0-llama3:1b` | ❌ ERROR | ✅ STRONG | ✅ STRONG | NONE | **2/6** |
 | `deepseek-coder:1.3b` | ❌ ERROR | ❌ FAIL | ✅ STRONG | NONE | **1/6** |
-| `gemma3:270m` | ❌ FAIL | — | ❌ FAIL | NONE | **0/4** |
+| `gemma3:270m` | ❌ ERROR | ✅ MODERATE | ❌ FAIL | NONE | **1/6** |
 | `ishumilin/deepseek-r1-coder-tools:1.5b` | ❌ FAIL | ❌ FAIL | ❌ ERROR | NONE | **0/6** |
-| `smollm:135m` | ❌ FAIL | — | ❌ FAIL | NONE | **0/4** |
+| `smollm:135m` | ❌ ERROR | ❌ FAIL | ❌ FAIL | NONE | **0/6** |
 
 > **Tool Support Levels:**
 > - `NATIVE` — Model uses Ollama's structured `tool_calls` API
