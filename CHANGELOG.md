@@ -7,7 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.0.2] - 2026-04-09
+## [1.0.3] - 04-09-2026 5:26:15 PM
+
+### Added
+
+- **API Mode Switcher extension** (`extensions/api.ts`)
+  - `/api` command for runtime switching of API modes, base URLs, thinking settings, and compat flags in `models.json`.
+  - Sub-commands: `mode`, `url`, `think`, `compat`, `reload`, `modes`, `providers`.
+  - Supports all 10 Pi API modes: `anthropic-messages`, `openai-completions`, `openai-responses`, `azure-openai-responses`, `openai-codex-responses`, `mistral-conversations`, `google-generative-ai`, `google-gemini-cli`, `google-vertex`, `bedrock-converse-stream`.
+  - Compat flag management: `supportsDeveloperRole`, `supportsReasoningEffort`, `maxTokensField`, `requiresToolResultName`, `thinkingFormat`.
+  - Thinking mode toggle (`on`/`off`/`auto`) with auto-detection for known reasoning model families.
+  - Tab completion for `/api` sub-commands.
+
+### Fixed
+
+- **API Mode Switcher — `ctx is not defined` error** (`extensions/api.ts`)
+  - Sub-command handler functions (`setMode`, `setUrl`, `setThink`, `handleCompat`, `reloadConfig`) referenced the `ctx` object from the parent `handler` callback without receiving it as a parameter. All five functions now accept `ctx` as their first argument.
+
+---
+
+## [1.0.2] - 04-09-2026
 
 ### Added
 
@@ -58,7 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.0.1] - 2026-04-08
+## [1.0.1] - 04-08-2026
 
 ### Added
 
@@ -118,7 +137,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.0.0] - 2026-04-07
+## [1.0.0] - 04-08-2026
 
 ### Added
 
