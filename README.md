@@ -440,8 +440,8 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 | `llama3.2:1b` | ✅ STRONG | — | ✅ STRONG | NATIVE | **2/4** |
 | `qwen:0.5b` | ⛔ N/A | ✅ STRONG | ✅ MODERATE | NONE | **2/6** |
 | `qwen2:0.5b` | ⛔ N/A | ✅ STRONG | ✅ STRONG | NONE | **2/6** |
+| `functiongemma:270m` | ✅ STRONG | ❌ FAIL | ❌ FAIL | NATIVE | **2/6** |
 | `nchapman/dolphin3.0-llama3:1b` | ⛔ N/A | — | ✅ STRONG | NONE | **1/4** |
-| `functiongemma:270m` | ✅ STRONG | — | ❌ FAIL | NATIVE | **1/4** |
 | `gemma3:270m` | ❌ FAIL | — | ❌ FAIL | NONE | **0/4** |
 | `smollm:135m` | ❌ FAIL | — | ❌ FAIL | NONE | **0/4** |
 
