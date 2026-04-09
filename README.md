@@ -7,6 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Pi Version](https://img.shields.io/badge/Pi-v0.66%2B-green.svg)](https://github.com/badlogic/pi-mono)
 [![Pi Package](https://img.shields.io/badge/Install-pi%20install%20git-blue.svg)](#installation)
+[![Version](https://img.shields.io/badge/Version-v1.0.2-orange.svg)](CHANGELOG.md)
 
 <p>
   <a href="https://github.com/VTSTech"><strong>VTSTech</strong></a> •
@@ -22,9 +23,9 @@
 
 ## Overview
 
-A [Pi package](#pi-package-format) containing extensions, themes, and configuration for the [Pi Coding Agent](https://github.com/badlogic/pi-mono). These tools are built and optimized for running Pi on **resource-constrained environments** such as **Google Colab (CPU-only, 12GB RAM)** with **Ollama** serving small local models (0.3B–2B parameters).
+A [Pi package](#pi-package-format) containing extensions, themes, and configuration for the [Pi Coding Agent](https://github.com/badlogic/pi-mono). These tools are built and optimized for running Pi on **resource-constrained environments** such as **Google Colab (CPU-only, 12GB RAM)** with **Ollama** serving small local models (0.3B–2B parameters), as well as with **cloud providers** like OpenRouter, Anthropic, Google, OpenAI, Groq, DeepSeek, and more.
 
-Everything here is battle-tested on real hardware with real small models — no cloud GPUs, no expensive API calls, just pure local inference on a budget.
+Everything here is battle-tested on real hardware with real models — from small local Ollama models on budget machines to cloud providers via OpenRouter.
 
 ---
 
@@ -45,7 +46,7 @@ pi update
 
 Pin to a specific tag:
 ```bash
-pi install git:github.com/VTSTech/pi-coding-agent@v1
+pi install git:github.com/VTSTech/pi-coding-agent@v1.0.2
 ```
 
 ### Manual install
@@ -61,7 +62,8 @@ pi -c
 ### Prerequisites
 
 - [Pi Coding Agent](https://github.com/badlogic/pi-mono) v0.66+ installed
-- [Ollama](https://ollama.com) running locally or on a remote machine
+- [Ollama](https://ollama.com) running locally or on a remote machine (for Ollama features)
+- API key for any supported cloud provider (for cloud provider features)
 
 ---
 
@@ -72,6 +74,7 @@ This repo is a standard Pi package. The `package.json` contains a `pi` manifest 
 ```json
 {
   "name": "@vtstech/pi-coding-agent-extensions",
+  "version": "1.0.2",
   "keywords": ["pi-package"],
   "pi": {
     "extensions": ["./extensions"],
@@ -100,6 +103,30 @@ This means you can:
 
 ---
 
+## ☁️ Cloud Provider Support
+
+Model testing and diagnostics work with **cloud providers** out of the box. The extensions auto-detect the active provider and adapt their behavior:
+
+**Supported providers** (built-in registry):
+
+| Provider | API Mode | Base URL |
+|----------|----------|----------|
+| OpenRouter | openai-completions | `https://openrouter.ai/api/v1` |
+| Anthropic | anthropic-messages | `https://api.anthropic.com` |
+| Google | gemini | `https://generativelanguage.googleapis.com` |
+| OpenAI | openai-completions | `https://api.openai.com/v1` |
+| Groq | openai-completions | `https://api.groq.com` |
+| DeepSeek | openai-completions | `https://api.deepseek.com` |
+| Mistral | openai-completions | `https://api.mistral.ai` |
+| xAI | openai-completions | `https://api.x.ai` |
+| Together | openai-completions | `https://api.together.xyz` |
+| Fireworks | openai-completions | `https://api.fireworks.ai/inference/v1` |
+| Cohere | cohere-chat | `https://api.cohere.com` |
+
+Provider detection uses a three-tier lookup: user-defined providers in `models.json` → built-in provider registry → unknown fallback.
+
+---
+
 ## Extensions
 
 ### 🔍 Diagnostics (`diag.ts`)
@@ -118,21 +145,24 @@ Checks:
 - **Settings** — settings.json exists? Valid?
 - **Extensions** — Extension files found? Active tools?
 - **Themes** — Theme files? Valid JSON?
-- **Session** — Active model? API mode? Context window? Context usage? Thinking level?
+- **Session** — Active model? API mode? Provider? Base URL? Context window? Context usage? Thinking level?
+- **Security** — Audit log status, blocked command count
 
 Also registers a `self_diagnostic` tool so the AI agent can run diagnostics on command.
 
 ### 🧪 Model Benchmark (`model-test.ts`)
 
-**Test any Ollama model for reasoning, thinking, tool usage, and instruction following.**
+**Test any model for reasoning, tool usage, and instruction following — works with Ollama and cloud providers.**
 
 ```bash
-/model-test                     # Test current Pi model
-/model-test qwen3:0.6b          # Test a specific model
-/model-test --all               # Test every model in Ollama
+/model-test                     # Test current Pi model (auto-detects provider)
+/model-test qwen3:0.6b          # Test a specific Ollama model
+/model-test --all               # Test every Ollama model
 ```
 
-Six tests per model:
+The extension auto-detects whether the active model is on **Ollama** or a **cloud provider** (OpenRouter, Anthropic, Google, OpenAI, Groq, DeepSeek, Mistral, xAI, Together, Fireworks, Cohere) and runs the appropriate test suite.
+
+#### Ollama Test Suite (6 tests)
 
 | Test | Method | Scoring |
 |------|--------|---------|
@@ -143,13 +173,28 @@ Six tests per model:
 | **Instruction Following** | Strict JSON output format compliance — 4 specific keys with typed values, automatic repair of truncated output | STRONG / MODERATE / WEAK / FAIL |
 | **Tool Support** | Probes model for tool calling capability level (native API, ReAct text, or none) — cached for future runs | NATIVE / REACT / NONE |
 
+#### Cloud Provider Test Suite (4 tests)
+
+| Test | Method | Scoring |
+|------|--------|---------|
+| **Connectivity** | Verifies API reachability and authentication — sends a ping request, expects a response within 30s | OK / FAIL |
+| **Reasoning** | Same snail wall puzzle, sent via OpenAI-compatible chat completions API | STRONG / MODERATE / WEAK / FAIL |
+| **Instruction Following** | Strict JSON output format compliance — 4 specific keys with typed values | STRONG / MODERATE / WEAK / FAIL |
+| **Tool Usage** | Tool call generation using OpenAI function calling format | STRONG / MODERATE / WEAK / FAIL |
+
+Ollama-specific tests (thinking, ReAct parsing, tool support cache, model metadata) are skipped for cloud providers.
+
 Features:
-- Calls Ollama `/api/chat` directly — no Pi agent round-trip
+- **Automatic provider detection** — classifies the active model as `ollama`, `builtin`, or `unknown` using a three-tier lookup (models.json → built-in registry → fallback)
+- **Built-in provider registry** — 11 known cloud providers with API modes, base URLs, and env var keys
+- Calls Ollama `/api/chat` or cloud provider APIs directly — no Pi agent round-trip
 - **Automatic remote Ollama URL** — reads from `models.json`, no manual config
 - **Timeout resilience** — 180s default with `--connect-timeout`, auto-retry on empty responses and connection failures (handles flaky tunnels)
+- **Rate limit delay** — configurable delay (default 30s) between tests to avoid upstream rate limiting on free-tier providers
 - **Thinking model fallback** — if a model returns empty without `think:true`, automatically retries with thinking enabled (supports qwen3 and similar models)
 - Retrieves model metadata (size, params, quantization, family) from `/api/tags`
 - **Auto-updates `models.json`** reasoning field based on thinking test results
+- **Tool support cache** — persistent cache at `~/.pi/agent/cache/tool_support.json` avoids re-probing on every run
 - **Text-based tool call detection** — models that output tool call JSON as text (instead of using the native API) are still correctly identified and scored
 - **JSON repair** — automatically fixes truncated JSON output (missing closing braces) from `num_predict` limits
 - **Thinking token fallback** — models that put reasoning in thinking tokens (e.g., qwen3) are detected even when `content` is empty
@@ -157,73 +202,103 @@ Features:
 - Tab-completion for model names in the `/model-test` command
 - Final recommendation: STRONG / GOOD / USABLE / WEAK
 
-Sample output:
+Sample output (cloud provider):
 ```
  [model-test-report]
 
-   ⚡ Pi Model Benchmark v1.2
+   ⚡ Pi Model Benchmark v1.0.2
    Written by VTSTech
    GitHub: https://github.com/VTSTech
    Website: www.vts-tech.org
 
- ── MODEL: granite4:350m ────────────────────────────────────
-   ℹ️  Size: 676 MB  |  Params: 352.38M  |  Quant: BF16
-   ℹ️  Family: granite  |  Modified: 4/8/2026
+ ── MODEL: openai/gpt-oss-120b:free ─────────────────────────
+   ℹ️  Provider: openrouter (built-in)
+   ℹ️  API: openai-completions
+   ℹ️  Base URL: https://openrouter.ai/api/v1
+   ℹ️  API Key: ****d9ef
+
+ ── CONNECTIVITY TEST ───────────────────────────────────────
+   ℹ️  Sending minimal request to verify API reachability and key validity...
+   ℹ️  Time: 1.9s
+   ✅ API reachable and authenticated
 
  ── REASONING TEST ──────────────────────────────────────────
-   ℹ️  Prompt: A snail climbs 3ft up a wall each day, slides 2ft back each night. Wall is 10ft. How many days?
+   ℹ️  Prompt: A snail climbs 3ft up a wall each day, slides 2ft back
+             each night. Wall is 10ft. How many days?
    ℹ️  Testing...
-   ℹ️  Time: 6.2s
+   ℹ️  Waiting 30.0s to avoid rate limiting...
+   ℹ️  Time: 693ms
    ✅ Answer: 8 — Correct with clear reasoning (STRONG)
-   ℹ️  Response: On the 8th day, the snail climbs 3 feet...
+   ℹ️  Response: The snail gains a net of (3 - 2 = 1) foot each
+             full day-night cycle.
 
- ── THINKING TEST ───────────────────────────────────────────
-   ℹ️  Prompt: "Multiply 37 by 43. Explain your reasoning step by step."
-   ℹ️  Time: 20.1s
-   ❌ Thinking/reasoning tokens: NOT SUPPORTED
+ - After 7 full days (and nights) it has risen (7 × 1 = 7) feet.
+ - At the start of the 8th day it is 7 feet up. It climbs 3 feet
+   during that day, reaching (7 + 3 = 10) feet, the top of the
+   wall. Once it reaches the top it does not slide back.
 
- ── MODELS.JSON SYNC ────────────────────────────────────────
-   ℹ️  reasoning already "false" for granite4:350m — no change
+ Thus, the snail reaches the top on the 8th day.
 
- ── TOOL USAGE TEST ─────────────────────────────────────────
-   ℹ️  Prompt: "What's the weather in Paris?" (with get_weather tool available)
-   ℹ️  Testing...
-   ℹ️  Time: 6.9s
-   ✅ Tool call: get_weather({"location":"Paris"}) (STRONG)
-
- ── REACT PARSING TEST ──────────────────────────────────────
-   ℹ️  Prompt: "What's the weather in Tokyo?" (ReAct format, no native tools)
-   ℹ️  Testing...
-   ℹ️  Time: 14.4s
-   ✅ ReAct parsed: get_weather({"location": "Tokyo"}) (STRONG)
+ ANSWER: 8
 
  ── INSTRUCTION FOLLOWING TEST ──────────────────────────────
-   ℹ️  Prompt: Respond with ONLY a JSON object with keys: name, can_count, sum (15+27), language
+   ℹ️  Prompt: Respond with ONLY a JSON object with keys: name,
+             can_count, sum (15+27), language
    ℹ️  Testing...
-   ℹ️  Time: 5.2s
+   ℹ️  Waiting 30.0s to avoid rate limiting...
+   ℹ️  Time: 525ms
    ✅ JSON output valid with correct values (STRONG)
-   ℹ️  Output: {"name":"AI Assistant","can_count":true,"sum":42,"language":"English"}
+   ℹ️  Output: {"name":"ChatGPT","can_count":true,
+             "sum":42,"language":"English"}
 
- ── TOOL SUPPORT DETECTION ──────────────────────────────────
-   ℹ️  Probing model for tool calling capability (native / ReAct / none)
+ ── TOOL USAGE TEST ─────────────────────────────────────────
+   ℹ️  Prompt: "What's the weather in Paris?" (with get_weather
+             tool available)
    ℹ️  Testing...
-   ℹ️  Time: 23.0s
-   ✅ Tool support: NATIVE (structured API tool_calls)
-   ℹ️  Evidence: API returned tool_calls: get_weather({"location":"Tokyo"})
+   ℹ️  Waiting 30.0s to avoid rate limiting...
+   ℹ️  Time: 518ms
+   ✅ Tool call: get_weather({"location":"Paris",
+             "unit":"celsius"}) (STRONG)
+
+ ── SKIPPED TESTS (OLLAMA-ONLY) ─────────────────────────────
+   ⚠️  Thinking test — Ollama-specific think:true option
+   ⚠️  ReAct parsing test — only relevant for Ollama models
+   ⚠️  Tool support detection — Ollama-specific tool support cache
+   ⚠️  Model metadata — Ollama-specific /api/tags endpoint
 
  ── SUMMARY ─────────────────────────────────────────────────
+   ✅ Connectivity: OK
    ✅ Reasoning: STRONG
-   ❌ Thinking: NO
-   ✅ Tool Usage: STRONG
-   ✅ ReAct Parse: STRONG
    ✅ Instructions: STRONG
-   ✅ Tool Support: NATIVE
-   ℹ️  Total time: 39.0s
-   ℹ️  Score: 5/6 tests passed
+   ✅ Tool Usage: STRONG
+   ℹ️  Total time: 1.7m
+   ℹ️  Score: 4/4 tests passed
 
  ── RECOMMENDATION ──────────────────────────────────────────
-   ✅ granite4:350m is a GOOD model — most capabilities work
+   ✅ openai/gpt-oss-120b:free is a STRONG model via openrouter
 ```
+
+### 🔒 Security (`security.ts`)
+
+**Command, path, and network security layer for Pi's tool execution.**
+
+Automatically loaded — no commands needed. Protects against:
+
+- **65 blocked commands** — system modification, privilege escalation, network attacks, package management, process control, shell escapes
+- **SSRF protection** — 27 blocked hostname patterns (loopback, RFC1918 private ranges, cloud metadata endpoints)
+- **Path validation** — prevents filesystem escape and access to critical system directories
+- **Shell injection detection** — regex patterns for command chaining, substitution, and redirection
+- **Audit logging** — JSON-lines audit log at `~/.pi/agent/audit.log`
+
+### 🔄 ReAct Fallback (`react-fallback.ts`)
+
+**Text-based tool calling bridge for models without native function calling support.**
+
+Automatically loaded — no commands needed. When a model lacks native tool calling:
+
+- Parses `Thought:`, `Action:`, `Action Input:` patterns from model output
+- Multiple regex strategies including parenthetical style and loose matching
+- Bridges text-based tool calls into Pi's native tool execution pipeline
 
 ### 🔄 Ollama Sync (`ollama-sync.ts`)
 
@@ -242,6 +317,7 @@ Sample output:
 - Sorts models by size (smallest first)
 - Auto-detects reasoning-capable models (deepseek-r1, qwq, o1, o3, think, reason)
 - Merges with existing per-model settings
+- Per-model metadata in sync report (parameter size, quantization level, model family)
 - Registered as both `/ollama-sync` slash command and `ollama_sync` tool
 
 ### 📊 System Monitor (`status.ts`)
@@ -264,6 +340,8 @@ Sample output:
 - **Loaded model** — Ollama model currently in memory via `/api/ps` (works with remote Ollama, cached 15s)
 - **Response time** — agent loop duration via `agent_start`/`agent_end` events
 - **Generation params** — temperature, top_p, top_k, max tokens, num_predict, context size captured via `before_provider_request` interception
+- **Security indicator** — 3s flash on blocked tools + persistent blocked count from audit log
+- **Active tool timing** — live elapsed timer for the currently running tool
 
 Restores the default footer on session shutdown. Automatically truncates to terminal width with ANSI-safe clipping.
 
@@ -284,11 +362,12 @@ A Matrix movie-inspired theme with neon green on pure black. Designed for termin
 | Token | Color | Usage |
 |-------|-------|-------|
 | `green` | `#39ff14` | Primary text — neon green |
-| `brightGreen` | `#7fff00` | Accents, headings, highlights |
-| `phosphor` | `#66ff33` | Links, tool titles, secondary text |
+| `brightGreen` | `#7fff00` | Accents, headings, inline code, highlights |
+| `phosphor` | `#66ff33` | Links, tool titles, code block text, secondary text |
 | `glowGreen` | `#00ff41` | Thinking text, quotes |
 | `fadeGreen` | `#00cc33` | Muted text, borders |
 | `hotGreen` | `#b2ff59` | Numbers, emphasis |
+| `yellow` | `#eeff00` | Status bar active tool timer |
 | Background | `#000000` | Pure black base |
 
 ---
@@ -302,7 +381,7 @@ pi install git:github.com/VTSTech/pi-coding-agent
 # 2. Restart Pi
 pi -c
 
-# 3. Sync your Ollama models into Pi
+# 3. Sync your Ollama models into Pi (or use a cloud provider)
 /ollama-sync                              # Local Ollama
 /ollama-sync https://your-tunnel-url      # Remote Ollama (e.g., Cloudflare Tunnel)
 
@@ -329,6 +408,20 @@ cloudflared tunnel --url http://localhost:11434
 ```
 
 The URL gets saved to `models.json` and all extensions use it automatically. No need to set `OLLAMA_HOST` or pass the URL again.
+
+### Cloud Provider Setup
+
+Pi handles cloud providers natively — just set your API key in the environment and select a model:
+
+```bash
+export OPENROUTER_API_KEY="sk-or-..."
+
+# In Pi — select a cloud model
+/model openrouter/openai/gpt-oss-120b:free
+
+# Test it
+/model-test
+```
 
 ### Recommended models.json
 
@@ -430,6 +523,8 @@ subprocess.Popen(["ollama", "serve"])
 
 Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via remote Ollama over Cloudflare Tunnel.
 
+### Ollama Models
+
 | Model | Tools | ReAct | Instructions | Tool Support | Score |
 |-------|-------|-------|--------------|--------------|-------|
 | `granite4:350m` | ✅ STRONG | ✅ MODERATE | ✅ STRONG | NATIVE | **4/6** |
@@ -453,6 +548,14 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 > - `REACT` — Model outputs text-based `Action:` / `Action Input:` patterns
 > - `NONE` — No tool support detected
 
+### Cloud Providers
+
+| Model | Provider | Connectivity | Reasoning | Instructions | Tool Usage | Score |
+|-------|----------|-------------|-----------|--------------|------------|-------|
+| `openai/gpt-oss-120b:free` | OpenRouter | ✅ 1.9s | ✅ STRONG | ✅ STRONG | ✅ STRONG | **4/4** |
+
+> Cloud provider tests use the 4-test suite (connectivity, reasoning, instructions, tool usage). Ollama-specific tests are skipped.
+
 ---
 
 ## File Structure
@@ -461,18 +564,19 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 pi-coding-agent/
 ├── extensions/
 │   ├── diag.ts              # System diagnostic suite
-│   ├── model-test.ts        # Model benchmark tool (v1.2)
+│   ├── model-test.ts        # Model benchmark — Ollama & cloud providers
 │   ├── ollama-sync.ts       # Ollama ↔ models.json sync
 │   ├── react-fallback.ts    # ReAct fallback for non-native tool models
 │   ├── security.ts          # Command/path/SSRF protection
-│   └── status.ts            # System resource monitor
+│   └── status.ts            # System resource monitor & status bar
 ├── shared/
 │   ├── format.ts            # Shared formatting utilities
-│   ├── ollama.ts            # Ollama API helpers
+│   ├── ollama.ts            # Ollama API helpers & provider detection
 │   ├── security.ts          # Security validation functions
 │   └── types.ts             # TypeScript types & error classes
 ├── themes/
 │   └── matrix.json          # Matrix movie theme
+├── CHANGELOG.md             # Version history
 ├── package.json             # Pi package manifest
 ├── README.md
 └── LICENSE
