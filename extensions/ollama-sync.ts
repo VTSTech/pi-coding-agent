@@ -7,7 +7,6 @@ import {
   readModelsJson,
   writeModelsJson,
   isReasoningModel,
-  detectModelFamily,
   getOllamaBaseUrl,
 } from "../shared/ollama";
 import { section, ok, fail, warn, info } from "../shared/format";
@@ -43,13 +42,13 @@ function getProviderConfig(existing: PiModelsJson) {
  * Build a PiModelEntry from an Ollama model, extracting metadata
  * (parameter_size, quantization_level) and detecting model family.
  */
-function buildModelEntry(m: { name: string; details: { parameter_size: string; quantization_level: string } }): PiModelEntry {
+function buildModelEntry(m: { name: string; details: { parameter_size: string; quantization_level: string; family: string; families?: string[] } }): PiModelEntry {
   return {
     id: m.name,
     reasoning: isReasoningModel(m.name),
     parameterSize: m.details.parameter_size,
     quantizationLevel: m.details.quantization_level,
-    modelFamily: detectModelFamily(m.name),
+    modelFamily: m.details.family || m.details.families?.[0] || "unknown",
   };
 }
 
