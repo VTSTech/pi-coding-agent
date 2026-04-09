@@ -31,7 +31,7 @@ import type { ToolSupportLevel } from "../shared/types";
  */
 const CONFIG = {
   // General API settings
-  DEFAULT_TIMEOUT_MS: 500000,        // 8.3 minutes - default timeout for model responses
+  DEFAULT_TIMEOUT_MS: 600000,        // 8.3 minutes - default timeout for model responses
   CONNECT_TIMEOUT_S: 30,             // 30 seconds to establish connection
   MAX_RETRIES: 1,                    // Single retry for transient failures
   RETRY_DELAY_MS: 2000,              // 2 seconds between retries
@@ -43,10 +43,10 @@ const CONFIG = {
 
   // Test-specific settings
   MIN_THINKING_LENGTH: 10,           // Minimum chars to consider thinking tokens valid
-  TOOL_TEST_TIMEOUT_MS: 50000,       // 50 seconds for tool usage tests
+  TOOL_TEST_TIMEOUT_MS: 90000,       // 50 seconds for tool usage tests
   TOOL_TEST_MAX_TIME_S: 9999,        // Max curl time for tool tests (effectively unlimited)
-  TOOL_SUPPORT_TIMEOUT_MS: 130000,   // 2+ minutes for tool support detection
-  TOOL_SUPPORT_MAX_TIME_S: 120,      // Max curl time for tool support detection
+  TOOL_SUPPORT_TIMEOUT_MS: 260000,   // 2+ minutes for tool support detection
+  TOOL_SUPPORT_MAX_TIME_S: 240,      // Max curl time for tool support detection
 
   // Metadata retrieval
   TAGS_TIMEOUT_MS: 15000,            // 15 seconds for /api/tags
