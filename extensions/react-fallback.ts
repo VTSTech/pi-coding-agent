@@ -43,6 +43,8 @@ function sanitizeModelJson(text: string): string {
 const THOUGHT_RE = /Thought:\s*(.*?)(?=Action:|Final Answer:|$)/is;
 const ACTION_RE = /Action:\s*[`"']?(\w+)[`"']?\s*\n?\s*Action Input:\s*(.*?)(?=\n\s*(?:Observation:|Thought:|Final Answer:|Action:)|$)/is;
 const ACTION_RE_SAMELINE = /Action:\s*[`"']?(\w+)[`"']?\s+Action Input:\s*(.*?)(?=\n\s*(?:Observation:|Thought:|Final Answer:)|$)/is;
+const ACTION_RE_LOOSE = /Action:\s*(.+?)\n\s*Action Input:\s*(.*?)(?=\n\s*(?:Observation:|Thought:|Final Answer:|Action:)|$)/is;
+const ACTION_RE_PAREN = /Action:\s*(\w+)\s*\(([^)]*)\)/i;
 const FINAL_ANSWER_RE = /Final Answer:\s*([\s\S]*?)$/i;
 
 interface ParsedToolCall {
@@ -98,10 +100,63 @@ function parseReact(text: string): ParsedToolCall | null {
   let match = ACTION_RE.exec(text);
   if (!match) match = ACTION_RE_SAMELINE.exec(text);
 
+  // Loose fallback: Action line contains natural language (e.g., "Action: Open the get_weather tool.")
+  // Extract tool name from the action text using fuzzy matching against available tools.
+  let looseMatch = false;
+  if (!match) match = ACTION_RE_LOOSE.exec(text), looseMatch = true;
+  let parenMatch = false;
+  if (!match) match = ACTION_RE_PAREN.exec(text), parenMatch = true;
+
   if (match) {
     let toolName = match[1].trim().replace(/[`"']/g, "");
+
+    // If matched by loose regex, extract tool name from the action text
+    if (looseMatch && pi.context?.session?.tools) {
+      const availableTools = (pi.context.session.tools as string[]) || [];
+      // Try to find a known tool name in the action text
+      for (const real of availableTools) {
+        const rl = real.toLowerCase().replace(/_/g, "");
+        if (toolName.toLowerCase().includes(rl)) { toolName = real; break; }
+      }
+      // Also try extracting the first word that looks like a tool name
+      if (toolName.includes(" ")) {
+        const words = toolName.split(/\s+/);
+        for (const w of words) {
+          const wc = w.replace(/[^a-zA-Z0-9_-]/g, "");
+          if (wc.length < 3) continue;
+          for (const real of availableTools) {
+            const rl = real.toLowerCase().replace(/_/g, "");
+            if (rl.includes(wc.toLowerCase())) { toolName = real; break; }
+          }
+          if (!toolName.includes(" ")) break;
+        }
+      }
+    }
+
     const rawArgs = match[2].trim().replace(/^```\w*\s*/gm, "").replace(/```\s*$/gm, "").trim();
-    const args = extractJsonArgs(rawArgs) || { input: rawArgs };
+
+    // Parenthetical args (e.g., 'location: "Tokyo"') — convert to JSON object
+    let args: Record<string, unknown>;
+    if (parenMatch && rawArgs && !rawArgs.startsWith("{")) {
+      const pairs = rawArgs.match(/(\w+)\s*:\s*("[^"]*"|'[^']*'|\S+)/g);
+      if (pairs) {
+        const obj: Record<string, string> = {};
+        for (const p of pairs) {
+          const colonIdx = p.indexOf(":");
+          const key = p.slice(0, colonIdx).trim();
+          let val: string = p.slice(colonIdx + 1).trim();
+          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.slice(1, -1);
+          }
+          obj[key] = val;
+        }
+        args = obj;
+      } else {
+        args = { input: rawArgs };
+      }
+    } else {
+      args = extractJsonArgs(rawArgs) || { input: rawArgs };
+    }
 
     let finalAnswer: string | undefined;
     const faMatch = FINAL_ANSWER_RE.exec(text);

@@ -513,6 +513,8 @@ export default function (pi: ExtensionAPI) {
       const ACTION_RE = /Action:\s*[`"']?(\w+)[`"']?\s*\n?\s*Action Input:\s*(.*?)(?=\n\s*(?:Observation:|Thought:|Final Answer:|Action:)|$)/is;
       const ACTION_RE_SAMELINE = /Action:\s*[`"']?(\w+)[`"']?\s+Action Input:\s*(.*?)(?=\n\s*(?:Observation:|Thought:|Final Answer:)|$)/is;
       const ACTION_RE_LOOSE = /Action:\s*(.+?)\n\s*Action Input:\s*(.*?)(?=\n\s*(?:Observation:|Thought:|Final Answer:|Action:)|$)/is;
+      // Parenthetical style: Action: get_weather(location: "Tokyo") — single line, no Action Input
+      const ACTION_RE_PAREN = /Action:\s*(\w+)\s*\(([^)]*)\)/i;
 
       let thought = "";
       const thoughtMatch = THOUGHT_RE.exec(content);
@@ -524,6 +526,8 @@ export default function (pi: ExtensionAPI) {
       // Loose fallback: Action line contains natural language (e.g., "Action: Open the get_weather tool.")
       let looseMatch = false;
       if (!match) match = ACTION_RE_LOOSE.exec(content), looseMatch = true;
+      let parenMatch = false;
+      if (!match) match = ACTION_RE_PAREN.exec(content), parenMatch = true;
 
       if (match) {
         let toolName = match[1].trim().replace(/[`"']/g, "");
@@ -538,11 +542,33 @@ export default function (pi: ExtensionAPI) {
           }
         }
 
-        const rawArgs = match[2].trim().replace(/^```\w*\s*/gm, "").replace(/```\s*$/gm, "").trim();
+        const rawArgs = parenMatch
+          ? match[2].trim().replace(/^```\w*\s*/gm, "").replace(/```\s*$/gm, "").trim()
+          : match[2].trim().replace(/^```\w*\s*/gm, "").replace(/```\s*$/gm, "").trim();
 
-        // Try to extract JSON args
+        // Parenthetical args (e.g., 'location: "Tokyo"') — convert to JSON
         let argsParsed = false;
         let argsStr = rawArgs;
+        if (parenMatch && rawArgs && !rawArgs.startsWith("{")) {
+          // Convert key: value pairs to JSON object
+          const pairs = rawArgs.match(/(\w+)\s*:\s*("[^"]*"|'[^']*'|\S+)/g);
+          if (pairs) {
+            const obj: Record<string, string> = {};
+            for (const p of pairs) {
+              const colonIdx = p.indexOf(":");
+              const key = p.slice(0, colonIdx).trim();
+              let val: string = p.slice(colonIdx + 1).trim();
+              if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+                val = val.slice(1, -1);
+              }
+              obj[key] = val;
+            }
+            try { argsStr = JSON.stringify(obj); argsParsed = true; } catch { /* ignore */ }
+          }
+        }
+
+        // Try to extract JSON args from Action Input block
+        if (!argsParsed) {
         const jsonStart = rawArgs.indexOf("{");
         if (jsonStart !== -1) {
           let depth = 0;
@@ -559,6 +585,7 @@ export default function (pi: ExtensionAPI) {
               argsStr = jsonStr;
             } catch { /* args not valid JSON */ }
           }
+        }
         }
 
         // Score: correct tool name + valid args = STRONG, correct tool = MODERATE, any action = WEAK
