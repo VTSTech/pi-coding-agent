@@ -1141,7 +1141,7 @@ The JSON object must have exactly these 4 keys:
   // ── Register /model-test command ─────────────────────────────────────
 
   pi.registerCommand("model-test", {
-    description: "Test a model for reasoning, thinking, tool usage, instruction following, and tool support level. Use: /model-test [model] or /model-test --all",
+    description: "Test a model for reasoning, thinking, tool usage, ReAct parsing, instruction following, and tool support level. Use: /model-test [model] or /model-test --all",
     getArgumentCompletions: async (prefix) => {
       try {
         const models = await getOllamaModels();
@@ -1220,7 +1220,7 @@ The JSON object must have exactly these 4 keys:
   pi.registerTool({
     name: "model_test",
     label: "Model Test",
-    description: "Test an Ollama model for reasoning ability, thinking/reasoning token support, tool usage capability, instruction following, and tool support level. Returns a detailed report with scores.",
+    description: "Test an Ollama model for reasoning ability, thinking/reasoning token support, tool usage capability, ReAct format parsing, instruction following, and tool support level. Returns a detailed report with scores.",
     promptSnippet: "model_test - test a model's capabilities",
     promptGuidelines: [
       "When the user asks to test or evaluate a model, call model_test with the model name.",
