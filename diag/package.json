@@ -1,0 +1,23 @@
+{
+  "name": "@vtstech/pi-diag",
+  "version": "1.0.3",
+  "description": "Diagnostics extension for Pi Coding Agent",
+  "main": "diag.js",
+  "keywords": ["pi-package", "pi-extensions"],
+  "license": "MIT",
+  "author": "VTSTech",
+  "homepage": "https://www.vts-tech.org",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VTSTech/pi-coding-agent"
+  },
+  "dependencies": {
+    "@vtstech/pi-shared": "1.0.3"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": ">=0.66"
+  },
+  "pi": {
+    "extensions": ["./diag.js"]
+  }
+}
