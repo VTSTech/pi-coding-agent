@@ -432,7 +432,7 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 
 | Model | Reasoning | Thinking | Tools | ReAct | Instructions | Tool Support | Score |
 |-------|-----------|----------|-------|-------|-------------|--------------|-------|
-| `granite4:350m` | ❌ WEAK | ❌ | ✅ STRONG | — | ✅ STRONG | NATIVE | **2/4** |
+| `granite4:350m` | ❌ WEAK | ❌ | ✅ STRONG | ✅ MODERATE | ✅ STRONG | NATIVE | **4/6** |
 | `qwen3:0.6b` | ⚠️ ERROR* | ❌ | ✅ STRONG | ✅ STRONG | ✅ STRONG | NATIVE | **4/6** |
 | `qwen2.5-coder:1.5b` | ❌ WEAK | ❌ | ✅ STRONG | — | ✅ STRONG | NATIVE | **2/4** |
 | `llama3.2:1b` | ❌ WEAK | ❌ | ✅ STRONG | — | ✅ STRONG | NATIVE | **2/4** |
