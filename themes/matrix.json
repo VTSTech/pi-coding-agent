@@ -10,7 +10,7 @@
     "deepBlack": "#000000",
     "glowGreen": "#00ff41",
     "fadeGreen": "#00cc33",
-    "digitGreen": "#39ff14",
+    "digitGreen": "#39ff14",    
     "hotGreen": "#b2ff59"
   },
   "colors": {
@@ -24,6 +24,7 @@
     "muted": "fadeGreen",
     "dim": "#005f00",
     "text": "green",
+    "yellow": "#eeff00",
     "thinkingText": "glowGreen",
 
     "selectedBg": "#000000",
