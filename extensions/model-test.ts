@@ -11,6 +11,49 @@ import {
 import { getOllamaBaseUrl, MODELS_JSON_PATH, detectModelFamily } from "../shared/ollama";
 import type { ToolSupportLevel } from "../shared/types";
 
+// ── Configuration Constants ─────────────────────────────────────────────
+
+/**
+ * Configuration constants for model testing.
+ * Centralized to make tuning and maintenance easier.
+ *
+ * @property DEFAULT_TIMEOUT_MS - Default timeout for Ollama API calls (8.3 min)
+ * @property CONNECT_TIMEOUT_S - Connection timeout for curl (seconds)
+ * @property MAX_RETRIES - Number of retry attempts for transient failures
+ * @property RETRY_DELAY_MS - Delay between retry attempts (milliseconds)
+ * @property NUM_PREDICT - Default max tokens for model responses
+ * @property TEMPERATURE - Default sampling temperature
+ * @property MIN_THINKING_LENGTH - Minimum characters to consider thinking tokens valid
+ * @property TOOL_TEST_TIMEOUT_MS - Timeout for tool usage tests
+ * @property TOOL_SUPPORT_TIMEOUT_MS - Timeout for tool support detection
+ * @property TAGS_TIMEOUT_MS - Timeout for /api/tags requests
+ * @property TAGS_CONNECT_TIMEOUT_S - Connection timeout for /api/tags (seconds)
+ */
+const CONFIG = {
+  // General API settings
+  DEFAULT_TIMEOUT_MS: 500000,        // 8.3 minutes - default timeout for model responses
+  CONNECT_TIMEOUT_S: 30,             // 30 seconds to establish connection
+  MAX_RETRIES: 1,                    // Single retry for transient failures
+  RETRY_DELAY_MS: 2000,              // 2 seconds between retries
+  EXEC_BUFFER_MS: 5000,              // Extra buffer for exec timeout over curl timeout
+
+  // Model generation settings
+  NUM_PREDICT: 1024,                 // Max tokens in response
+  TEMPERATURE: 0.1,                  // Low temperature for more deterministic output
+
+  // Test-specific settings
+  MIN_THINKING_LENGTH: 10,           // Minimum chars to consider thinking tokens valid
+  TOOL_TEST_TIMEOUT_MS: 50000,       // 50 seconds for tool usage tests
+  TOOL_TEST_MAX_TIME_S: 9999,        // Max curl time for tool tests (effectively unlimited)
+  TOOL_SUPPORT_TIMEOUT_MS: 130000,   // 2+ minutes for tool support detection
+  TOOL_SUPPORT_MAX_TIME_S: 120,      // Max curl time for tool support detection
+
+  // Metadata retrieval
+  TAGS_TIMEOUT_MS: 15000,            // 15 seconds for /api/tags
+  TAGS_CONNECT_TIMEOUT_S: 10,        // 10 seconds connection timeout for tags
+  MODEL_INFO_TIMEOUT_MS: 10000,      // 10 seconds for model info lookup
+} as const;
+
 // ── Tool support cache ──────────────────────────────────────────────────
 
 const TOOL_SUPPORT_CACHE_DIR = path.join(os.homedir(), ".pi", "agent", "cache");
@@ -101,22 +144,22 @@ export default function (pi: ExtensionAPI) {
     model: string,
     messages: Array<{ role: string; content: string }>,
     options: Record<string, unknown> = {},
-    timeoutMs = 500000,
-    retries = 1
+    timeoutMs = CONFIG.DEFAULT_TIMEOUT_MS,
+    retries = CONFIG.MAX_RETRIES
   ): Promise<{ response: any; elapsedMs: number }> {
-    const body: any = { model, messages, stream: false, options: { num_predict: 1024, temperature: 0.1, ...options } };
+    const body: any = { model, messages, stream: false, options: { num_predict: CONFIG.NUM_PREDICT, temperature: CONFIG.TEMPERATURE, ...options } };
 
     for (let attempt = 0; attempt <= retries; attempt++) {
       const start = Date.now();
       try {
         const result = await pi.exec("curl", [
           "-s", "--fail-with-body", "-X", "POST",
-          "--connect-timeout", "30",
+          "--connect-timeout", String(CONFIG.CONNECT_TIMEOUT_S),
           "--max-time", String(Math.ceil(timeoutMs / 1000)),
           `${OLLAMA_BASE}/api/chat`,
           "-H", "Content-Type: application/json",
           "-d", JSON.stringify(body),
-        ], { timeout: timeoutMs + 5000 });
+        ], { timeout: timeoutMs + CONFIG.EXEC_BUFFER_MS });
         const elapsedMs = Date.now() - start;
 
         if (result.code !== 0) {
@@ -126,7 +169,7 @@ export default function (pi: ExtensionAPI) {
         if (!result.stdout.trim()) {
           // Empty response — could be transient tunnel/timeout issue
           if (attempt < retries) {
-            await new Promise(r => setTimeout(r, 2000));
+            await new Promise(r => setTimeout(r, CONFIG.RETRY_DELAY_MS));
             continue;
           }
           throw new Error(`Empty response from Ollama after ${attempt + 1} attempt(s)`);
@@ -135,7 +178,7 @@ export default function (pi: ExtensionAPI) {
         return { response: parsed, elapsedMs };
       } catch (e: any) {
         if (attempt < retries && (e.message.includes("Empty response") || e.message.includes("timed out") || e.message.includes("curl exited 22") || e.message.includes("curl exited 28") || e.message.includes("curl exited 35") || e.message.includes("curl exited 52"))) {
-          await new Promise(r => setTimeout(r, 2000));
+          await new Promise(r => setTimeout(r, CONFIG.RETRY_DELAY_MS));
           continue;
         }
         throw e;
@@ -266,7 +309,7 @@ export default function (pi: ExtensionAPI) {
 
       const msg = response?.message?.content || "";
       const thinking = response?.message?.thinking || "";
-      const hasThinking = !!thinking && thinking.length > 10;
+      const hasThinking = !!thinking && thinking.length > CONFIG.MIN_THINKING_LENGTH;
 
       // Also check if model outputs <think tags
       const thinkTagMatch = msg.match(/<think[^>]*>([\s\S]*?)<\/think>/i);
@@ -324,19 +367,19 @@ export default function (pi: ExtensionAPI) {
       ],
       tools,
       stream: false,
-      options: { num_predict: 1024, temperature: 0.1 },
+      options: { num_predict: CONFIG.NUM_PREDICT, temperature: CONFIG.TEMPERATURE },
     };
 
     try {
       const start = Date.now();
       const result = await pi.exec("curl", [
         "-s", "--fail-with-body", "-X", "POST",
-        "--connect-timeout", "30",
-        "--max-time", "9999",
+        "--connect-timeout", String(CONFIG.CONNECT_TIMEOUT_S),
+        "--max-time", String(CONFIG.TOOL_TEST_MAX_TIME_S),
         `${OLLAMA_BASE}/api/chat`,
         "-H", "Content-Type: application/json",
         "-d", JSON.stringify(body),
-      ], { timeout: 50000 });
+      ], { timeout: CONFIG.TOOL_TEST_TIMEOUT_MS });
       const elapsedMs = Date.now() - start;
 
       if (result.code !== 0) {
@@ -480,19 +523,19 @@ export default function (pi: ExtensionAPI) {
         { role: "user", content: "What's the weather like in Tokyo? Use the get_weather tool." },
       ],
       stream: false,
-      options: { num_predict: 1024, temperature: 0.1 },
+      options: { num_predict: CONFIG.NUM_PREDICT, temperature: CONFIG.TEMPERATURE },
     };
 
     try {
       const start = Date.now();
       const result = await pi.exec("curl", [
         "-s", "--fail-with-body", "-X", "POST",
-        "--connect-timeout", "30",
-        "--max-time", "9999",
+        "--connect-timeout", String(CONFIG.CONNECT_TIMEOUT_S),
+        "--max-time", String(CONFIG.TOOL_TEST_MAX_TIME_S),
         `${OLLAMA_BASE}/api/chat`,
         "-H", "Content-Type: application/json",
         "-d", JSON.stringify(body),
-      ], { timeout: 50000 });
+      ], { timeout: CONFIG.TOOL_TEST_TIMEOUT_MS });
       const elapsedMs = Date.now() - start;
 
       if (result.code !== 0) {
@@ -658,7 +701,7 @@ The JSON object must have exactly these 4 keys:
     try {
       const { response, elapsedMs } = await ollamaChat(model, [
         { role: "user", content: prompt },
-      ], { num_predict: 1024 });
+      ], { num_predict: CONFIG.NUM_PREDICT });
 
       const msg = (response?.message?.content || "").trim();
 
