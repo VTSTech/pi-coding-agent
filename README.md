@@ -132,14 +132,16 @@ Also registers a `self_diagnostic` tool so the AI agent can run diagnostics on c
 /model-test --all               # Test every model in Ollama
 ```
 
-Four tests per model:
+Six tests per model:
 
 | Test | Method | Scoring |
 |------|--------|---------|
-| **Reasoning** | Snail wall puzzle — "climbs 3ft/day, slides 2ft/night, 10ft wall" — answer (8) never appears in the prompt, preventing false positives. Answer extracted as the last number in the response. | STRONG / WEAK / FAIL |
+| **Reasoning** | Snail wall puzzle — "climbs 3ft/day, slides 2ft/night, 10ft wall" — answer (8) never appears in the prompt, preventing false positives. Answer extracted as the last number in the response. | STRONG / MODERATE / WEAK / FAIL |
 | **Thinking** | Extended thinking/reasoning token support (`<think` tags or native API) — "Multiply 37 × 43" prompt | SUPPORTED / NOT SUPPORTED |
 | **Tool Usage** | Tool call generation — detects both native Ollama `tool_calls` API and JSON tool calls embedded in text responses | STRONG / MODERATE / WEAK / FAIL |
+| **ReAct Parse** | Text-based tool calling without native API — tests `Action:` / `Action Input:` pattern parsing | STRONG / MODERATE / WEAK / FAIL |
 | **Instruction Following** | Strict JSON output format compliance — 4 specific keys with typed values, automatic repair of truncated output | STRONG / MODERATE / WEAK / FAIL |
+| **Tool Support** | Probes model for tool calling capability level (native API, ReAct text, or none) — cached for future runs | NATIVE / REACT / NONE |
 
 Features:
 - Calls Ollama `/api/chat` directly — no Pi agent round-trip
@@ -159,7 +161,7 @@ Sample output:
 ```
  [model-test-report]
 
-   ⚡ Pi Model Benchmark v1.0
+   ⚡ Pi Model Benchmark v1.2
    Written by VTSTech
    GitHub: https://github.com/VTSTech
    Website: www.vts-tech.org
@@ -189,6 +191,12 @@ Sample output:
    ℹ️  Time: 6.9s
    ✅ Tool call: get_weather({"location":"Paris"}) (STRONG)
 
+ ── REACT PARSING TEST ──────────────────────────────────────
+   ℹ️  Prompt: "What's the weather in Tokyo?" (ReAct format, no native tools)
+   ℹ️  Testing...
+   ℹ️  Time: 14.4s
+   ✅ ReAct parsed: get_weather({"location": "Tokyo"}) (STRONG)
+
  ── INSTRUCTION FOLLOWING TEST ──────────────────────────────
    ℹ️  Prompt: Respond with ONLY a JSON object with keys: name, can_count, sum (15+27), language
    ℹ️  Testing...
@@ -196,13 +204,22 @@ Sample output:
    ✅ JSON output valid with correct values (STRONG)
    ℹ️  Output: {"name":"AI Assistant","can_count":true,"sum":42,"language":"English"}
 
+ ── TOOL SUPPORT DETECTION ──────────────────────────────────
+   ℹ️  Probing model for tool calling capability (native / ReAct / none)
+   ℹ️  Testing...
+   ℹ️  Time: 23.0s
+   ✅ Tool support: NATIVE (structured API tool_calls)
+   ℹ️  Evidence: API returned tool_calls: get_weather({"location":"Tokyo"})
+
  ── SUMMARY ─────────────────────────────────────────────────
    ✅ Reasoning: STRONG
    ❌ Thinking: NO
    ✅ Tool Usage: STRONG
+   ✅ ReAct Parse: STRONG
    ✅ Instructions: STRONG
+   ✅ Tool Support: NATIVE
    ℹ️  Total time: 39.0s
-   ℹ️  Score: 3/4 tests passed
+   ℹ️  Score: 5/6 tests passed
 
  ── RECOMMENDATION ──────────────────────────────────────────
    ✅ granite4:350m is a GOOD model — most capabilities work
@@ -401,7 +418,7 @@ subprocess.Popen(["ollama", "serve"])
 | Model | Params | Size | Reasoning | Tools | Best For |
 |-------|--------|------|-----------|-------|----------|
 | `granite4:350m` | 352M | 676 MB | ❌ | ✅ | Fast tasks, tool calling |
-| `qwen3:0.6b` | 752M | 498 MB | ✅ | ✅ | Thinking tasks |
+| `qwen3:0.6b` | 752M | 498 MB | ❌ | ✅ | Small footprint, native tools |
 | `qwen3.5:0.8b` | ~800M | 1.0 GB | ❌ | ✅ | Daily driver |
 | `qwen2.5-coder:1.5b` | 1.5B | 940 MB | ❌ | ✅ | Code tasks |
 | `llama3.2:1b` | 1.2B | 1.2 GB | ❌ | ✅ | General use |
@@ -413,27 +430,29 @@ subprocess.Popen(["ollama", "serve"])
 
 Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via remote Ollama over Cloudflare Tunnel. The reasoning test uses the **snail wall puzzle** (answer: 8, never appears in the prompt).
 
-| Model | Reasoning | Thinking | Tools | Instructions | Score |
-|-------|-----------|----------|-------|-------------|-------|
-| `granite4:350m` | ❌ WEAK | ❌ | ✅ STRONG | ✅ STRONG | **2/4** |
-| `qwen3:0.6b` | ⏳ pending* | ✅ | ✅ STRONG | ✅ STRONG | **—** |
-| `qwen2.5-coder:1.5b` | ❌ WEAK | ❌ | ✅ STRONG | ✅ STRONG | **2/4** |
-| `llama3.2:1b` | ❌ WEAK | ❌ | ✅ STRONG | ✅ STRONG | **2/4** |
-| `nchapman/dolphin3.0-llama3:1b` | ❌ WEAK | ❌ | ⛔ N/A | ✅ STRONG | **1/4** |
-| `qwen2.5-coder:0.5b-instruct-q4_k_m` | ❌ WEAK | ❌ | ✅ MODERATE | ✅ STRONG | **2/4** |
-| `qwen2.5:0.5b` | ❌ WEAK | ❌ | ✅ STRONG | ✅ STRONG | **2/4** |
-| `qwen:0.5b` | ❌ WEAK | ❌ | ❌ FAIL | ✅ MODERATE | **1/4** |
-| `qwen2:0.5b` | ❌ WEAK | ❌ | ❌ FAIL | ✅ STRONG | **1/4** |
-| `functiongemma:270m` | ❌ WEAK | ❌ | ✅ STRONG | ❌ FAIL | **1/4** |
-| `gemma3:270m` | ❌ WEAK | ❌ | ❌ FAIL | ❌ FAIL | **0/4** |
-| `smollm:135m` | ❌ WEAK | ❌ | ❌ FAIL | ❌ FAIL | **0/4** |
-| `ishumilin/deepseek-r1-coder-tools:1.5b` | ❌ ERROR† | ❌ | ❌ FAIL | ❌ FAIL | **0/6** |
+| Model | Reasoning | Thinking | Tools | ReAct | Instructions | Tool Support | Score |
+|-------|-----------|----------|-------|-------|-------------|--------------|-------|
+| `granite4:350m` | ❌ WEAK | ❌ | ✅ STRONG | — | ✅ STRONG | NATIVE | **2/4** |
+| `qwen3:0.6b` | ⚠️ ERROR* | ❌ | ✅ STRONG | ✅ STRONG | ✅ STRONG | NATIVE | **4/6** |
+| `qwen2.5-coder:1.5b` | ❌ WEAK | ❌ | ✅ STRONG | — | ✅ STRONG | NATIVE | **2/4** |
+| `llama3.2:1b` | ❌ WEAK | ❌ | ✅ STRONG | — | ✅ STRONG | NATIVE | **2/4** |
+| `nchapman/dolphin3.0-llama3:1b` | ❌ WEAK | ❌ | ⛔ N/A | — | ✅ STRONG | NONE | **1/4** |
+| `qwen2.5-coder:0.5b-instruct-q4_k_m` | ❌ WEAK | ❌ | ✅ MODERATE | — | ✅ STRONG | NATIVE | **2/4** |
+| `qwen2.5:0.5b` | ❌ WEAK | ❌ | ✅ STRONG | — | ✅ STRONG | NATIVE | **2/4** |
+| `qwen:0.5b` | ❌ WEAK | ❌ | ❌ FAIL | — | ✅ MODERATE | NONE | **1/4** |
+| `qwen2:0.5b` | ❌ WEAK | ❌ | ❌ FAIL | — | ✅ STRONG | NONE | **1/4** |
+| `functiongemma:270m` | ❌ WEAK | ❌ | ✅ STRONG | — | ❌ FAIL | NATIVE | **1/4** |
+| `gemma3:270m` | ❌ WEAK | ❌ | ❌ FAIL | — | ❌ FAIL | NONE | **0/4** |
+| `smollm:135m` | ❌ WEAK | ❌ | ❌ FAIL | — | ❌ FAIL | NONE | **0/4** |
 
-> *qwen3:0.6b scored 3/4 previously but needs re-test — the snail puzzle reasoning score was not captured before a timeout issue. The `think:true` fallback in the latest update should now handle this correctly.
+> *qwen3:0.6b reasoning test failed due to tunnel error (curl exited 22 — HTTP error from Cloudflare Tunnel), not model capability. The model passed all other tests including native tool calling, ReAct parsing, and instruction following. Total test time: 10 minutes.
 >
 > ⛔ = model does not support tool calls (Ollama API returns error). Scored as 0 for tool usage.
 >
-> † = curl 22 error (Cloudflare Tunnel 524 timeout). Model likely needs a re-test on a stable connection.
+> **Tool Support Levels:**
+> - `NATIVE` — Model uses Ollama's structured `tool_calls` API
+> - `REACT` — Model outputs text-based `Action:` / `Action Input:` patterns
+> - `NONE` — No tool support detected
 
 ---
 
@@ -443,9 +462,16 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 pi-coding-agent/
 ├── extensions/
 │   ├── diag.ts              # System diagnostic suite
-│   ├── model-test.ts        # Model benchmark tool
+│   ├── model-test.ts        # Model benchmark tool (v1.2)
 │   ├── ollama-sync.ts       # Ollama ↔ models.json sync
+│   ├── react-fallback.ts    # ReAct fallback for non-native tool models
+│   ├── security.ts          # Command/path/SSRF protection
 │   └── status.ts            # System resource monitor
+├── shared/
+│   ├── format.ts            # Shared formatting utilities
+│   ├── ollama.ts            # Ollama API helpers
+│   ├── security.ts          # Security validation functions
+│   └── types.ts             # TypeScript types & error classes
 ├── themes/
 │   └── matrix.json          # Matrix movie theme
 ├── package.json             # Pi package manifest
