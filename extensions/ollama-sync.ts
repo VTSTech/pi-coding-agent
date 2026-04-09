@@ -85,9 +85,12 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerCommand("ollama-sync", {
     description: "Sync models from Ollama into models.json. Use: /ollama-sync [url]",
-    getArgumentCompletions: async () => [
-      { label: getOllamaBaseUrl(), description: "Default Ollama URL (from models.json, $OLLAMA_HOST or localhost)" },
-    ],
+    getArgumentCompletions: async () => {
+      const url = getOllamaBaseUrl();
+      return [
+        { value: url, label: url, description: "Default Ollama URL..." },
+      ];
+    },
     async handler(args, ctx) {
       const arg = args.trim();
       const overrideUrl = arg || undefined;
