@@ -43,7 +43,7 @@
     "mdLink": "phosphor",
     "mdLinkUrl": "fadeGreen",
     "mdCode": "digitGreen",
-    "mdCodeBlock": "#000000",
+    "mdCodeBlock": "phosphor",
     "mdCodeBlockBorder": "darkGreen",
     "mdQuote": "glowGreen",
     "mdQuoteBorder": "fadeGreen",
