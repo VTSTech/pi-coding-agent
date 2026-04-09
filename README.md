@@ -1,6 +1,6 @@
 <div align="center">
 
-# ⚡ Pi Coding Agent — VTSTech Extensions
+# ⚡ Pi Coding Agent — VTSTech's Extensions
 
 **Pi package with custom extensions, themes, and configurations for the [Pi Coding Agent](https://github.com/badlogic/pi-mono)**
 
