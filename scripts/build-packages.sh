@@ -58,7 +58,7 @@ build_shared() {
     npx esbuild "$src_file" \
       --bundle \
       --outfile="$dest_file" \
-      --format=cjs \
+      --format=esm \
       --platform=node \
       --target=es2020 \
       --external:@mariozechner/pi-coding-agent
@@ -113,7 +113,7 @@ build_extension() {
   npx esbuild "$temp_ts" \
     --bundle \
     --outfile="$dest_file" \
-    --format=cjs \
+    --format=esm \
     --platform=node \
     --target=es2020 \
     --external:@mariozechner/pi-coding-agent \

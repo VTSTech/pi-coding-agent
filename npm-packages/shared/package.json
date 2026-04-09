@@ -7,6 +7,7 @@
   "keywords": ["pi-package", "pi-extensions"],
   "license": "MIT",
   "access": "public",
+  "type": "module",
   "author": "VTSTech",
   "homepage": "https://www.vts-tech.org",
   "repository": {
