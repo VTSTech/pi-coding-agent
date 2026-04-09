@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Pi Version](https://img.shields.io/badge/Pi-v0.66%2B-green.svg)](https://github.com/badlogic/pi-mono)
 [![Pi Package](https://img.shields.io/badge/Install-pi%20install%20git-blue.svg)](#installation)
-[![Version](https://img.shields.io/badge/Version-v1.0.3-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-v1.0.4-orange.svg)](CHANGELOG.md)
 
 <p>
   <a href="https://github.com/VTSTech"><strong>VTSTech</strong></a> •
@@ -46,8 +46,28 @@ pi update
 
 Pin to a specific tag:
 ```bash
-pi install git:github.com/VTSTech/pi-coding-agent@v1.0.3
+pi install git:github.com/VTSTech/pi-coding-agent@v1.0.4
 ```
+
+### Individual npm packages
+
+Each extension is published separately to npm. Install only what you need:
+
+```bash
+# Install individual extensions
+pi install "npm:@vtstech/pi-api"
+pi install "npm:@vtstech/pi-diag"
+pi install "npm:@vtstech/pi-model-test"
+pi install "npm:@vtstech/pi-ollama-sync"
+pi install "npm:@vtstech/pi-react-fallback"
+pi install "npm:@vtstech/pi-security"
+pi install "npm:@vtstech/pi-status"
+
+# Or install everything as one bundle via GitHub
+pi install git:github.com/VTSTech/pi-coding-agent
+```
+
+> All extensions depend on `@vtstech/pi-shared` which is installed automatically as a dependency.
 
 ### Manual install
 
@@ -74,7 +94,7 @@ This repo is a standard Pi package. The `package.json` contains a `pi` manifest 
 ```json
 {
   "name": "@vtstech/pi-coding-agent-extensions",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "keywords": ["pi-package"],
   "pi": {
     "extensions": ["./extensions"],
@@ -206,7 +226,7 @@ Sample output (cloud provider):
 ```
  [model-test-report]
 
-   ⚡ Pi Model Benchmark v1.0.3
+   ⚡ Pi Model Benchmark v1.0.4
    Written by VTSTech
    GitHub: https://github.com/VTSTech
    Website: www.vts-tech.org
@@ -606,6 +626,18 @@ pi-coding-agent/
 │   └── types.ts             # TypeScript types & error classes
 ├── themes/
 │   └── matrix.json          # Matrix movie theme
+├── npm-packages/            # Per-extension npm package manifests
+│   ├── shared/              # @vtstech/pi-shared
+│   ├── api/                 # @vtstech/pi-api
+│   ├── diag/                # @vtstech/pi-diag
+│   ├── model-test/          # @vtstech/pi-model-test
+│   ├── ollama-sync/         # @vtstech/pi-ollama-sync
+│   ├── react-fallback/      # @vtstech/pi-react-fallback
+│   ├── security/            # @vtstech/pi-security
+│   └── status/              # @vtstech/pi-status
+├── scripts/
+│   ├── build-packages.sh    # Build all npm packages (esbuild TS→ESM)
+│   └── publish-packages.sh  # Publish to npm (shared first, then extensions)
 ├── CHANGELOG.md             # Version history
 ├── package.json             # Pi package manifest
 ├── README.md

@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.4] - 04-09-2026 7:10:26 PM
+
+### Added
+
+- **Individual npm packages** — all extensions are now published separately to npm for selective installation.
+  - `@vtstech/pi-shared` — shared utilities (format, ollama, security, types)
+  - `@vtstech/pi-api` — API mode switcher
+  - `@vtstech/pi-diag` — diagnostics
+  - `@vtstech/pi-model-test` — model benchmark
+  - `@vtstech/pi-ollama-sync` — Ollama sync
+  - `@vtstech/pi-react-fallback` — ReAct fallback
+  - `@vtstech/pi-security` — security layer
+  - `@vtstech/pi-status` — system monitor / status bar
+  - Each extension depends on `@vtstech/pi-shared` to avoid duplicating shared code.
+
+- **Build and publish tooling** (`scripts/`)
+  - `build-packages.sh` — compiles TypeScript to ESM via esbuild, rewrites `../shared/*` imports to `@vtstech/pi-shared/*`, outputs to `.build-npm/`.
+  - `publish-packages.sh` — publishes all packages to npm in dependency order (shared first) with `--access public` support and `--dry-run` mode.
+
+- **npm-packages/** — per-extension `package.json` manifests with `pi` entry points and `"type": "module"` for ESM.
+
+### Changed
+
+- **npm package format** — compiled output switched from CommonJS (`--format=cjs`) to ESM (`--format=esm`) with `"type": "module"` in package.json to match Pi's extension loading mechanism.
+
+### Fixed
+
+- **npm publish E402 "Payment Required"** — added `--access public` flag to `npm publish` command, since scoped packages (`@vtstech/*`) default to private on npm.
+
+---
+
 ## [1.0.3] - 04-09-2026 5:26:15 PM
 
 ### Added
