@@ -85,7 +85,7 @@ publish_one() {
   fi
 
   log "Publishing $pkg_name@$pkg_version (tag: $DIST_TAG)..."
-  npm publish "$pkg_dir" --tag "$DIST_TAG"
+  npm publish "$pkg_dir" --access public --tag "$DIST_TAG"
 
   if [ $? -eq 0 ]; then
     log "✅ Published: $pkg_name@$pkg_version"
