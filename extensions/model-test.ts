@@ -8,8 +8,107 @@ import {
   section, ok, fail, warn, info,
   msHuman, truncate, sanitizeForReport,
 } from "../shared/format";
-import { getOllamaBaseUrl, MODELS_JSON_PATH, detectModelFamily } from "../shared/ollama";
+import { getOllamaBaseUrl, MODELS_JSON_PATH, detectModelFamily, readModelsJson } from "../shared/ollama";
 import type { ToolSupportLevel } from "../shared/types";
+
+// ── Built-in Provider Registry ──────────────────────────────────────────
+
+/**
+ * Known built-in providers that Pi supports out of the box.
+ * Each entry maps provider name to its API type, base URL, and required env var for the API key.
+ */
+const BUILTIN_PROVIDERS: Record<string, { api: string; baseUrl: string; envKey: string }> = {
+  openrouter:    { api: "openai-completions", baseUrl: "https://openrouter.ai/api/v1", envKey: "OPENROUTER_API_KEY" },
+  anthropic:     { api: "anthropic-messages", baseUrl: "https://api.anthropic.com/v1", envKey: "ANTHROPIC_API_KEY" },
+  google:        { api: "gemini", baseUrl: "https://generativelanguage.googleapis.com", envKey: "GOOGLE_API_KEY" },
+  openai:        { api: "openai-completions", baseUrl: "https://api.openai.com/v1", envKey: "OPENAI_API_KEY" },
+  groq:          { api: "openai-completions", baseUrl: "https://api.groq.com/v1", envKey: "GROQ_API_KEY" },
+  deepseek:      { api: "openai-completions", baseUrl: "https://api.deepseek.com/v1", envKey: "DEEPSEEK_API_KEY" },
+  mistral:       { api: "openai-completions", baseUrl: "https://api.mistral.ai/v1", envKey: "MISTRAL_API_KEY" },
+  xai:           { api: "openai-completions", baseUrl: "https://api.x.ai/v1", envKey: "XAI_API_KEY" },
+  together:      { api: "openai-completions", baseUrl: "https://api.together.xyz/v1", envKey: "TOGETHER_API_KEY" },
+  fireworks:     { api: "openai-completions", baseUrl: "https://api.fireworks.ai/inference/v1", envKey: "FIREWORKS_API_KEY" },
+  cohere:        { api: "cohere-chat", baseUrl: "https://api.cohere.com/v1", envKey: "COHERE_API_KEY" },
+};
+
+// ── Provider Detection ──────────────────────────────────────────────────
+
+type ProviderKind = "ollama" | "builtin" | "unknown";
+
+interface ProviderInfo {
+  kind: ProviderKind;
+  name: string;            // provider name (e.g. "ollama", "openrouter", "anthropic")
+  apiMode?: string;        // API mode (e.g. "openai-completions", "ollama")
+  baseUrl?: string;        // API base URL
+  envKey?: string;         // Environment variable for API key
+  apiKey?: string;         // Actual API key value (if available)
+}
+
+/**
+ * Detect whether the current model is on an Ollama provider, a built-in
+ * provider, or an unknown provider. Uses the same 3-tier logic as diag.ts:
+ *   1. User-defined provider in models.json
+ *   2. Known built-in provider
+ *   3. Unknown provider
+ */
+function detectProvider(ctx: any): ProviderInfo {
+  const model = ctx.model;
+  if (!model) return { kind: "unknown", name: "none" };
+
+  const providerName = model.provider || "";
+  if (!providerName) return { kind: "unknown", name: "none" };
+
+  // Tier 1: Check if provider is defined in models.json
+  const modelsJson = readModelsJson();
+  const userProviderCfg = (modelsJson.providers || {})[providerName];
+  if (userProviderCfg) {
+    const baseUrl = userProviderCfg.baseUrl || "";
+    const apiMode = userProviderCfg.api || "";
+    const apiKey = userProviderCfg.apiKey || "";
+
+    // Check if it's an Ollama provider (user-defined Ollama in models.json)
+    const isOllama = /ollama/i.test(providerName) ||
+      /localhost:\d+/.test(baseUrl) ||
+      /127\.0\.0\.1:\d+/.test(baseUrl) ||
+      /\/api\/chat/.test(baseUrl) ||
+      apiMode === "ollama";
+
+    if (isOllama) {
+      return { kind: "ollama", name: providerName, apiMode: "ollama", baseUrl, apiKey };
+    }
+
+    // User-defined non-Ollama provider (treat as Ollama-style if it has /api/chat)
+    if (/\/api\/chat/.test(baseUrl)) {
+      return { kind: "ollama", name: providerName, apiMode: "ollama", baseUrl, apiKey };
+    }
+
+    // User-defined provider with custom config — treat as built-in style
+    return {
+      kind: "builtin",
+      name: providerName,
+      apiMode: apiMode || userProviderCfg.api || "openai-completions",
+      baseUrl,
+      apiKey,
+    };
+  }
+
+  // Tier 2: Check built-in providers
+  const builtin = BUILTIN_PROVIDERS[providerName];
+  if (builtin) {
+    const apiKey = process.env[builtin.envKey] || "";
+    return {
+      kind: "builtin",
+      name: providerName,
+      apiMode: builtin.api,
+      baseUrl: builtin.baseUrl,
+      envKey: builtin.envKey,
+      apiKey,
+    };
+  }
+
+  // Tier 3: Unknown provider
+  return { kind: "unknown", name: providerName };
+}
 
 // ── Configuration Constants ─────────────────────────────────────────────
 
@@ -43,7 +142,7 @@ const CONFIG = {
 
   // Test-specific settings
   MIN_THINKING_LENGTH: 10,           // Minimum chars to consider thinking tokens valid
-  TOOL_TEST_TIMEOUT_MS: 90000,       // 50 seconds for tool usage tests
+  TOOL_TEST_TIMEOUT_MS: 90000,       // 90 seconds for tool usage tests
   TOOL_TEST_MAX_TIME_S: 9999,        // Max curl time for tool tests (effectively unlimited)
   TOOL_SUPPORT_TIMEOUT_MS: 260000,   // 2+ minutes for tool support detection
   TOOL_SUPPORT_MAX_TIME_S: 240,      // Max curl time for tool support detection
@@ -52,6 +151,10 @@ const CONFIG = {
   TAGS_TIMEOUT_MS: 15000,            // 15 seconds for /api/tags
   TAGS_CONNECT_TIMEOUT_S: 10,        // 10 seconds connection timeout for tags
   MODEL_INFO_TIMEOUT_MS: 10000,      // 10 seconds for model info lookup
+
+  // Provider API settings
+  PROVIDER_TIMEOUT_MS: 120000,       // 2 minutes for cloud provider API calls
+  PROVIDER_TOOL_TIMEOUT_MS: 60000,   // 60 seconds for tool usage tests on providers
 } as const;
 
 // ── Tool support cache ──────────────────────────────────────────────────
@@ -121,14 +224,16 @@ function cacheToolSupport(model: string, support: ToolSupportLevel, family: stri
 
 /**
  * Model testing extension for Pi Coding Agent.
- * Tests Ollama models for reasoning/thinking ability, tool usage capability,
- * instruction following, and tool support level by calling the Ollama API
- * directly (bypasses Pi's agent loop).
+ * Tests models for reasoning/thinking ability, tool usage capability,
+ * instruction following, and tool support level.
+ *
+ * Supports both Ollama (local/remote) and built-in cloud providers
+ * (OpenRouter, Anthropic, Google, OpenAI, Groq, etc.).
  *
  * Usage:
  *   /model-test              — test the current Pi model
  *   /model-test qwen3:0.6b   — test a specific model
- *   /model-test --all        — test all models in Ollama
+ *   /model-test --all        — test all models (Ollama only)
  */
 export default function (pi: ExtensionAPI) {
 
@@ -185,6 +290,157 @@ export default function (pi: ExtensionAPI) {
       }
     }
     throw new Error("Unreachable");
+  }
+
+  // ── Provider Chat (OpenAI-compatible) ───────────────────────────────
+
+  /**
+   * Call a cloud provider's chat completions API (OpenAI-compatible format).
+   * Uses native fetch() — not curl.
+   *
+   * Returns a normalized response with content, optional tool_calls, and elapsedMs.
+   */
+  async function providerChat(
+    providerInfo: ProviderInfo,
+    model: string,
+    messages: Array<{ role: string; content: string }>,
+    options: {
+      maxTokens?: number;
+      temperature?: number;
+      tools?: any[];
+      timeoutMs?: number;
+    } = {},
+  ): Promise<{ content: string; toolCalls?: any[]; elapsedMs: number; usage?: any }> {
+    const { baseUrl, apiKey } = providerInfo;
+    const maxTokens = options.maxTokens ?? CONFIG.NUM_PREDICT;
+    const temperature = options.temperature ?? CONFIG.TEMPERATURE;
+    const timeoutMs = options.timeoutMs ?? CONFIG.PROVIDER_TIMEOUT_MS;
+
+    if (!baseUrl) throw new Error(`No base URL for provider "${providerInfo.name}"`);
+    if (!apiKey) throw new Error(`No API key for provider "${providerInfo.name}". Set ${providerInfo.envKey || "the appropriate env var"}.`);
+
+    const url = `${baseUrl}/chat/completions`;
+    const body: any = {
+      model,
+      messages,
+      max_tokens: maxTokens,
+      temperature,
+      stream: false,
+    };
+    if (options.tools && options.tools.length > 0) {
+      body.tools = options.tools;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    const start = Date.now();
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      const elapsedMs = Date.now() - start;
+
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => "unknown error");
+        throw new Error(`API returned ${res.status}: ${truncate(errorText, 200)}`);
+      }
+
+      const data = await res.json();
+      const choice = data.choices?.[0];
+      const message = choice?.message || {};
+      const content = message.content || "";
+      const toolCalls = message.tool_calls || undefined;
+
+      return {
+        content,
+        toolCalls: toolCalls && toolCalls.length > 0 ? toolCalls : undefined,
+        elapsedMs,
+        usage: data.usage,
+      };
+    } catch (e: any) {
+      const elapsedMs = Date.now() - start;
+      if (e.name === "AbortError") {
+        throw new Error(`Provider API timed out after ${msHuman(elapsedMs)}`);
+      }
+      throw e;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  // ── test: connectivity (provider only) ──────────────────────────────
+
+  /**
+   * Test basic connectivity to a cloud provider's API.
+   * Sends a minimal request and verifies the API is reachable and the key is valid.
+   */
+  async function testConnectivity(
+    providerInfo: ProviderInfo,
+    model: string,
+  ): Promise<{
+    pass: boolean;
+    reachable: boolean;
+    authValid: boolean;
+    modelName: string;
+    elapsedMs: number;
+    error?: string;
+  }> {
+    try {
+      const start = Date.now();
+      const result = await providerChat(providerInfo, model, [
+        { role: "user", content: "Reply with exactly: PONG" },
+      ], { maxTokens: 10, timeoutMs: 30000 });
+      const elapsedMs = Date.now() - start;
+
+      const content = result.content.trim().toUpperCase();
+      const reachable = true;
+      const authValid = true; // If we got here, the key is valid
+      const hasPong = content.includes("PONG");
+
+      return {
+        pass: reachable && authValid,
+        reachable,
+        authValid,
+        modelName: model,
+        elapsedMs,
+      };
+    } catch (e: any) {
+      const start = Date.now(); // approximate
+      let reachable = false;
+      let authValid = false;
+
+      const msg = e.message || "";
+      if (msg.includes("timed out") || msg.includes("ECONNREFUSED") || msg.includes("ENOTFOUND") || msg.includes("fetch failed")) {
+        reachable = false;
+        authValid = false;
+      } else if (msg.includes("401") || msg.includes("403") || msg.includes("authentication") || msg.includes("unauthorized") || msg.includes("invalid API key")) {
+        reachable = true;
+        authValid = false;
+      } else if (msg.includes("404") || msg.includes("model")) {
+        reachable = true;
+        authValid = true; // Key works, model name might be wrong
+      } else {
+        // Unknown error — assume reachable but check
+        reachable = true;
+        authValid = false;
+      }
+
+      return {
+        pass: false,
+        reachable,
+        authValid,
+        modelName: model,
+        elapsedMs: 0,
+        error: msg,
+      };
+    }
   }
 
   // ── test: reasoning ──────────────────────────────────────────────────
@@ -287,6 +543,66 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
+  /**
+   * Provider-aware reasoning test using the generic chat function.
+   */
+  async function testReasoningProvider(
+    providerInfo: ProviderInfo,
+    model: string,
+  ): Promise<{
+    pass: boolean;
+    score: string;
+    reasoning: string;
+    answer: string;
+    elapsedMs: number;
+  }> {
+    const prompt = `A snail climbs 3 feet up a wall each day, but slides back 2 feet each night. The wall is 10 feet tall. How many days does it take the snail to reach the top? Think step by step and give the final answer on its own line like: ANSWER: <number>`;
+
+    try {
+      const result = await providerChat(providerInfo, model, [
+        { role: "user", content: prompt },
+      ]);
+
+      const msg = result.content.trim();
+      if (msg.length === 0) {
+        return { pass: false, score: "ERROR", reasoning: "Empty response from provider", answer: "?", elapsedMs: result.elapsedMs };
+      }
+
+      // Extract the answer: use the last number in the model's response.
+      const allNumbers = msg.match(/\b(\d+)\b/g) || [];
+      const answer = allNumbers.length > 0 ? allNumbers[allNumbers.length - 1] : "?";
+
+      const isCorrect = answer === "8";
+
+      // Check for reasoning patterns
+      const reasoningPatterns = ["because", "therefore", "since", "step", "subtract", "minus",
+        "each day", "each night", "slides", "climbs", "night", "reaches", "finally", "last day"];
+      const hasReasoningWords = reasoningPatterns.some(w => msg.toLowerCase().includes(w));
+      const hasNumberedSteps = /^\s*\d+\.\s/m.test(msg);
+      const hasReasoning = hasReasoningWords || hasNumberedSteps;
+
+      let score: string;
+      let pass: boolean;
+      if (isCorrect && hasReasoning) {
+        score = "STRONG";
+        pass = true;
+      } else if (isCorrect) {
+        score = "MODERATE";
+        pass = true;
+      } else if (hasReasoning) {
+        score = "WEAK";
+        pass = false;
+      } else {
+        score = "FAIL";
+        pass = false;
+      }
+
+      return { pass, score, reasoning: msg, answer, elapsedMs: result.elapsedMs };
+    } catch (e: any) {
+      return { pass: false, score: "ERROR", reasoning: e.message, answer: "?", elapsedMs: 0 };
+    }
+  }
+
   // ── test: thinking ───────────────────────────────────────────────────
 
   /**
@@ -328,7 +644,7 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
-  // ── test: tool usage ─────────────────────────────────────────────────
+  // ── test: tool usage (Ollama) ────────────────────────────────────────
 
   /**
    * Test if a model can generate proper tool calls via Ollama's tool API.
@@ -481,6 +797,144 @@ export default function (pi: ExtensionAPI) {
         toolCall: "none",
         response: content,
         elapsedMs,
+      };
+    } catch (e: any) {
+      return { pass: false, score: "ERROR", hasToolCalls: false, toolCall: `error: ${e.message}`, response: "", elapsedMs: 0 };
+    }
+  }
+
+  // ── test: tool usage (Provider) ──────────────────────────────────────
+
+  /**
+   * Test if a cloud provider model can generate proper tool calls.
+   * Uses the OpenAI function calling format.
+   */
+  async function testToolUsageProvider(
+    providerInfo: ProviderInfo,
+    model: string,
+  ): Promise<{
+    pass: boolean;
+    score: string;
+    hasToolCalls: boolean;
+    toolCall: string;
+    response: string;
+    elapsedMs: number;
+  }> {
+    const tools = [
+      {
+        type: "function",
+        function: {
+          name: "get_weather",
+          description: "Get the current weather for a location",
+          parameters: {
+            type: "object",
+            properties: {
+              location: { type: "string", description: "City name" },
+              unit: { type: "string", enum: ["celsius", "fahrenheit"] },
+            },
+            required: ["location"],
+          },
+        },
+      },
+    ];
+
+    try {
+      const result = await providerChat(providerInfo, model, [
+        { role: "system", content: "You are a helpful assistant. Use the available tools when needed." },
+        { role: "user", content: "What's the weather like in Paris right now?" },
+      ], {
+        maxTokens: CONFIG.NUM_PREDICT,
+        tools,
+        timeoutMs: CONFIG.PROVIDER_TOOL_TIMEOUT_MS,
+      });
+
+      const content = result.content;
+      const toolCalls = result.toolCalls;
+
+      if (toolCalls && toolCalls.length > 0) {
+        const call = toolCalls[0];
+        const fn = call.function || {};
+        let args: any = {};
+        try {
+          args = typeof fn.arguments === "string" ? JSON.parse(fn.arguments) : (fn.arguments || {});
+        } catch {
+          return {
+            pass: true,
+            score: "WEAK",
+            hasToolCalls: true,
+            toolCall: `malformed args: ${String(fn.arguments)}`,
+            response: content,
+            elapsedMs: result.elapsedMs,
+          };
+        }
+        const hasCorrectTool = fn.name === "get_weather";
+        const hasLocation = typeof args.location === "string" && args.location.toLowerCase().includes("paris");
+
+        let score: string;
+        if (hasCorrectTool && hasLocation) {
+          score = "STRONG";
+        } else if (hasCorrectTool) {
+          score = "MODERATE";
+        } else {
+          score = "WEAK";
+        }
+
+        return {
+          pass: true,
+          score,
+          hasToolCalls: true,
+          toolCall: `${fn.name}(${JSON.stringify(args)})`,
+          response: content,
+          elapsedMs: result.elapsedMs,
+        };
+      }
+
+      // Model answered in text — check if it contains valid tool call JSON
+      const firstBrace = content.indexOf('{');
+      let textToolParsed: any = null;
+      if (firstBrace !== -1) {
+        const lastBrace = content.lastIndexOf('}');
+        if (lastBrace > firstBrace) {
+          const jsonCandidate = content.slice(firstBrace, lastBrace + 1);
+          try {
+            textToolParsed = JSON.parse(jsonCandidate);
+          } catch { /* not valid JSON */ }
+        }
+      }
+
+      if (textToolParsed && typeof textToolParsed.name === "string") {
+        const fnName = textToolParsed.name;
+        const rawArgs = textToolParsed.arguments || { ...textToolParsed };
+        const { name: _, ...fnArgs } = rawArgs;
+        const isWeatherTool = fnName === "get_weather";
+        const hasLocation = typeof fnArgs.location === "string" && fnArgs.location.toLowerCase().includes("paris");
+
+        let score: string;
+        if (isWeatherTool && hasLocation) {
+          score = "STRONG";
+        } else if (isWeatherTool) {
+          score = "MODERATE";
+        } else {
+          score = "WEAK";
+        }
+
+        return {
+          pass: true,
+          score,
+          hasToolCalls: true,
+          toolCall: `${fnName}(${JSON.stringify(fnArgs)})`,
+          response: content,
+          elapsedMs: result.elapsedMs,
+        };
+      }
+
+      return {
+        pass: false,
+        score: "FAIL",
+        hasToolCalls: false,
+        toolCall: "none",
+        response: content,
+        elapsedMs: result.elapsedMs,
       };
     } catch (e: any) {
       return { pass: false, score: "ERROR", hasToolCalls: false, toolCall: `error: ${e.message}`, response: "", elapsedMs: 0 };
@@ -761,6 +1215,85 @@ The JSON object must have exactly these 4 keys:
     }
   }
 
+  /**
+   * Provider-aware instruction following test.
+   */
+  async function testInstructionFollowingProvider(
+    providerInfo: ProviderInfo,
+    model: string,
+  ): Promise<{
+    pass: boolean;
+    score: string;
+    output: string;
+    elapsedMs: number;
+  }> {
+    const prompt = `You must respond with ONLY a valid JSON object. No markdown, no explanation, no backticks, no extra text.
+
+The JSON object must have exactly these 4 keys:
+- "name" (string): your model name
+- "can_count" (boolean): true
+- "sum" (number): the result of 15 + 27
+- "language" (string): the language you are responding in`;
+
+    try {
+      const result = await providerChat(providerInfo, model, [
+        { role: "user", content: prompt },
+      ]);
+      const msg = result.content.trim();
+
+      // Try to parse as JSON (with repair for truncated output)
+      let parsed: any = null;
+      let repairNote = "";
+      try {
+        const cleaned = msg.replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
+        parsed = JSON.parse(cleaned);
+      } catch {
+        const cleaned = msg.replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
+        const openBraces = (cleaned.match(/\{/g) || []).length;
+        const closeBraces = (cleaned.match(/\}/g) || []).length;
+        const openBrackets = (cleaned.match(/\[/g) || []).length;
+        const closeBrackets = (cleaned.match(/\]/g) || []).length;
+        if (openBraces > closeBraces || openBrackets > closeBrackets) {
+          const repaired = cleaned
+            + "}".repeat(Math.max(0, openBraces - closeBraces))
+            + "]".repeat(Math.max(0, openBrackets - closeBrackets));
+          try {
+            parsed = JSON.parse(repaired);
+            repairNote = " (repaired truncated JSON)";
+          } catch { /* repair failed too */ }
+        }
+      }
+
+      if (!parsed) {
+        return { pass: false, score: "FAIL", output: sanitizeForReport(msg), elapsedMs: result.elapsedMs };
+      }
+
+      const hasKeys = parsed.name && parsed.can_count !== undefined && parsed.sum !== undefined && parsed.language;
+      const correctSum = parsed.sum === 42;
+      const hasCorrectCount = parsed.can_count === true;
+
+      let score: string;
+      if (hasKeys && correctSum && hasCorrectCount) {
+        score = "STRONG";
+      } else if (hasKeys && (correctSum || hasCorrectCount)) {
+        score = "MODERATE";
+      } else if (parsed.sum !== undefined || parsed.name) {
+        score = "WEAK";
+      } else {
+        score = "FAIL";
+      }
+
+      return {
+        pass: hasKeys,
+        score,
+        output: JSON.stringify(parsed) + repairNote,
+        elapsedMs: result.elapsedMs,
+      };
+    } catch (e: any) {
+      return { pass: false, score: "ERROR", output: e.message, elapsedMs: 0 };
+    }
+  }
+
   // ── test: tool support detection ─────────────────────────────────────
 
   /**
@@ -1012,18 +1545,22 @@ The JSON object must have exactly these 4 keys:
   // ── run all tests on one model ───────────────────────────────────────
 
   const branding = [
-    `  ⚡ Pi Model Benchmark v1.1`,
+    `  ⚡ Pi Model Benchmark v1.2`,
     `  Written by VTSTech`,
     `  GitHub: https://github.com/VTSTech`,
     `  Website: www.vts-tech.org`,
   ].join("\n");
 
-  async function testModel(model: string): Promise<string> {
+  /**
+   * Run the full Ollama test suite (existing behavior).
+   */
+  async function testModelOllama(model: string): Promise<string> {
     const lines: string[] = [];
     const totalStart = Date.now();
 
     lines.push(branding);
     lines.push(section(`MODEL: ${model}`));
+    lines.push(info("Provider: Ollama (local/remote)"));
 
     // Get model info from Ollama /api/tags (structured JSON)
     let modelSize = "unknown";
@@ -1249,10 +1786,180 @@ The JSON object must have exactly these 4 keys:
     return lines.join("\n");
   }
 
+  /**
+   * Run the cloud provider test suite (built-in providers).
+   * Tests: connectivity, reasoning, instruction following, tool usage.
+   * Skips: thinking, ReAct parsing, tool support detection, model metadata.
+   */
+  async function testModelProvider(providerInfo: ProviderInfo, model: string): Promise<string> {
+    const lines: string[] = [];
+    const totalStart = Date.now();
+
+    lines.push(branding);
+    lines.push(section(`MODEL: ${model}`));
+    lines.push(info(`Provider: ${providerInfo.name} (built-in)`));
+    lines.push(info(`API: ${providerInfo.apiMode || "openai-completions"}`));
+    lines.push(info(`Base URL: ${providerInfo.baseUrl || "unknown"}`));
+    if (providerInfo.apiKey) {
+      lines.push(info(`API Key: ****${providerInfo.apiKey.slice(-4)}`));
+    } else {
+      lines.push(warn(`API Key: NOT SET (${providerInfo.envKey || "env var not found"})`));
+    }
+
+    // 1. Connectivity test
+    lines.push(section("CONNECTIVITY TEST"));
+    lines.push(info("Sending minimal request to verify API reachability and key validity..."));
+    const connectivity = await testConnectivity(providerInfo, model);
+    lines.push(info(`Time: ${msHuman(connectivity.elapsedMs)}`));
+    if (connectivity.pass) {
+      lines.push(ok(`API reachable and authenticated`));
+    } else {
+      if (!connectivity.reachable) {
+        lines.push(fail(`API not reachable: ${connectivity.error || "unknown error"}`));
+      } else if (!connectivity.authValid) {
+        lines.push(fail(`Authentication failed: ${connectivity.error || "invalid or missing API key"}`));
+      } else {
+        lines.push(fail(`Connectivity error: ${connectivity.error || "unknown"}`));
+      }
+      lines.push(warn("Skipping remaining tests — fix connectivity first"));
+      lines.push(info("Tip: Check your API key is set correctly and the provider endpoint is accessible"));
+      return lines.join("\n");
+    }
+
+    // 2. Reasoning test
+    lines.push(section("REASONING TEST"));
+    lines.push(info("Prompt: A snail climbs 3ft up a wall each day, slides 2ft back each night. Wall is 10ft. How many days?"));
+    lines.push(info("Testing..."));
+
+    const reasoning = await testReasoningProvider(providerInfo, model);
+    lines.push(info(`Time: ${msHuman(reasoning.elapsedMs)}`));
+    if (reasoning.score === "STRONG") {
+      lines.push(ok(`Answer: ${reasoning.answer} — Correct with clear reasoning (${reasoning.score})`));
+    } else if (reasoning.score === "MODERATE") {
+      lines.push(ok(`Answer: ${reasoning.answer} — Correct but weak reasoning (${reasoning.score})`));
+    } else if (reasoning.score === "WEAK") {
+      lines.push(fail(`Answer: ${reasoning.answer} — Reasoned but wrong answer (${reasoning.score})`));
+    } else if (reasoning.score === "FAIL") {
+      lines.push(fail(`Answer: ${reasoning.answer} — No reasoning detected (${reasoning.score})`));
+    } else {
+      const errMsg = reasoning.reasoning.includes("<!DOCTYPE") || reasoning.reasoning.includes("<html")
+        ? reasoning.reasoning.split("\n")[0].slice(0, 100) + "..." 
+        : truncate(reasoning.reasoning, 300);
+      lines.push(fail(`Error: ${errMsg}`));
+    }
+    lines.push(info(`Response: ${sanitizeForReport(reasoning.reasoning)}`));
+
+    // 3. Instruction following test
+    lines.push(section("INSTRUCTION FOLLOWING TEST"));
+    lines.push(info('Prompt: Respond with ONLY a JSON object with keys: name, can_count, sum (15+27), language'));
+    lines.push(info("Testing..."));
+
+    const instructions = await testInstructionFollowingProvider(providerInfo, model);
+    lines.push(info(`Time: ${msHuman(instructions.elapsedMs)}`));
+    if (instructions.score === "STRONG") {
+      lines.push(ok(`JSON output valid with correct values (${instructions.score})`));
+    } else if (instructions.score === "MODERATE") {
+      lines.push(ok(`JSON output valid but some values incorrect (${instructions.score})`));
+    } else if (instructions.score === "WEAK") {
+      lines.push(warn(`Partial JSON compliance (${instructions.score})`));
+    } else {
+      lines.push(fail(`Failed to produce valid JSON (${instructions.score})`));
+    }
+    lines.push(info(`Output: ${sanitizeForReport(instructions.output)}`));
+
+    // 4. Tool usage test
+    lines.push(section("TOOL USAGE TEST"));
+    lines.push(info("Prompt: \"What's the weather in Paris?\" (with get_weather tool available)"));
+    lines.push(info("Testing..."));
+
+    const toolTest = await testToolUsageProvider(providerInfo, model);
+    lines.push(info(`Time: ${msHuman(toolTest.elapsedMs)}`));
+    if (toolTest.score === "STRONG") {
+      lines.push(ok(`Tool call: ${toolTest.toolCall} (${toolTest.score})`));
+      if (toolTest.response) {
+        lines.push(info(`Raw response: ${sanitizeForReport(toolTest.response)}`));
+      }
+    } else if (toolTest.score === "MODERATE") {
+      lines.push(ok(`Tool call: ${toolTest.toolCall} (${toolTest.score})`));
+      if (toolTest.response) {
+        lines.push(info(`Raw response: ${sanitizeForReport(toolTest.response)}`));
+      }
+    } else if (toolTest.score === "WEAK") {
+      lines.push(warn(`Tool call: ${toolTest.toolCall} (${toolTest.score}) — malformed call`));
+      if (toolTest.response) {
+        lines.push(info(`Raw response: ${sanitizeForReport(toolTest.response)}`));
+      }
+    } else if (toolTest.score === "FAIL") {
+      const hasResponse = toolTest.response && toolTest.response.trim().length > 0;
+      lines.push(fail(`Tool call: none — ${hasResponse ? "model responded in text instead" : "model returned empty response"} (${toolTest.score})`));
+      if (hasResponse) {
+        lines.push(info(`Text response: ${sanitizeForReport(toolTest.response)}`));
+      } else {
+        lines.push(info("Text response: (empty)"));
+      }
+    } else {
+      lines.push(fail(`Error: ${toolTest.toolCall}`));
+    }
+
+    // Skipped tests notice
+    lines.push(section("SKIPPED TESTS (OLLAMA-ONLY)"));
+    lines.push(warn("Thinking test — Ollama-specific think:true option and message.thinking field"));
+    lines.push(warn("ReAct parsing test — only relevant for Ollama models without native tool calling"));
+    lines.push(warn("Tool support detection — Ollama-specific tool support cache"));
+    lines.push(warn("Model metadata — Ollama-specific /api/tags endpoint"));
+
+    // Summary
+    lines.push(section("SUMMARY"));
+    const totalMs = Date.now() - totalStart;
+    const tests = [
+      { name: "Connectivity", pass: connectivity.pass, score: connectivity.pass ? "OK" : "FAIL" },
+      { name: "Reasoning", pass: reasoning.score === "STRONG" || reasoning.score === "MODERATE", score: reasoning.score },
+      { name: "Instructions", pass: instructions.pass, score: instructions.score },
+      { name: "Tool Usage", pass: toolTest.pass, score: toolTest.score },
+    ];
+    const passed = tests.filter(t => t.pass).length;
+    const total = tests.length;
+
+    for (const t of tests) {
+      lines.push(t.pass ? ok(`${t.name}: ${t.score}`) : fail(`${t.name}: ${t.score}`));
+    }
+    lines.push(info(`Total time: ${msHuman(totalMs)}`));
+    lines.push(info(`Score: ${passed}/${total} tests passed`));
+
+    // Recommendation
+    lines.push(section("RECOMMENDATION"));
+    if (passed === 4) {
+      lines.push(ok(`${model} is a STRONG model via ${providerInfo.name} — full capability`));
+    } else if (passed >= 3) {
+      lines.push(ok(`${model} is a GOOD model via ${providerInfo.name} — most capabilities work`));
+    } else if (passed >= 2) {
+      lines.push(warn(`${model} is USABLE via ${providerInfo.name} — some capabilities are limited`));
+    } else {
+      lines.push(fail(`${model} is WEAK via ${providerInfo.name} — limited capabilities for agent use`));
+    }
+    return lines.join("\n");
+  }
+
+  /**
+   * Main entry point: detect provider and dispatch to the appropriate test suite.
+   */
+  async function testModel(model: string, ctx?: any): Promise<string> {
+    const providerInfo = ctx ? detectProvider(ctx) : { kind: "ollama" as const, name: "ollama" };
+
+    if (providerInfo.kind === "ollama") {
+      return testModelOllama(model);
+    } else if (providerInfo.kind === "builtin") {
+      return testModelProvider(providerInfo, model);
+    } else {
+      // Unknown provider — try Ollama as fallback
+      return testModelOllama(model);
+    }
+  }
+
   // ── Register /model-test command ─────────────────────────────────────
 
   pi.registerCommand("model-test", {
-    description: "Test a model for reasoning, thinking, tool usage, ReAct parsing, instruction following, and tool support level. Use: /model-test [model] or /model-test --all",
+    description: "Test a model for reasoning, thinking, tool usage, ReAct parsing, instruction following, and tool support level. Supports both Ollama and cloud providers. Use: /model-test [model] or /model-test --all",
     getArgumentCompletions: async (prefix) => {
       try {
         const models = await getOllamaModels();
@@ -1271,6 +1978,13 @@ The JSON object must have exactly these 4 keys:
       const arg = args.trim();
 
       if (arg === "--all") {
+        // --all only works for Ollama providers
+        const providerInfo = detectProvider(ctx);
+        if (providerInfo.kind !== "ollama") {
+          ctx.ui.notify(`--all is only supported for Ollama models. Current provider: ${providerInfo.name} (${providerInfo.kind})`, "error");
+          return;
+        }
+
         // Test all models
         ctx.ui.notify("Testing all models — this will take a while...", "info");
         let models: string[];
@@ -1289,7 +2003,7 @@ The JSON object must have exactly these 4 keys:
         for (const model of models) {
           ctx.ui.notify(`Testing ${model}...`, "info");
           try {
-            const report = await testModel(model);
+            const report = await testModel(model, ctx);
             pi.sendMessage({
               customType: "model-test-report",
               content: report,
@@ -1313,7 +2027,7 @@ The JSON object must have exactly these 4 keys:
 
       ctx.ui.notify(`Testing ${model}...`, "info");
       try {
-        const report = await testModel(model);
+        const report = await testModel(model, ctx);
         pi.sendMessage({
           customType: "model-test-report",
           content: report,
@@ -1331,7 +2045,7 @@ The JSON object must have exactly these 4 keys:
   pi.registerTool({
     name: "model_test",
     label: "Model Test",
-    description: "Test an Ollama model for reasoning ability, thinking/reasoning token support, tool usage capability, ReAct format parsing, instruction following, and tool support level. Returns a detailed report with scores.",
+    description: "Test a model for reasoning ability, thinking/reasoning token support, tool usage capability, instruction following, and tool support level. Supports both Ollama and built-in cloud providers (OpenRouter, Anthropic, Google, OpenAI, etc.). Returns a detailed report with scores.",
     promptSnippet: "model_test - test a model's capabilities",
     promptGuidelines: [
       "When the user asks to test or evaluate a model, call model_test with the model name.",
@@ -1339,7 +2053,7 @@ The JSON object must have exactly these 4 keys:
     parameters: {
       type: "object",
       properties: {
-        model: { type: "string", description: "Ollama model name to test (e.g. qwen3:0.6b). If omitted, tests the current model." },
+        model: { type: "string", description: "Model name to test (e.g. qwen3:0.6b, anthropic/claude-3.5-sonnet). If omitted, tests the current model." },
       },
     } as any,
     execute: async (_toolCallId, _params, _signal, _onUpdate, ctx) => {
@@ -1351,7 +2065,7 @@ The JSON object must have exactly these 4 keys:
         } as AgentToolResult;
       }
       try {
-        const report = await testModel(model);
+        const report = await testModel(model, ctx);
         return {
           content: [{ type: "text", text: report }],
           isError: false,
