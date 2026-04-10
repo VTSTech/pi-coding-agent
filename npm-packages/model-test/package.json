@@ -1,9 +1,9 @@
 {
   "name": "@vtstech/pi-model-test",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Model benchmark/testing extension for Pi Coding Agent",
   "main": "model-test.js",
-  "keywords": ["pi-package", "pi-extensions"],
+  "keywords": ["pi-extensions"],
   "license": "MIT",
   "access": "public",
   "type": "module",

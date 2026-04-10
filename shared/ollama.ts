@@ -117,6 +117,7 @@ export interface PiModelEntry {
   modelFamily?: string;
   parameterSize?: string;
   quantizationLevel?: string;
+  contextLength?: number;
   [key: string]: unknown;
 }
 
@@ -257,6 +258,45 @@ export async function fetchOllamaModels(baseUrl: string): Promise<OllamaModel[]>
   if (!res.ok) throw new Error(`Ollama returned ${res.status}`);
   const data = (await res.json()) as { models?: OllamaModel[] };
   return data.models ?? [];
+}
+
+/**
+ * Fetch detailed model info from Ollama's /api/show endpoint.
+ *
+ * Returns the model's context window size (`num_ctx`), along with
+ * other details like the template and system prompt. Used by
+ * ollama-sync to enrich model entries with context length metadata.
+ *
+ * @param baseUrl - The Ollama base URL (without /v1 suffix)
+ * @param modelName - The model tag name (e.g., "qwen3:0.6b")
+ * @returns Context length in tokens, or undefined if unavailable
+ *
+ * @example
+ * ```typescript
+ * const ctx = await fetchModelContextLength("http://localhost:11434", "qwen3:0.6b");
+ * console.log(ctx); // 8192
+ * ```
+ */
+export async function fetchModelContextLength(
+  baseUrl: string,
+  modelName: string
+): Promise<number | undefined> {
+  try {
+    const res = await fetch(`${baseUrl}/api/show`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: modelName }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return undefined;
+    const data = (await res.json()) as {
+      model_info?: { "num_ctx"?: number };
+      template?: string;
+    };
+    return data?.model_info?.["num_ctx"];
+  } catch {
+    return undefined;
+  }
 }
 
 /**

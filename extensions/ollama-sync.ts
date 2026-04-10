@@ -4,6 +4,7 @@ import {
   type PiModelEntry,
   MODELS_JSON_PATH as MODELS_FILE,
   fetchOllamaModels,
+  fetchModelContextLength,
   readModelsJson,
   writeModelsJson,
   isReasoningModel,
@@ -14,7 +15,7 @@ import { section, ok, fail, warn, info } from "../shared/format";
 // ── Branding ──────────────────────────────────────────────────────────────
 
 const BRANDING = [
-  `  ⚡ Pi Ollama Sync v1.0.3`,
+  `  ⚡ Pi Ollama Sync v1.0.4`,
   `  Written by VTSTech`,
   `  GitHub: https://github.com/VTSTech`,
   `  Website: www.vts-tech.org`,
@@ -42,13 +43,14 @@ function getProviderConfig(existing: PiModelsJson) {
  * Build a PiModelEntry from an Ollama model, extracting metadata
  * (parameter_size, quantization_level) and detecting model family.
  */
-function buildModelEntry(m: { name: string; details: { parameter_size: string; quantization_level: string; family: string; families?: string[] } }): PiModelEntry {
+function buildModelEntry(m: { name: string; details: { parameter_size: string; quantization_level: string; family: string; families?: string[] } }, contextLength?: number): PiModelEntry {
   return {
     id: m.name,
     reasoning: isReasoningModel(m.name),
     parameterSize: m.details.parameter_size,
     quantizationLevel: m.details.quantization_level,
     modelFamily: m.details.family || m.details.families?.[0] || "unknown",
+    contextLength,
   };
 }
 
@@ -116,8 +118,20 @@ export default function (pi: ExtensionAPI) {
         // Sort by size ascending
         const sorted = [...models].sort((a, b) => a.size - b.size);
 
+        // Fetch context lengths (parallel, non-blocking)
+        ctx.ui.setStatus("ollama-sync", "Fetching model details...");
+        const contextResults = await Promise.allSettled(
+          sorted.map((m) => fetchModelContextLength(ollamaBaseUrl, m.name))
+        );
+        const contextMap = new Map<string, number | undefined>();
+        contextResults.forEach((r, i) => {
+          contextMap.set(sorted[i].name, r.status === "fulfilled" ? r.value : undefined);
+        });
+
         // Build model entries with metadata
-        const newModels = sorted.map(buildModelEntry);
+        const newModels = sorted.map((m) =>
+          buildModelEntry(m, contextMap.get(m.name))
+        );
 
         // Diff against old entries
         const oldIds = new Set(
@@ -150,7 +164,7 @@ export default function (pi: ExtensionAPI) {
         for (const m of newModels) {
           lines.push(ok(m.id));
           lines.push(
-            `       Params: ${m.parameterSize ?? "?"} · Quant: ${m.quantizationLevel ?? "?"} · Family: ${m.modelFamily ?? "?"}`
+            `       Params: ${m.parameterSize ?? "?"} · Quant: ${m.quantizationLevel ?? "?"} · Family: ${m.modelFamily ?? "?"} · Context: ${m.contextLength != null ? m.contextLength.toLocaleString() : "?"}`
           );
         }
 
@@ -223,7 +237,19 @@ export default function (pi: ExtensionAPI) {
       try {
         const models = await fetchOllamaModels(ollamaBaseUrl);
         const sorted = [...models].sort((a, b) => a.size - b.size);
-        const newModels = sorted.map(buildModelEntry);
+
+        // Fetch context lengths in parallel
+        const contextResults = await Promise.allSettled(
+          sorted.map((m) => fetchModelContextLength(ollamaBaseUrl, m.name))
+        );
+        const contextMap = new Map<string, number | undefined>();
+        contextResults.forEach((r, i) => {
+          contextMap.set(sorted[i].name, r.status === "fulfilled" ? r.value : undefined);
+        });
+
+        const newModels = sorted.map((m) =>
+          buildModelEntry(m, contextMap.get(m.name))
+        );
 
         const mergedModels = mergeModels(
           newModels,
@@ -241,7 +267,7 @@ export default function (pi: ExtensionAPI) {
         const modelDetails = newModels
           .map(
             (m) =>
-              `  • ${m.id} (${m.parameterSize}, ${m.quantizationLevel}, family: ${m.modelFamily})`
+              `  • ${m.id} (${m.parameterSize}, ${m.quantizationLevel}, family: ${m.modelFamily}, ctx: ${m.contextLength ?? "?"})`
           )
           .join("\n");
 
