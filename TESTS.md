@@ -49,7 +49,7 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 ```
  [model-test-report]
 
-   ⚡ Pi Model Benchmark v1.0.6
+   ⚡ Pi Model Benchmark v1.0.7
    Written by VTSTech
    GitHub: https://github.com/VTSTech
    Website: www.vts-tech.org
@@ -127,7 +127,7 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 ```
  [model-test-report]
 
-   ⚡ Pi Model Benchmark v1.0.6
+   ⚡ Pi Model Benchmark v1.0.7
    Written by VTSTech
    GitHub: https://github.com/VTSTech
    Website: www.vts-tech.org

@@ -15,7 +15,7 @@
  *   /api modes        — List all supported API modes
  *
  * Written by VTSTech — https://www.vts-tech.org
- * @version 1.0.6
+ * @version 1.0.7
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import * as fs from "node:fs";
@@ -124,7 +124,7 @@ function resolveProvider(
 
 export default function (pi: ExtensionAPI) {
   const branding = [
-    `  ⚡ Pi API Mode Switcher v1.0.6`,
+    `  ⚡ Pi API Mode Switcher v1.0.7`,
     `  Written by VTSTech`,
     `  GitHub: https://github.com/VTSTech`,
     `  Website: www.vts-tech.org`,
