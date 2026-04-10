@@ -722,18 +722,26 @@ export default function (pi: ExtensionAPI) {
         }
         const hasCorrectTool = fn.name === "get_weather";
         const hasLocation = typeof args.location === "string" && args.location.toLowerCase().includes("paris");
+        // Validate optional args: unit must be one of the enum values if provided
+        const unitValid = args.unit === undefined ||
+          (typeof args.unit === "string" && ["celsius", "fahrenheit"].includes(args.unit.toLowerCase()));
 
         let score: string;
-        if (hasCorrectTool && hasLocation) {
+        if (hasCorrectTool && hasLocation && unitValid) {
           score = "STRONG";
-        } else if (hasCorrectTool) {
+        } else if (hasCorrectTool && hasLocation) {
           score = "MODERATE";
+        } else if (hasCorrectTool) {
+          score = "WEAK";
         } else {
           score = "WEAK";
         }
 
+        // WEAK = wrong tool or no location → not a meaningful pass
+        const pass = score !== "WEAK";
+
         return {
-          pass: true,
+          pass,
           score,
           hasToolCalls: true,
           toolCall: `${fn.name}(${JSON.stringify(args)})`,
@@ -774,8 +782,11 @@ export default function (pi: ExtensionAPI) {
           score = "WEAK";
         }
 
+        // WEAK = wrong tool entirely → not a meaningful pass
+        const pass = score !== "WEAK";
+
         return {
-          pass: true,
+          pass,
           score,
           hasToolCalls: true,
           toolCall: `${fnName}(${JSON.stringify(fnArgs)})`,
@@ -864,18 +875,26 @@ export default function (pi: ExtensionAPI) {
         }
         const hasCorrectTool = fn.name === "get_weather";
         const hasLocation = typeof args.location === "string" && args.location.toLowerCase().includes("paris");
+        // Validate optional args: unit must be one of the enum values if provided
+        const unitValid = args.unit === undefined ||
+          (typeof args.unit === "string" && ["celsius", "fahrenheit"].includes(args.unit.toLowerCase()));
 
         let score: string;
-        if (hasCorrectTool && hasLocation) {
+        if (hasCorrectTool && hasLocation && unitValid) {
           score = "STRONG";
-        } else if (hasCorrectTool) {
+        } else if (hasCorrectTool && hasLocation) {
           score = "MODERATE";
+        } else if (hasCorrectTool) {
+          score = "WEAK";
         } else {
           score = "WEAK";
         }
 
+        // WEAK = wrong tool or no location → not a meaningful pass
+        const pass = score !== "WEAK";
+
         return {
-          pass: true,
+          pass,
           score,
           hasToolCalls: true,
           toolCall: `${fn.name}(${JSON.stringify(args)})`,
@@ -913,8 +932,11 @@ export default function (pi: ExtensionAPI) {
           score = "WEAK";
         }
 
+        // WEAK = wrong tool entirely → not a meaningful pass
+        const pass = score !== "WEAK";
+
         return {
-          pass: true,
+          pass,
           score,
           hasToolCalls: true,
           toolCall: `${fnName}(${JSON.stringify(fnArgs)})`,
@@ -1015,9 +1037,23 @@ export default function (pi: ExtensionAPI) {
       let match = ACTION_RE.exec(content);
       if (!match) match = ACTION_RE_SAMELINE.exec(content);
 
-      // Loose fallback: Action line contains natural language (e.g., "Action: Open the get_weather tool.")
+      // Tight fallback: only match if the action text starts with a known tool name
+      // (not arbitrary natural language like "Open the get_weather tool.")
       let looseMatch = false;
-      if (!match) match = ACTION_RE_LOOSE.exec(content), looseMatch = true;
+      if (!match) {
+        const looseResult = ACTION_RE_LOOSE.exec(content);
+        if (looseResult) {
+          const candidate = looseResult[1].trim().replace(/[`"']/g, "");
+          // Only accept if the captured text IS a tool-like identifier (snake_case/camelCase)
+          // Reject natural language sentences
+          const isToolIdentifier = /^\w+$/.test(candidate) && (candidate.includes("_") || candidate.includes("-"));
+          const isKnownTool = /^(get_weather|calculate)$/i.test(candidate);
+          if (isToolIdentifier || isKnownTool) {
+            match = looseResult;
+            looseMatch = true;
+          }
+        }
+      }
       let parenMatch = false;
       if (!match) match = ACTION_RE_PAREN.exec(content), parenMatch = true;
 
@@ -1080,7 +1116,7 @@ export default function (pi: ExtensionAPI) {
         }
         }
 
-        // Score: correct tool name + valid args = STRONG, correct tool = MODERATE, any action = WEAK
+        // Score: correct tool name + valid args = STRONG, correct tool = MODERATE, wrong tool = WEAK (fail)
         let score: string;
         const isWeatherTool = toolName.toLowerCase().includes("get_weather") || toolName.toLowerCase() === "get_weather";
         if (isWeatherTool && argsParsed) {
@@ -1091,8 +1127,11 @@ export default function (pi: ExtensionAPI) {
           score = "WEAK";
         }
 
+        // WEAK = wrong tool entirely → not a meaningful pass
+        const pass = score !== "WEAK";
+
         return {
-          pass: true,
+          pass,
           score,
           toolCall: `${toolName}(${argsStr})`,
           thought,
@@ -1755,11 +1794,13 @@ The JSON object must have exactly these 4 keys:
     // Summary
     lines.push(section("SUMMARY"));
     const totalMs = Date.now() - totalStart;
+    const toolPass = tools.score === "STRONG" || tools.score === "MODERATE";
+    const reactPass = react.score === "STRONG" || react.score === "MODERATE";
     const tests = [
       { name: "Reasoning", pass: reasoning.score === "STRONG" || reasoning.score === "MODERATE", score: reasoning.score },
       { name: "Thinking", pass: thinking.supported, score: thinking.supported ? "YES" : "NO" },
-      { name: "Tool Usage", pass: tools.pass, score: tools.score },
-      { name: "ReAct Parse", pass: react.pass, score: react.score },
+      { name: "Tool Usage", pass: toolPass, score: tools.score },
+      { name: "ReAct Parse", pass: reactPass, score: react.score },
       { name: "Instructions", pass: instructions.pass, score: instructions.score },
       { name: "Tool Support", pass: toolSupport.level === "native" || toolSupport.level === "react", score: toolSupport.level.toUpperCase() },
     ];
