@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Pi Version](https://img.shields.io/badge/Pi-v0.66%2B-green.svg)](https://github.com/badlogic/pi-mono)
 [![Pi Package](https://img.shields.io/badge/Install-pi%20install%20git-blue.svg)](#installation)
-[![Version](https://img.shields.io/badge/Version-v1.0.4-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-v1.0.5-orange.svg)](CHANGELOG.md)
 
 <p>
   <a href="https://github.com/VTSTech"><strong>VTSTech</strong></a> •
@@ -46,7 +46,7 @@ pi update
 
 Pin to a specific tag:
 ```bash
-pi install git:github.com/VTSTech/pi-coding-agent@v1.0.4
+pi install git:github.com/VTSTech/pi-coding-agent@v1.0.5
 ```
 
 ### Individual npm packages
@@ -94,7 +94,7 @@ This repo is a standard Pi package. The `package.json` contains a `pi` manifest 
 ```json
 {
   "name": "@vtstech/pi-coding-agent-extensions",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "keywords": ["pi-package"],
   "pi": {
     "extensions": ["./extensions"],
@@ -226,7 +226,7 @@ Sample output (cloud provider):
 ```
  [model-test-report]
 
-   ⚡ Pi Model Benchmark v1.0.4
+   ⚡ Pi Model Benchmark v1.0.5
    Written by VTSTech
    GitHub: https://github.com/VTSTech
    Website: www.vts-tech.org
@@ -361,7 +361,7 @@ Automatically loaded — no commands needed. When a model lacks native tool call
 - Preserves existing provider config (apiKey, compat settings)
 - Defaults to `openai-completions` API mode (correct for Ollama's `/v1/chat/completions` endpoint)
 - Sorts models by size (smallest first)
-- Auto-detects reasoning-capable models (deepseek-r1, qwq, o1, o3, think, reason)
+- Auto-detects reasoning-capable models (deepseek-r1, qwq, qwen3, o1, o3, think, reason)
 - Merges with existing per-model settings
 - Per-model metadata in sync report (parameter size, quantization level, model family)
 - Registered as both `/ollama-sync` slash command and `ollama_sync` tool

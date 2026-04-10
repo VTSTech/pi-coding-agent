@@ -24,7 +24,7 @@ export default function (pi: ExtensionAPI) {
   // ── core diagnostic logic ────────────────────────────────────────────
 
   const branding = [
-    `  ⚡ Pi Diagnostics v1.0.3`,
+    `  ⚡ Pi Diagnostics v1.0.5`,
     `  Written by VTSTech`,
     `  GitHub: https://github.com/VTSTech`,
     `  Website: www.vts-tech.org`,
@@ -204,7 +204,8 @@ export default function (pi: ExtensionAPI) {
           for (const m of models) {
             configuredModels.push(m.id);
             const reasoning = m.reasoning ? " [reasoning]" : "";
-            lines.push(info(`    • ${m.id}${reasoning}`));
+            const ctx = m.contextLength ? ` ctx:${(m.contextLength / 1000).toFixed(0)}k` : "";
+            lines.push(info(`    • ${m.id}${reasoning}${ctx}`));
           }
         }
         check(configuredModels.length > 0,

@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.5] - 04-10-2026 10:43:55 AM
+
+### Added
+
+- **Context length display in ollama-sync** (`shared/ollama.ts`, `extensions/ollama-sync.ts`)
+  - `fetchModelContextLength()` queries Ollama's `/api/show` endpoint to retrieve the max context window for each model.
+  - `fetchContextLengthsBatched()` processes requests in batches of 3 (configurable) to avoid overwhelming connections — critical for remote Ollama over tunnels.
+  - Context length is displayed in the sync report per model (e.g., `Context: 40,960`) and stored in `models.json` as `contextLength`.
+
+- **VRAM estimation in ollama-sync** (`shared/format.ts`, `extensions/ollama-sync.ts`)
+  - `estimateVram()` estimates memory usage from `parameterSize` and `quantizationLevel` (e.g., Q4_K_M ≈ 4 bits/param, BF16 = 16 bits/param).
+  - Estimated VRAM is shown per model in the sync report (e.g., `VRAM: ~1.4 GB`) and stored as `estimatedSize` in models.json.
+
+- **Install size display in ollama-sync** (`extensions/ollama-sync.ts`)
+  - Model file size from `/api/tags` is now shown in the sync report alongside parameter count and quantization level.
+
+- **Context length in diag/status** (`extensions/diag.ts`)
+  - The diagnostic report now shows the context length from models.json for the active model, providing a quick reference alongside the context window and max tokens.
+
+### Changed
+
+- **`isReasoningModel()` now detects qwen3** (`shared/ollama.ts`, `extensions/api.ts`)
+  - qwen3 supports thinking via `/think` and `/no_think` tags but wasn't detected by the name-based heuristic.
+  - Added `qwen3` to the pattern list so all qwen3 models (0.6b, 1.7b, 4b, etc.) are correctly flagged as reasoning-capable.
+
+- **`PiModelEntry` extended with new fields** (`shared/ollama.ts`)
+  - `contextLength?: number` — max context window in tokens
+  - `estimatedSize?: number` — estimated VRAM usage in bytes
+
+### Fixed
+
+- **Per-package READMEs on npmjs** (prerelease `1.0.4-1`)
+  - Each npm package now includes its own `README.md`, bundled at publish time.
+  - Build script (`build-packages.sh`) copies per-package READMEs from `npm-packages/*/README.md` into `.build-npm/*/`.
+
+---
+
 ## [1.0.4] - 04-09-2026 7:10:26 PM
 
 ### Added

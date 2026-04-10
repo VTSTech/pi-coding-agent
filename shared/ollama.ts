@@ -118,6 +118,7 @@ export interface PiModelEntry {
   parameterSize?: string;
   quantizationLevel?: string;
   contextLength?: number;
+  estimatedSize?: number;
   [key: string]: unknown;
 }
 
@@ -359,6 +360,7 @@ export function isReasoningModel(name: string): boolean {
     lower.includes("qwq") ||
     lower.includes("o1") ||
     lower.includes("o3") ||
+    lower.includes("qwen3") ||
     lower.includes("think") ||
     lower.includes("reason")
   );

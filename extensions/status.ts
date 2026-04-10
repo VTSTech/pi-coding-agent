@@ -12,6 +12,8 @@
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import os from "node:os";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { execSync } from "node:child_process";
 
 // ── Shared imports (eliminates duplication) ────────────────────────────────
@@ -206,6 +208,22 @@ export default function (pi: ExtensionAPI) {
         footerCtxPct = `${pct}%/${(usage.contextWindow / 1000).toFixed(0)}k`;
       } else {
         footerCtxPct = "";
+      }
+      // Show model's max context length from models.json if available
+      const modelId = currentCtx.model?.id || "";
+      if (modelId && !footerCtxPct) {
+        try {
+          const modelsJson = JSON.parse(fs.readFileSync(
+            path.join(os.homedir(), ".pi", "agent", "models.json"), "utf-8"
+          ));
+          for (const prov of Object.values(modelsJson.providers || {}) as any[]) {
+            const match = (prov.models || []).find((m: any) => m.id === modelId);
+            if (match?.contextLength) {
+              footerCtxPct = `${(match.contextLength / 1000).toFixed(0)}k ctx`;
+              break;
+            }
+          }
+        } catch { /* ignore */ }
       }
     }
 

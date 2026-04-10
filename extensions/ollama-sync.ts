@@ -10,12 +10,12 @@ import {
   isReasoningModel,
   getOllamaBaseUrl,
 } from "../shared/ollama";
-import { section, ok, fail, warn, info } from "../shared/format";
+import { section, ok, fail, warn, info, bytesHuman, estimateVram } from "../shared/format";
 
 // ── Branding ──────────────────────────────────────────────────────────────
 
 const BRANDING = [
-  `  ⚡ Pi Ollama Sync v1.0.4`,
+  `  ⚡ Pi Ollama Sync v1.0.5`,
   `  Written by VTSTech`,
   `  GitHub: https://github.com/VTSTech`,
   `  Website: www.vts-tech.org`,
@@ -43,7 +43,8 @@ function getProviderConfig(existing: PiModelsJson) {
  * Build a PiModelEntry from an Ollama model, extracting metadata
  * (parameter_size, quantization_level) and detecting model family.
  */
-function buildModelEntry(m: { name: string; details: { parameter_size: string; quantization_level: string; family: string; families?: string[] } }, contextLength?: number): PiModelEntry {
+function buildModelEntry(m: { name: string; details: { parameter_size: string; quantization_level: string; family: string; families?: string[] }; size: number }, contextLength?: number): PiModelEntry {
+  const estimatedSize = estimateVram(m.details.parameter_size, m.details.quantization_level);
   return {
     id: m.name,
     reasoning: isReasoningModel(m.name),
@@ -51,6 +52,7 @@ function buildModelEntry(m: { name: string; details: { parameter_size: string; q
     quantizationLevel: m.details.quantization_level,
     modelFamily: m.details.family || m.details.families?.[0] || "unknown",
     contextLength,
+    estimatedSize,
   };
 }
 
@@ -160,8 +162,10 @@ export default function (pi: ExtensionAPI) {
         lines.push(section("Synced Models"));
         for (const m of newModels) {
           lines.push(ok(m.id));
+          const ctxStr = m.contextLength != null ? m.contextLength.toLocaleString() : "?";
+          const sizeStr = m.estimatedSize ? bytesHuman(m.estimatedSize) : "?";
           lines.push(
-            `       Params: ${m.parameterSize ?? "?"} · Quant: ${m.quantizationLevel ?? "?"} · Family: ${m.modelFamily ?? "?"} · Context: ${m.contextLength != null ? m.contextLength.toLocaleString() : "?"}`
+            `       Params: ${m.parameterSize ?? "?"} · Quant: ${m.quantizationLevel ?? "?"} · Family: ${m.modelFamily ?? "?"} · Context: ${ctxStr} · VRAM: ~${sizeStr}`
           );
         }
 
@@ -260,8 +264,11 @@ export default function (pi: ExtensionAPI) {
         // Build tool result with per-model metadata
         const modelDetails = newModels
           .map(
-            (m) =>
-              `  • ${m.id} (${m.parameterSize}, ${m.quantizationLevel}, family: ${m.modelFamily}, ctx: ${m.contextLength ?? "?"})`
+            (m) => {
+              const ctxStr = m.contextLength ?? "?";
+              const sizeStr = m.estimatedSize ? bytesHuman(m.estimatedSize) : "?";
+              return `  • ${m.id} (${m.parameterSize}, ${m.quantizationLevel}, ctx: ${ctxStr}, ~${sizeStr})`;
+            }
           )
           .join("\n");
 

@@ -1,6 +1,6 @@
 {
   "name": "@vtstech/pi-diag",
-  "version": "1.0.4",
+  "version": "1.0.3",
   "description": "Diagnostics extension for Pi Coding Agent",
   "main": "diag.js",
   "keywords": ["pi-extensions"],

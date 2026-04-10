@@ -1,6 +1,6 @@
 {
   "name": "@vtstech/pi-api",
-  "version": "1.0.4",
+  "version": "1.0.3",
   "description": "API Mode Switcher extension for Pi Coding Agent",
   "main": "api.js",
   "keywords": ["pi-extensions"],
