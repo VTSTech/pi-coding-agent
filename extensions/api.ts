@@ -10,13 +10,17 @@
  *   /api url <url>    — Switch base URL
  *   /api think <on|off|auto> — Toggle thinking mode for current model
  *   /api compat <key> [value] — Get/set compat flags
+ *   /api provider [name]       — Show, set, or list default provider
  *   /api reload       — Reload models.json
  *   /api modes        — List all supported API modes
  *
  * Written by VTSTech — https://www.vts-tech.org
- * @version 1.0.5
+ * @version 1.0.6
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import os from "node:os";
 import { section, ok, fail, info, warn } from "../shared/format";
 import { readModelsJson, writeModelsJson, getOllamaBaseUrl } from "../shared/ollama";
 
@@ -63,8 +67,27 @@ const COMPAT_FLAGS: Record<string, { description: string; values: string[] }> = 
 };
 
 // ============================================================================
-// Helpers
+// Settings helpers
 // ============================================================================
+
+const SETTINGS_PATH = path.join(os.homedir(), ".pi", "agent", "settings.json");
+
+/** Read Pi's settings.json, returning empty object if not found. */
+function readSettings(): Record<string, any> {
+  try {
+    if (fs.existsSync(SETTINGS_PATH)) {
+      return JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf-8"));
+    }
+  } catch { /* ignore */ }
+  return {};
+}
+
+/** Write Pi's settings.json, creating directory if needed. */
+function writeSettings(data: Record<string, any>): void {
+  const dir = path.dirname(SETTINGS_PATH);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(data, null, 2) + "\n", "utf-8");
+}
 
 /** Get the first local provider name (usually "ollama"). */
 function getLocalProvider(config: ReturnType<typeof readModelsJson>): { name: string; isLocal: boolean } {
@@ -101,7 +124,7 @@ function resolveProvider(
 
 export default function (pi: ExtensionAPI) {
   const branding = [
-    `  ⚡ Pi API Mode Switcher v1.0.5`,
+    `  ⚡ Pi API Mode Switcher v1.0.6`,
     `  Written by VTSTech`,
     `  GitHub: https://github.com/VTSTech`,
     `  Website: www.vts-tech.org`,
@@ -139,10 +162,12 @@ export default function (pi: ExtensionAPI) {
           return reloadConfig(ctx);
         case "modes":
           return listModes();
+        case "provider":
+          return handleProvider(ctx, config, rest);
         case "providers":
           return listProviders(config);
         default:
-          ctx.ui.notify(`Unknown sub-command: "${sub}". Use: mode, url, think, compat, reload, modes, providers`, "error");
+          ctx.ui.notify(`Unknown sub-command: "${sub}". Use: mode, url, think, compat, reload, modes, provider, providers`, "error");
       }
     },
   });
@@ -472,6 +497,130 @@ export default function (pi: ExtensionAPI) {
     });
   }
 
+  // ── /api provider — show, set, change, list default provider ───────────
+
+  function handleProvider(ctx: any, config: ReturnType<typeof readModelsJson>, arg: string) {
+    const sub = arg.trim().toLowerCase();
+    const providerNames = Object.keys(config.providers);
+
+    if (!sub || sub === "show" || sub === "list") {
+      // Show current default + all providers
+      const settings = readSettings();
+      const defaultProvider = settings.defaultProvider || "(not set)";
+      const defaultModel = settings.defaultModel || "(not set)";
+
+      const lines: string[] = [branding];
+      lines.push(section("DEFAULT PROVIDER"));
+      lines.push(ok(`Provider: ${defaultProvider}`));
+      lines.push(info(`Model: ${defaultModel}`));
+      lines.push(info(`Source: ${SETTINGS_PATH}`));
+
+      lines.push(section("ALL PROVIDERS"));
+      for (const [name, provider] of Object.entries(config.providers)) {
+        const p = provider as any;
+        const modelCount = p.models?.length || 0;
+        const url = p.baseUrl || "(no URL)";
+        const api = p.api || "(no mode)";
+        const isDefault = name === defaultProvider;
+        const isLocal = url.includes("localhost") || url.includes("127.0.0.1") || url.includes("0.0.0.0") || name === "ollama";
+        const marker = isDefault ? ok(" ◀ default") : "";
+        const tag = isLocal ? " (local)" : " (cloud)";
+        lines.push(info(`  ${name}${tag}${marker}`));
+        lines.push(info(`    API: ${api}  |  URL: ${url}  |  Models: ${modelCount}`));
+        if (modelCount > 0) {
+          const first = p.models[0].id;
+          lines.push(info(`    First model: ${first}${modelCount > 1 ? ` (+${modelCount - 1} more)` : ""}`));
+        }
+      }
+
+      lines.push("");
+      lines.push(info("Usage: /api provider set <name>  —  set default provider"));
+      lines.push(info("       /api provider list         —  show all providers"));
+
+      pi.sendMessage({
+        customType: "api-provider",
+        content: lines.join("\n"),
+        display: { type: "content", content: lines.join("\n") },
+      });
+      return;
+    }
+
+    if (sub === "set" || sub === "change" || sub === "switch") {
+      // Extract provider name from remaining args
+      const restArgs = arg.trim().split(/\s+/).slice(1);
+      const targetName = restArgs.join(" ");
+
+      if (!targetName) {
+        // No name given — show available and ask
+        const lines: string[] = [branding];
+        lines.push(section("SET DEFAULT PROVIDER"));
+        lines.push(info("Usage: /api provider set <name>"));
+        lines.push(info(""));
+        lines.push(info("Available providers:"));
+        for (const name of providerNames) {
+          const p = config.providers[name] as any;
+          const isLocal = (p.baseUrl || "").includes("localhost") || (p.baseUrl || "").includes("127.0.0.1") || name === "ollama";
+          lines.push(info(`  ${name}${isLocal ? " (local)" : " (cloud)"}`));
+        }
+        pi.sendMessage({
+          customType: "api-provider-set",
+          content: lines.join("\n"),
+          display: { type: "content", content: lines.join("\n") },
+        });
+        ctx.ui.notify("Specify a provider name: /api provider set <name>", "info");
+        return;
+      }
+
+      // Validate provider exists
+      if (!config.providers[targetName]) {
+        ctx.ui.notify(`Provider "${targetName}" not found. Available: ${providerNames.join(", ")}`, "error");
+        return;
+      }
+
+      // Update settings.json
+      const settings = readSettings();
+      const oldProvider = settings.defaultProvider || "(not set)";
+      const oldModel = settings.defaultModel || "(not set)";
+
+      settings.defaultProvider = targetName;
+
+      // Auto-set defaultModel to first model of the new provider
+      const targetModels = (config.providers[targetName] as any).models || [];
+      if (targetModels.length > 0) {
+        settings.defaultModel = targetModels[0].id;
+      }
+
+      writeSettings(settings);
+
+      const lines: string[] = [branding];
+      lines.push(section("DEFAULT PROVIDER CHANGED"));
+      lines.push(ok(`New provider: ${targetName}`));
+      lines.push(info(`Old provider: ${oldProvider}`));
+      lines.push(info(`Old model: ${oldModel}`));
+      if (targetModels.length > 0) {
+        lines.push(ok(`Auto-set model: ${targetModels[0].id}`));
+        lines.push(info(`Available models: ${targetModels.map((m: any) => m.id).join(", ")}`));
+      }
+      lines.push(warn("Run /reload to apply changes in Pi"));
+
+      pi.sendMessage({
+        customType: "api-provider-changed",
+        content: lines.join("\n"),
+        display: { type: "content", content: lines.join("\n") },
+      });
+      ctx.ui.notify(`Default provider set to ${targetName}`, "success");
+      return;
+    }
+
+    // Unknown sub-command — maybe they typed a provider name directly?
+    // Treat as shorthand: /api provider ollama  →  /api provider set ollama
+    if (providerNames.includes(sub)) {
+      return handleProvider(ctx, config, `set ${arg.trim()}`);
+    }
+
+    ctx.ui.notify(`Unknown sub-command: "${sub}". Use: show, set, list, or a provider name`, "error");
+  }
+
   function listProviders(config: ReturnType<typeof readModelsJson>) {
     const lines: string[] = [branding];
     lines.push(section("PROVIDERS"));
@@ -504,6 +653,7 @@ export default function (pi: ExtensionAPI) {
         { value: "reload", label: "reload", description: "Reload models.json" },
         { value: "modes", label: "modes", description: "List all supported API modes" },
         { value: "providers", label: "providers", description: "List all configured providers" },
+        { value: "provider", label: "provider", description: "Show, set, or list default provider" },
       ];
     },
   });

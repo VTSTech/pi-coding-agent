@@ -52,7 +52,7 @@ export default function (pi: ExtensionAPI) {
   };
 
   const branding = [
-    `  ⚡ Pi Security Extension v1.0.5`,
+    `  ⚡ Pi Security Extension v1.0.6`,
     `  Written by VTSTech`,
     `  GitHub: https://github.com/VTSTech`,
     `  Website: www.vts-tech.org`,

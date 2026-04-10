@@ -43,6 +43,7 @@ export default function (pi: ExtensionAPI) {
   let footerModel = "";
   let footerThinking = "";
   let footerCtxPct = "";
+  let isLocalProvider = true;
 
   // ── Audit / recovery tracking ────────────────────────────────────────────
 
@@ -106,6 +107,35 @@ export default function (pi: ExtensionAPI) {
   let ollamaLoadedCache = "";
   let ollamaLoadedLastCheck = 0;
   const OLLAMA_LOADED_INTERVAL = 15000;
+
+  /**
+   * Detect whether the active provider is local (localhost/127.0.0.1)
+   * or remote/cloud. CPU/RAM/Swap metrics are only meaningful for local.
+   */
+  function detectLocalProvider(): boolean {
+    try {
+      const modelsJson = JSON.parse(fs.readFileSync(
+        path.join(os.homedir(), ".pi", "agent", "models.json"), "utf-8"
+      ));
+      for (const provider of Object.values(modelsJson.providers || {}) as any[]) {
+        const url = provider.baseUrl || "";
+        const hasLocalUrl = url.includes("localhost") || url.includes("127.0.0.1") || url.includes("0.0.0.0");
+        // Check if this provider has the currently active model
+        const modelId = footerModel || "";
+        if (modelId && (provider.models || []).some((m: any) => m.id === modelId)) {
+          return hasLocalUrl;
+        }
+      }
+      // No model match — check if any provider is local (ollama-style)
+      for (const [name, provider] of Object.entries(modelsJson.providers || {}) as any[]) {
+        const url = (provider as any).baseUrl || "";
+        if (url.includes("localhost") || url.includes("127.0.0.1") || name === "ollama") {
+          return true;
+        }
+      }
+    } catch { /* ignore */ }
+    return false;
+  }
 
   function getOllamaLoadedModel(): string {
     const now = Date.now();
@@ -227,6 +257,9 @@ export default function (pi: ExtensionAPI) {
       }
     }
 
+    // Detect local vs remote/cloud provider
+    isLocalProvider = detectLocalProvider();
+
     // Refresh security audit count on every metrics cycle
     refreshBlockedCount();
   }
@@ -264,10 +297,13 @@ export default function (pi: ExtensionAPI) {
           if (footerThinking && footerThinking !== "off") parts.push(dim(footerThinking));
           if (footerCtxPct) parts.push(footerCtxPct);
 
-          parts.push(dim(`CPU ${cpuUsage.toFixed(0)}%`));
-          parts.push(`RAM ${fmtBytes(memUsed)}/${fmtBytes(memTotal)}`);
-          if (hasSwap && swapUsed > 0) {
-            parts.push(`Swap ${fmtBytes(swapUsed)}/${fmtBytes(swapTotal)}`);
+          // CPU/RAM/Swap only relevant for local providers
+          if (isLocalProvider) {
+            parts.push(dim(`CPU ${cpuUsage.toFixed(0)}%`));
+            parts.push(`RAM ${fmtBytes(memUsed)}/${fmtBytes(memTotal)}`);
+            if (hasSwap && swapUsed > 0) {
+              parts.push(`Swap ${fmtBytes(swapUsed)}/${fmtBytes(swapTotal)}`);
+            }
           }
           if (ollamaLoaded) parts.push(`${ollamaLoaded}`);
           if (lastResponseTime !== null) parts.push(`Resp ${fmtDur(lastResponseTime)}`);

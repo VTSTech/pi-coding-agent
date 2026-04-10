@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.6] - 04-10-2026 12:48:17 PM
+
+### Added
+
+- **Conditional CPU/RAM display in status bar** (`extensions/status.ts`)
+  - `detectLocalProvider()` reads `models.json` to determine if the active provider is local (localhost/127.0.0.1/0.0.0.0) or remote/cloud.
+  - CPU%, RAM, and Swap metrics are only shown in the footer when using a local provider — hidden for cloud/remote providers where they're not meaningful.
+  - Falls back to `true` (show metrics) when detection fails, ensuring backwards compatibility.
+
+- **`/api provider` command for managing default providers** (`extensions/api.ts`)
+  - `/api provider` — show current default provider, default model, and all configured providers with local/cloud tags.
+  - `/api provider set <name>` — set the default provider in `settings.json` and auto-set the default model to the provider's first model.
+  - `/api provider change <name>` / `switch <name>` — aliases for `set`.
+  - `/api provider list` / `show` — same as bare `/api provider`.
+  - `/api provider <name>` — shorthand: typing a provider name directly is treated as `set <name>`.
+  - Settings are persisted to `~/.pi/agent/settings.json` (`defaultProvider` and `defaultModel` fields).
+  - Tab-completion registered for the `provider` sub-command.
+
+- **Settings helpers** (`extensions/api.ts`)
+  - `readSettings()` / `writeSettings()` for reading and writing Pi's `settings.json`.
+  - Added `fs`, `path`, and `os` imports for file system access.
+
+---
+
 ## [1.0.5] - 04-10-2026 10:43:55 AM
 
 ### Added
