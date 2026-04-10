@@ -38,6 +38,7 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 |-------|----------|-------------|-----------|--------------|------------|-------|
 | `openai/gpt-oss-120b:free` | OpenRouter | ✅ 1.9s | ✅ STRONG | ✅ STRONG | ✅ STRONG | **4/4** |
 | `minimax/minimax-m2.5:free` | OpenRouter | ✅ 4.1s | ✅ STRONG | ✅ STRONG | ✅ STRONG | **4/4** |
+| `nvidia/nemotron-3-nano-30b-a3b:free` | OpenRouter | ✅ 449ms | ✅ MODERATE | ✅ STRONG | ✅ STRONG | **4/4** |
 | `z-ai/glm-4.5-air:free` | OpenRouter | ✅ 1.1s | ❌ ERROR | ✅ STRONG | ✅ STRONG | **3/4** |
 
 > Cloud provider tests use the 4-test suite (connectivity, reasoning, instructions, tool usage). Ollama-specific tests are skipped.
