@@ -165,7 +165,7 @@ export default function (pi: ExtensionAPI) {
         case "modes":
           return listModes();
         default:
-          ctx.ui.notify(`Unknown sub-command: "${sub}". Use: mode, url, think, compat, reload, modes, provider`, "error");
+          ctx.ui.notify(`Unknown sub-command: "${sub}". Use: mode, url, think, compat, reload, modes, provider, providers`, "error");
         }
       }
 
@@ -504,7 +504,9 @@ export default function (pi: ExtensionAPI) {
   // ── /api provider — show, set, change, list providers ───────────────
 
   function handleProvider(ctx: any, config: ReturnType<typeof readModelsJson>, arg: string) {
-    const sub = arg.trim().toLowerCase();
+    const parts = arg.trim().split(/\s+/);
+    const sub = parts[0]?.toLowerCase() || "";
+    const rest = parts.slice(1).join(" ");
     const providerNames = Object.keys(config.providers);
 
     if (!sub || sub === "show" || sub === "list") {
@@ -571,9 +573,7 @@ export default function (pi: ExtensionAPI) {
     }
 
     if (sub === "set" || sub === "change" || sub === "switch") {
-      // Extract provider name from remaining args
-      const restArgs = arg.trim().split(/\s+/).slice(1);
-      const targetName = restArgs.join(" ");
+      const targetName = rest;
 
       if (!targetName) {
         // No name given — show available and ask
@@ -581,11 +581,18 @@ export default function (pi: ExtensionAPI) {
         lines.push(section("SET DEFAULT PROVIDER"));
         lines.push(info("Usage: /api provider set <name>"));
         lines.push(info(""));
-        lines.push(info("Available providers:"));
+        lines.push(info("Configured providers:"));
         for (const name of providerNames) {
           const p = config.providers[name] as any;
           const isLocal = (p.baseUrl || "").includes("localhost") || (p.baseUrl || "").includes("127.0.0.1") || name === "ollama";
           lines.push(info(`  ${name}${isLocal ? " (local)" : " (cloud)"}`));
+        }
+        const builtins = Object.keys(BUILTIN_PROVIDERS).filter(n => !providerNames.includes(n));
+        if (builtins.length > 0) {
+          lines.push(info("Built-in providers:"));
+          for (const name of builtins) {
+            lines.push(info(`  ${name} (built-in)`));
+          }
         }
         pi.sendMessage({
           customType: "api-provider-set",
@@ -596,9 +603,11 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      // Validate provider exists
-      if (!config.providers[targetName]) {
-        ctx.ui.notify(`Provider "${targetName}" not found. Available: ${providerNames.join(", ")}`, "error");
+      // Validate provider exists (configured or built-in)
+      const isBuiltin = targetName in BUILTIN_PROVIDERS;
+      if (!config.providers[targetName] && !isBuiltin) {
+        const allNames = [...providerNames, ...Object.keys(BUILTIN_PROVIDERS).filter(n => !providerNames.includes(n))];
+        ctx.ui.notify(`Provider "${targetName}" not found. Available: ${allNames.join(", ")}`, "error");
         return;
       }
 
@@ -610,9 +619,12 @@ export default function (pi: ExtensionAPI) {
       settings.defaultProvider = targetName;
 
       // Auto-set defaultModel to first model of the new provider
-      const targetModels = (config.providers[targetName] as any).models || [];
+      const targetModels = (config.providers[targetName] as any)?.models || [];
       if (targetModels.length > 0) {
         settings.defaultModel = targetModels[0].id;
+      } else if (isBuiltin) {
+        // Built-in provider — Pi will use its default model
+        settings.defaultModel = "(Pi default)";
       }
 
       writeSettings(settings);
@@ -625,6 +637,9 @@ export default function (pi: ExtensionAPI) {
       if (targetModels.length > 0) {
         lines.push(ok(`Auto-set model: ${targetModels[0].id}`));
         lines.push(info(`Available models: ${targetModels.map((m: any) => m.id).join(", ")}`));
+      } else if (isBuiltin) {
+        lines.push(info(`Built-in provider — Pi will use its default model`));
+        lines.push(info(`Ensure ${BUILTIN_PROVIDERS[targetName].envKey} is set`));
       }
       lines.push(warn("Run /reload to apply changes in Pi"));
 
@@ -640,7 +655,7 @@ export default function (pi: ExtensionAPI) {
     // Unknown sub-command — maybe they typed a provider name directly?
     // Treat as shorthand: /api provider ollama  →  /api provider set ollama
     if (providerNames.includes(sub) || sub in BUILTIN_PROVIDERS) {
-      return handleProvider(ctx, config, `set ${arg.trim()}`);
+      return handleProvider(ctx, config, `set ${sub}`);
     }
 
     ctx.ui.notify(`Unknown sub-command: "${sub}". Use: show, set, list, or a provider name`, "error");
