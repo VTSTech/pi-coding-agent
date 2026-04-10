@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.7] - 04-10-2026 4:00:00 PM
+
+### Fixed
+
+- **WEAK score no longer counts as pass** (`extensions/model-test.ts`)
+  - All 6 test return paths previously used `pass: true` regardless of score tier, meaning WEAK results were treated as passing.
+  - Changed to `pass: score !== "WEAK"` so only STRONG and MODERATE results count as pass. WEAK results now correctly contribute to the failure count in the summary.
+
+- **ReAct regex false positive prevention** (`extensions/model-test.ts`)
+  - Tool usage test ReAct regex patterns could match normal prose containing "Thought:", "Action:", or "Action Input:" keywords that weren't actual tool calls.
+  - Added `isToolIdentifier()` and `isKnownTool()` guard functions that validate extracted tool names against the registered tool list before accepting a ReAct match as a legitimate tool call.
+
+- **Tool usage unit validation** (`extensions/model-test.ts`)
+  - Temperature conversion tool test now validates that the `unit` parameter is one of the expected values (`celsius` or `fahrenheit`).
+  - Models that pass the tool call structure but provide an invalid or missing unit are demoted from STRONG to MODERATE, since the tool was invoked but not used correctly.
+
+- **Cloud provider false local detection in status bar** (`extensions/status.ts`)
+  - `detectLocalProvider()` fell through to a fallback that checked if ANY provider in `models.json` had a local URL, regardless of which provider was active. This caused CPU/RAM metrics to display incorrectly when using cloud providers like OpenRouter alongside a local Ollama entry.
+  - Rewrote detection to check `currentCtx.provider.baseUrl` first (covers built-in providers configured via `settings.json`), then fall back to models.json model ID matching, then default to `false` (assume cloud).
+
+### Added
+
+- **Cloud model benchmark result** (`TESTS.md`)
+  - Added `openai/gpt-oss-20b:free` (OpenRouter) test result: 4/4 pass (MODERATE reasoning, STRONG instructions, STRONG tool usage, 954ms).
+
+---
+
 ## [1.0.6] - 04-10-2026 12:48:17 PM
 
 ### Added
