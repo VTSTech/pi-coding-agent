@@ -4,7 +4,7 @@ import {
   type PiModelEntry,
   MODELS_JSON_PATH as MODELS_FILE,
   fetchOllamaModels,
-  fetchModelContextLength,
+  fetchContextLengthsBatched,
   readModelsJson,
   writeModelsJson,
   isReasoningModel,
@@ -118,15 +118,12 @@ export default function (pi: ExtensionAPI) {
         // Sort by size ascending
         const sorted = [...models].sort((a, b) => a.size - b.size);
 
-        // Fetch context lengths (parallel, non-blocking)
+        // Fetch context lengths in batches (3 concurrent to avoid overwhelming tunnels)
         ctx.ui.setStatus("ollama-sync", "Fetching model details...");
-        const contextResults = await Promise.allSettled(
-          sorted.map((m) => fetchModelContextLength(ollamaBaseUrl, m.name))
+        const contextMap = await fetchContextLengthsBatched(
+          ollamaBaseUrl,
+          sorted.map((m) => m.name)
         );
-        const contextMap = new Map<string, number | undefined>();
-        contextResults.forEach((r, i) => {
-          contextMap.set(sorted[i].name, r.status === "fulfilled" ? r.value : undefined);
-        });
 
         // Build model entries with metadata
         const newModels = sorted.map((m) =>
@@ -238,14 +235,11 @@ export default function (pi: ExtensionAPI) {
         const models = await fetchOllamaModels(ollamaBaseUrl);
         const sorted = [...models].sort((a, b) => a.size - b.size);
 
-        // Fetch context lengths in parallel
-        const contextResults = await Promise.allSettled(
-          sorted.map((m) => fetchModelContextLength(ollamaBaseUrl, m.name))
+        // Fetch context lengths in batches
+        const contextMap = await fetchContextLengthsBatched(
+          ollamaBaseUrl,
+          sorted.map((m) => m.name)
         );
-        const contextMap = new Map<string, number | undefined>();
-        contextResults.forEach((r, i) => {
-          contextMap.set(sorted[i].name, r.status === "fulfilled" ? r.value : undefined);
-        });
 
         const newModels = sorted.map((m) =>
           buildModelEntry(m, contextMap.get(m.name))

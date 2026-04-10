@@ -286,7 +286,7 @@ export async function fetchModelContextLength(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: modelName }),
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(30000),
     });
     if (!res.ok) return undefined;
     const data = (await res.json()) as {
@@ -306,6 +306,33 @@ export async function fetchModelContextLength(
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Fetch context lengths for multiple models, processing them in small batches
+ * to avoid overwhelming the connection (especially over tunnels).
+ *
+ * @param baseUrl - The Ollama base URL (without /v1 suffix)
+ * @param modelNames - Array of model tag names
+ * @param batchSize - Number of concurrent requests (default: 3)
+ * @returns Map of model name to context length (undefined if unavailable)
+ */
+export async function fetchContextLengthsBatched(
+  baseUrl: string,
+  modelNames: string[],
+  batchSize = 3
+): Promise<Map<string, number | undefined>> {
+  const result = new Map<string, number | undefined>();
+  for (let i = 0; i < modelNames.length; i += batchSize) {
+    const batch = modelNames.slice(i, i + batchSize);
+    const results = await Promise.allSettled(
+      batch.map((name) => fetchModelContextLength(baseUrl, name))
+    );
+    results.forEach((r, idx) => {
+      result.set(batch[idx], r.status === "fulfilled" ? r.value : undefined);
+    });
+  }
+  return result;
 }
 
 /**
