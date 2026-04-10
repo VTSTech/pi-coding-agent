@@ -290,10 +290,19 @@ export async function fetchModelContextLength(
     });
     if (!res.ok) return undefined;
     const data = (await res.json()) as {
-      model_info?: { "num_ctx"?: number };
+      model_info?: Record<string, unknown>;
       template?: string;
     };
-    return data?.model_info?.["num_ctx"];
+    // Ollama uses architecture-specific keys like "qwen3.context_length"
+    for (const key of Object.keys(data?.model_info ?? {})) {
+      if (key.endsWith(".context_length")) {
+        const val = data.model_info[key];
+        if (typeof val === "number") return val;
+      }
+    }
+    // Fallback: generic "num_ctx" key
+    const numCtx = data?.model_info?.["num_ctx"];
+    if (typeof numCtx === "number") return numCtx;
   } catch {
     return undefined;
   }
