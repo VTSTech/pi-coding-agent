@@ -165,7 +165,7 @@ export default function (pi: ExtensionAPI) {
         case "modes":
           return listModes();
         default:
-          ctx.ui.notify(`Unknown sub-command: "${sub}". Use: mode, url, think, compat, reload, modes, provider, providers`, "error");
+          ctx.ui.notify(`Unknown sub-command: "${sub}". Use: mode, url, think, compat, reload, modes, provider`, "error");
         }
       }
 
