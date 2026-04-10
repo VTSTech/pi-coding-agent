@@ -140,13 +140,15 @@ export default function (pi: ExtensionAPI) {
       const rest = parts.slice(1).join(" ");
 
       const config = readModelsJson();
-      const provider = resolveProvider(config);
-      if (!provider) {
-        ctx.ui.notify("No providers found in models.json", "error");
-        return;
-      }
 
-      switch (sub) {
+      // Provider sub-command handles its own empty-state display — skip the guard
+      if (sub !== "provider" && sub !== "providers") {
+        const provider = resolveProvider(config);
+        if (!provider) {
+          ctx.ui.notify("No providers found in models.json", "error");
+          return;
+        }
+        switch (sub) {
         case "":
         case "show":
           return showConfig(provider);
@@ -162,12 +164,17 @@ export default function (pi: ExtensionAPI) {
           return reloadConfig(ctx);
         case "modes":
           return listModes();
+        default:
+          ctx.ui.notify(`Unknown sub-command: "${sub}". Use: mode, url, think, compat, reload, modes, provider, providers`, "error");
+        }
+      }
+
+      // Provider/providers handle their own empty-state — no resolveProvider guard
+      switch (sub) {
         case "provider":
           return handleProvider(ctx, config, rest);
         case "providers":
           return listProviders(config);
-        default:
-          ctx.ui.notify(`Unknown sub-command: "${sub}". Use: mode, url, think, compat, reload, modes, provider, providers`, "error");
       }
     },
   });
