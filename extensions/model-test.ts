@@ -8,28 +8,8 @@ import {
   section, ok, fail, warn, info,
   msHuman, truncate, sanitizeForReport,
 } from "../shared/format";
-import { getOllamaBaseUrl, MODELS_JSON_PATH, detectModelFamily, readModelsJson } from "../shared/ollama";
+import { getOllamaBaseUrl, MODELS_JSON_PATH, detectModelFamily, readModelsJson, BUILTIN_PROVIDERS } from "../shared/ollama";
 import type { ToolSupportLevel } from "../shared/types";
-
-// ── Built-in Provider Registry ──────────────────────────────────────────
-
-/**
- * Known built-in providers that Pi supports out of the box.
- * Each entry maps provider name to its API type, base URL, and required env var for the API key.
- */
-const BUILTIN_PROVIDERS: Record<string, { api: string; baseUrl: string; envKey: string }> = {
-  openrouter:    { api: "openai-completions", baseUrl: "https://openrouter.ai/api/v1", envKey: "OPENROUTER_API_KEY" },
-  anthropic:     { api: "anthropic-messages", baseUrl: "https://api.anthropic.com/v1", envKey: "ANTHROPIC_API_KEY" },
-  google:        { api: "gemini", baseUrl: "https://generativelanguage.googleapis.com", envKey: "GOOGLE_API_KEY" },
-  openai:        { api: "openai-completions", baseUrl: "https://api.openai.com/v1", envKey: "OPENAI_API_KEY" },
-  groq:          { api: "openai-completions", baseUrl: "https://api.groq.com/v1", envKey: "GROQ_API_KEY" },
-  deepseek:      { api: "openai-completions", baseUrl: "https://api.deepseek.com/v1", envKey: "DEEPSEEK_API_KEY" },
-  mistral:       { api: "openai-completions", baseUrl: "https://api.mistral.ai/v1", envKey: "MISTRAL_API_KEY" },
-  xai:           { api: "openai-completions", baseUrl: "https://api.x.ai/v1", envKey: "XAI_API_KEY" },
-  together:      { api: "openai-completions", baseUrl: "https://api.together.xyz/v1", envKey: "TOGETHER_API_KEY" },
-  fireworks:     { api: "openai-completions", baseUrl: "https://api.fireworks.ai/inference/v1", envKey: "FIREWORKS_API_KEY" },
-  cohere:        { api: "cohere-chat", baseUrl: "https://api.cohere.com/v1", envKey: "COHERE_API_KEY" },
-};
 
 // ── Provider Detection ──────────────────────────────────────────────────
 
@@ -70,6 +50,7 @@ function detectProvider(ctx: any): ProviderInfo {
     const isOllama = /ollama/i.test(providerName) ||
       /localhost:\d+/.test(baseUrl) ||
       /127\.0\.0\.1:\d+/.test(baseUrl) ||
+      /0\.0\.0\.0:\d+/.test(baseUrl) ||
       /\/api\/chat/.test(baseUrl) ||
       apiMode === "ollama";
 

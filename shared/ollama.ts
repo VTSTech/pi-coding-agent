@@ -367,6 +367,38 @@ export function isReasoningModel(name: string): boolean {
 }
 
 // ============================================================================
+// Built-in Provider Registry
+// ============================================================================
+
+/**
+ * Known built-in providers that Pi supports out of the box.
+ *
+ * Pi has two provider layers:
+ *   1. Built-in providers (openrouter, anthropic, google, etc.) configured by Pi internally
+ *   2. User-defined providers in models.json (e.g. ollama)
+ *
+ * The ExtensionAPI does not expose a getProviderConfig() method, so we maintain a
+ * lookup table for known built-in providers. Used by diag.ts, model-test.ts, and
+ * api.ts for provider detection and display.
+ *
+ * Each entry maps provider name to its API mode, base URL, and the env var
+ * that Pi reads for the API key.
+ */
+export const BUILTIN_PROVIDERS: Record<string, { api: string; baseUrl: string; envKey: string }> = {
+  openrouter:    { api: "openai-completions", baseUrl: "https://openrouter.ai/api/v1",      envKey: "OPENROUTER_API_KEY" },
+  anthropic:     { api: "anthropic-messages", baseUrl: "https://api.anthropic.com/v1",      envKey: "ANTHROPIC_API_KEY" },
+  google:        { api: "gemini",             baseUrl: "https://generativelanguage.googleapis.com", envKey: "GOOGLE_API_KEY" },
+  openai:        { api: "openai-completions", baseUrl: "https://api.openai.com/v1",         envKey: "OPENAI_API_KEY" },
+  groq:          { api: "openai-completions", baseUrl: "https://api.groq.com/v1",           envKey: "GROQ_API_KEY" },
+  deepseek:      { api: "openai-completions", baseUrl: "https://api.deepseek.com/v1",       envKey: "DEEPSEEK_API_KEY" },
+  mistral:       { api: "openai-completions", baseUrl: "https://api.mistral.ai/v1",         envKey: "MISTRAL_API_KEY" },
+  xai:           { api: "openai-completions", baseUrl: "https://api.x.ai/v1",               envKey: "XAI_API_KEY" },
+  together:      { api: "openai-completions", baseUrl: "https://api.together.xyz/v1",       envKey: "TOGETHER_API_KEY" },
+  fireworks:     { api: "openai-completions", baseUrl: "https://api.fireworks.ai/inference/v1", envKey: "FIREWORKS_API_KEY" },
+  cohere:        { api: "cohere-chat",        baseUrl: "https://api.cohere.com/v1",         envKey: "COHERE_API_KEY" },
+};
+
+// ============================================================================
 // Model Family Detection
 // ============================================================================
 

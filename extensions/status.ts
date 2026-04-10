@@ -109,14 +109,13 @@ export default function (pi: ExtensionAPI) {
   const OLLAMA_LOADED_INTERVAL = 15000;
 
   /**
-   * Detect whether the active provider is local (localhost/127.0.0.1)
+   * Detect whether the active provider is local (localhost/127.0.0.1/0.0.0.0)
    * or remote/cloud. CPU/RAM/Swap metrics are only meaningful for local.
+   *
+   * Accepts a pre-parsed models.json to avoid duplicate file reads per cycle.
    */
-  function detectLocalProvider(): boolean {
+  function detectLocalProvider(modelsJson: Record<string, any>): boolean {
     try {
-      const modelsJson = JSON.parse(fs.readFileSync(
-        path.join(os.homedir(), ".pi", "agent", "models.json"), "utf-8"
-      ));
       for (const provider of Object.values(modelsJson.providers || {}) as any[]) {
         const url = provider.baseUrl || "";
         const hasLocalUrl = url.includes("localhost") || url.includes("127.0.0.1") || url.includes("0.0.0.0");
@@ -129,7 +128,7 @@ export default function (pi: ExtensionAPI) {
       // No model match — check if any provider is local (ollama-style)
       for (const [name, provider] of Object.entries(modelsJson.providers || {}) as any[]) {
         const url = (provider as any).baseUrl || "";
-        if (url.includes("localhost") || url.includes("127.0.0.1") || name === "ollama") {
+        if (url.includes("localhost") || url.includes("127.0.0.1") || url.includes("0.0.0.0") || name === "ollama") {
           return true;
         }
       }
@@ -229,36 +228,40 @@ export default function (pi: ExtensionAPI) {
     }
     ollamaLoaded = getOllamaLoadedModel();
 
+    // Read models.json once per cycle — used for context display + local provider detection
+    let modelsJson: Record<string, any> | null = null;
+    try {
+      const raw = fs.readFileSync(
+        path.join(os.homedir(), ".pi", "agent", "models.json"), "utf-8"
+      );
+      modelsJson = JSON.parse(raw);
+    } catch { /* ignore */ }
+
     if (currentCtx) {
       footerModel = currentCtx.model?.id || "";
       footerThinking = pi.getThinkingLevel?.() ?? "";
       const usage = currentCtx.getContextUsage?.();
       if (usage && usage.contextWindow > 0) {
-        const pct = ((usage.tokens / usage.contextWindow) * 100).toFixed(1);
-        footerCtxPct = `${pct}%/${(usage.contextWindow / 1000).toFixed(0)}k`;
+        const pctVal = ((usage.tokens / usage.contextWindow) * 100).toFixed(1);
+        footerCtxPct = `${pctVal}%/${(usage.contextWindow / 1000).toFixed(0)}k`;
       } else {
         footerCtxPct = "";
       }
       // Show model's max context length from models.json if available
       const modelId = currentCtx.model?.id || "";
-      if (modelId && !footerCtxPct) {
-        try {
-          const modelsJson = JSON.parse(fs.readFileSync(
-            path.join(os.homedir(), ".pi", "agent", "models.json"), "utf-8"
-          ));
-          for (const prov of Object.values(modelsJson.providers || {}) as any[]) {
-            const match = (prov.models || []).find((m: any) => m.id === modelId);
-            if (match?.contextLength) {
-              footerCtxPct = `${(match.contextLength / 1000).toFixed(0)}k ctx`;
-              break;
-            }
+      if (modelId && !footerCtxPct && modelsJson) {
+        for (const prov of Object.values(modelsJson.providers || {}) as any[]) {
+          const match = (prov.models || []).find((m: any) => m.id === modelId);
+          if (match?.contextLength) {
+            footerCtxPct = `${(match.contextLength / 1000).toFixed(0)}k ctx`;
+            break;
           }
-        } catch { /* ignore */ }
+        }
       }
     }
 
-    // Detect local vs remote/cloud provider
-    isLocalProvider = detectLocalProvider();
+    // Detect local vs remote/cloud provider (uses pre-parsed modelsJson)
+    isLocalProvider = modelsJson ? detectLocalProvider(modelsJson) : false;
 
     // Refresh security audit count on every metrics cycle
     refreshBlockedCount();

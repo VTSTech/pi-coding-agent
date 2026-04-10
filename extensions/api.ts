@@ -657,4 +657,59 @@ export default function (pi: ExtensionAPI) {
       ];
     },
   });
+
+  // ── Argument-level tab completion for /api provider ────────────────────
+
+  pi.registerCompletion?.("api", {
+    getCompletions: () => [],
+    getArgumentCompletions: (args: string[]) => {
+      const sub = args[0]?.toLowerCase() || "";
+
+      // /api provider set <TAB> — complete provider names from models.json
+      if (sub === "provider" && args.length >= 2) {
+        const action = args[1]?.toLowerCase() || "";
+        if (["set", "change", "switch"].includes(action) && args.length === 3) {
+          const config = readModelsJson();
+          return Object.keys(config.providers).map(name => ({
+            value: name,
+            label: name,
+            description: `Set ${name} as default provider`,
+          }));
+        }
+        // /api provider <TAB> — show sub-commands + provider names
+        if (args.length === 2) {
+          const config = readModelsJson();
+          const items = [
+            { value: "set", label: "set", description: "Set default provider" },
+            { value: "list", label: "list", description: "Show all providers" },
+            { value: "show", label: "show", description: "Show current provider" },
+          ];
+          for (const name of Object.keys(config.providers)) {
+            items.push({ value: name, label: name, description: `Switch to ${name}` });
+          }
+          return items;
+        }
+      }
+
+      // /api mode <TAB> — complete API mode names
+      if (sub === "mode" && args.length === 2) {
+        return Object.keys(API_MODES).map(mode => ({
+          value: mode,
+          label: mode,
+          description: API_MODES[mode],
+        }));
+      }
+
+      // /api think <TAB> — complete thinking values
+      if (sub === "think" && args.length === 2) {
+        return [
+          { value: "on", label: "on", description: "Enable thinking for all models" },
+          { value: "off", label: "off", description: "Disable thinking for all models" },
+          { value: "auto", label: "auto", description: "Auto-detect thinking from model name" },
+        ];
+      }
+
+      return [];
+    },
+  } as any);
 }

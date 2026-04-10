@@ -8,7 +8,7 @@ import {
   section, ok, fail, warn, info,
   bytesHuman, msHuman, pct, padRight,
 } from "../shared/format";
-import { MODELS_JSON_PATH, getOllamaBaseUrl } from "../shared/ollama";
+import { MODELS_JSON_PATH, getOllamaBaseUrl, BUILTIN_PROVIDERS } from "../shared/ollama";
 import {
   BLOCKED_COMMANDS, BLOCKED_URL_PATTERNS,
   validatePath, isSafeUrl, sanitizeCommand, readRecentAuditEntries,
@@ -426,25 +426,7 @@ export default function (pi: ExtensionAPI) {
       lines.push(info(`Provider: ${model.provider || "unknown"}`));
 
       // ── API Mode detection (3-tier: models.json → built-in providers → unknown) ──
-      // Pi has two provider layers:
-      //   1. Built-in providers (openrouter, anthropic, google, etc.) configured by Pi internally
-      //   2. User-defined providers in models.json (e.g. ollama)
-      // The ExtensionAPI does not expose a getProviderConfig() method, so we maintain a
-      // lookup table for known built-in providers and fall back to models.json for user ones.
-      const BUILTIN_PROVIDERS: Record<string, { api: string; baseUrl: string }> = {
-        openrouter:    { api: "openai-completions", baseUrl: "https://openrouter.ai/api/v1" },
-        anthropic:     { api: "anthropic-messages", baseUrl: "https://api.anthropic.com" },
-        google:        { api: "gemini",             baseUrl: "https://generativelanguage.googleapis.com" },
-        openai:        { api: "openai-completions", baseUrl: "https://api.openai.com" },
-        groq:          { api: "openai-completions", baseUrl: "https://api.groq.com" },
-        deepseek:      { api: "openai-completions", baseUrl: "https://api.deepseek.com" },
-        mistral:       { api: "openai-completions", baseUrl: "https://api.mistral.ai" },
-        xai:           { api: "openai-completions", baseUrl: "https://api.x.ai" },
-        together:      { api: "openai-completions", baseUrl: "https://api.together.xyz" },
-        fireworks:     { api: "openai-completions", baseUrl: "https://api.fireworks.ai" },
-        cohere:        { api: "cohere-chat",        baseUrl: "https://api.cohere.com" },
-      };
-
+      // Uses shared BUILTIN_PROVIDERS registry from shared/ollama.ts.
       const providerName = model.provider || "";
       const userProviderCfg = modelsJson ? (modelsJson.providers || {})[providerName] : null;
 

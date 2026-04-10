@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Conditional CPU/RAM display in status bar** (`extensions/status.ts`)
   - `detectLocalProvider()` reads `models.json` to determine if the active provider is local (localhost/127.0.0.1/0.0.0.0) or remote/cloud.
   - CPU%, RAM, and Swap metrics are only shown in the footer when using a local provider — hidden for cloud/remote providers where they're not meaningful.
-  - Falls back to `true` (show metrics) when detection fails, ensuring backwards compatibility.
+  - Falls back to `false` (hide metrics) when detection fails, ensuring correct behavior for cloud-only setups.
 
 - **`/api provider` command for managing default providers** (`extensions/api.ts`)
   - `/api provider` — show current default provider, default model, and all configured providers with local/cloud tags.
@@ -25,9 +25,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Settings are persisted to `~/.pi/agent/settings.json` (`defaultProvider` and `defaultModel` fields).
   - Tab-completion registered for the `provider` sub-command.
 
+- **Dynamic tab completions for `/api` arguments** (`extensions/api.ts`)
+  - `/api provider <TAB>` — shows sub-commands (`set`, `list`, `show`) plus all provider names from `models.json`.
+  - `/api provider set <TAB>` — shows only provider names for quick selection.
+  - `/api mode <TAB>` — shows all 10 supported API modes with descriptions.
+  - `/api think <TAB>` — shows `on`, `off`, `auto` options.
+
 - **Settings helpers** (`extensions/api.ts`)
   - `readSettings()` / `writeSettings()` for reading and writing Pi's `settings.json`.
   - Added `fs`, `path`, and `os` imports for file system access.
+
+### Changed
+
+- **`BUILTIN_PROVIDERS` registry deduplicated** (`shared/ollama.ts`, `extensions/diag.ts`, `extensions/model-test.ts`)
+  - The built-in provider lookup table (11 providers) was duplicated in both `diag.ts` and `model-test.ts`.
+  - Moved to `shared/ollama.ts` as a single canonical source. Both extensions now import it.
+  - Added `envKey` field to each entry (used by `model-test.ts` for API key detection).
+
+- **`status.ts` reduces `models.json` I/O** (`extensions/status.ts`)
+  - Previously read and parsed `models.json` twice every 3-second metrics cycle (once for local provider detection, once for context length display).
+  - Now reads once per cycle and passes the parsed result to both consumers.
+
+### Fixed
+
+- **Ollama detection missing `0.0.0.0` bind address** (`extensions/model-test.ts`)
+  - `detectProvider()` checked `localhost` and `127.0.0.1` but not `0.0.0.0`, causing misclassification for Ollama instances bound to all interfaces.
+  - Added `/0\.0\.0\.0:\d+/` to the Ollama detection regex.
 
 ---
 
