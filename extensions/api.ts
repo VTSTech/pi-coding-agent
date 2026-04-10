@@ -22,7 +22,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import os from "node:os";
 import { section, ok, fail, info, warn } from "../shared/format";
-import { readModelsJson, writeModelsJson, getOllamaBaseUrl } from "../shared/ollama";
+import { readModelsJson, writeModelsJson, getOllamaBaseUrl, BUILTIN_PROVIDERS } from "../shared/ollama";
 
 // ============================================================================
 // Constants
@@ -169,12 +169,9 @@ export default function (pi: ExtensionAPI) {
         }
       }
 
-      // Provider/providers handle their own empty-state — no resolveProvider guard
-      switch (sub) {
-        case "provider":
-          return handleProvider(ctx, config, rest);
-        case "providers":
-          return listProviders(config);
+      // Provider handles its own empty-state — no resolveProvider guard
+      if (sub === "provider" || sub === "providers") {
+        return handleProvider(ctx, config, rest);
       }
     },
   });
@@ -504,14 +501,14 @@ export default function (pi: ExtensionAPI) {
     });
   }
 
-  // ── /api provider — show, set, change, list default provider ───────────
+  // ── /api provider — show, set, change, list providers ───────────────
 
   function handleProvider(ctx: any, config: ReturnType<typeof readModelsJson>, arg: string) {
     const sub = arg.trim().toLowerCase();
     const providerNames = Object.keys(config.providers);
 
     if (!sub || sub === "show" || sub === "list") {
-      // Show current default + all providers
+      // Show current default + configured providers + available built-in providers
       const settings = readSettings();
       const defaultProvider = settings.defaultProvider || "(not set)";
       const defaultModel = settings.defaultModel || "(not set)";
@@ -522,21 +519,42 @@ export default function (pi: ExtensionAPI) {
       lines.push(info(`Model: ${defaultModel}`));
       lines.push(info(`Source: ${SETTINGS_PATH}`));
 
-      lines.push(section("ALL PROVIDERS"));
-      for (const [name, provider] of Object.entries(config.providers)) {
-        const p = provider as any;
-        const modelCount = p.models?.length || 0;
-        const url = p.baseUrl || "(no URL)";
-        const api = p.api || "(no mode)";
-        const isDefault = name === defaultProvider;
-        const isLocal = url.includes("localhost") || url.includes("127.0.0.1") || url.includes("0.0.0.0") || name === "ollama";
-        const marker = isDefault ? ok(" ◀ default") : "";
-        const tag = isLocal ? " (local)" : " (cloud)";
-        lines.push(info(`  ${name}${tag}${marker}`));
-        lines.push(info(`    API: ${api}  |  URL: ${url}  |  Models: ${modelCount}`));
-        if (modelCount > 0) {
-          const first = p.models[0].id;
-          lines.push(info(`    First model: ${first}${modelCount > 1 ? ` (+${modelCount - 1} more)` : ""}`));
+      // Section 1: Configured providers (from models.json)
+      lines.push(section("CONFIGURED PROVIDERS"));
+      if (providerNames.length === 0) {
+        lines.push(info("  (none — add providers to models.json)"));
+      } else {
+        for (const [name, provider] of Object.entries(config.providers)) {
+          const p = provider as any;
+          const modelCount = p.models?.length || 0;
+          const url = p.baseUrl || "(no URL)";
+          const api = p.api || "(no mode)";
+          const isDefault = name === defaultProvider;
+          const isLocal = url.includes("localhost") || url.includes("127.0.0.1") || url.includes("0.0.0.0") || name === "ollama";
+          const marker = isDefault ? ok(" ◀ default") : "";
+          const tag = isLocal ? " (local)" : " (cloud)";
+          lines.push(info(`  ${name}${tag}${marker}`));
+          lines.push(info(`    API: ${api}  |  URL: ${url}  |  Models: ${modelCount}`));
+          if (modelCount > 0) {
+            const first = p.models[0].id;
+            lines.push(info(`    First model: ${first}${modelCount > 1 ? ` (+${modelCount - 1} more)` : ""}`));
+          }
+        }
+      }
+
+      // Section 2: Built-in providers (hardcoded known providers not in models.json)
+      const unconfigured = Object.entries(BUILTIN_PROVIDERS).filter(
+        ([name]) => !providerNames.includes(name)
+      );
+      if (unconfigured.length > 0) {
+        lines.push(section("AVAILABLE PROVIDERS"));
+        lines.push(info("  (not in models.json — configure with API key env var)"));
+        for (const [name, info2] of unconfigured) {
+          const hasKey = !!process.env[info2.envKey];
+          const status = hasKey ? ok("API key set") : info("no API key");
+          lines.push(info(`  ${name.padEnd(14)} ${info2.api.padEnd(26)} ${status}`));
+          lines.push(info(`    URL: ${info2.baseUrl}`));
+          lines.push(info(`    Env:  ${info2.envKey}`));
         }
       }
 
@@ -621,31 +639,11 @@ export default function (pi: ExtensionAPI) {
 
     // Unknown sub-command — maybe they typed a provider name directly?
     // Treat as shorthand: /api provider ollama  →  /api provider set ollama
-    if (providerNames.includes(sub)) {
+    if (providerNames.includes(sub) || sub in BUILTIN_PROVIDERS) {
       return handleProvider(ctx, config, `set ${arg.trim()}`);
     }
 
     ctx.ui.notify(`Unknown sub-command: "${sub}". Use: show, set, list, or a provider name`, "error");
-  }
-
-  function listProviders(config: ReturnType<typeof readModelsJson>) {
-    const lines: string[] = [branding];
-    lines.push(section("PROVIDERS"));
-
-    for (const [name, provider] of Object.entries(config.providers)) {
-      const modelCount = provider.models?.length || 0;
-      const url = provider.baseUrl || "(no URL)";
-      const api = provider.api || "(no mode)";
-      const isLocal = url.includes("localhost") || url.includes("127.0.0.1") || name === "ollama";
-      lines.push(info(`  ${name}${isLocal ? " (local)" : ""}`));
-      lines.push(info(`    API: ${api}  |  URL: ${url}  |  Models: ${modelCount}`));
-    }
-
-    pi.sendMessage({
-      customType: "api-providers",
-      content: lines.join("\n"),
-      display: { type: "content", content: lines.join("\n") },
-    });
   }
 
   // ── Tab completion for /api sub-commands ──────────────────────────────
@@ -659,8 +657,7 @@ export default function (pi: ExtensionAPI) {
         { value: "compat", label: "compat", description: "View/set compat flags" },
         { value: "reload", label: "reload", description: "Reload models.json" },
         { value: "modes", label: "modes", description: "List all supported API modes" },
-        { value: "providers", label: "providers", description: "List all configured providers" },
-        { value: "provider", label: "provider", description: "Show, set, or list default provider" },
+        { value: "provider", label: "provider", description: "Show, set, or list all providers" },
       ];
     },
   });
@@ -677,13 +674,20 @@ export default function (pi: ExtensionAPI) {
         const action = args[1]?.toLowerCase() || "";
         if (["set", "change", "switch"].includes(action) && args.length === 3) {
           const config = readModelsJson();
-          return Object.keys(config.providers).map(name => ({
-            value: name,
-            label: name,
-            description: `Set ${name} as default provider`,
-          }));
+          const items: { value: string; label: string; description: string }[] = [];
+          // Configured providers
+          for (const name of Object.keys(config.providers)) {
+            items.push({ value: name, label: name, description: `Set ${name} as default provider` });
+          }
+          // Built-in providers not yet in models.json
+          for (const name of Object.keys(BUILTIN_PROVIDERS)) {
+            if (!config.providers[name]) {
+              items.push({ value: name, label: name, description: `Set ${name} (built-in)` });
+            }
+          }
+          return items;
         }
-        // /api provider <TAB> — show sub-commands + provider names
+        // /api provider <TAB> — show sub-commands + all provider names
         if (args.length === 2) {
           const config = readModelsJson();
           const items = [
@@ -693,6 +697,11 @@ export default function (pi: ExtensionAPI) {
           ];
           for (const name of Object.keys(config.providers)) {
             items.push({ value: name, label: name, description: `Switch to ${name}` });
+          }
+          for (const name of Object.keys(BUILTIN_PROVIDERS)) {
+            if (!config.providers[name]) {
+              items.push({ value: name, label: name, description: `Switch to ${name} (built-in)` });
+            }
           }
           return items;
         }
