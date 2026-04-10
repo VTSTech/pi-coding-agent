@@ -112,27 +112,33 @@ export default function (pi: ExtensionAPI) {
    * Detect whether the active provider is local (localhost/127.0.0.1/0.0.0.0)
    * or remote/cloud. CPU/RAM/Swap metrics are only meaningful for local.
    *
-   * Accepts a pre-parsed models.json to avoid duplicate file reads per cycle.
+   * Strategy:
+   *  1. Check the framework context for the active provider URL (covers built-in
+   *     providers like openrouter, openai, etc. that aren't in models.json).
+   *  2. Fall back to matching the active model against models.json providers
+   *     (for custom/user-defined providers).
    */
   function detectLocalProvider(modelsJson: Record<string, any>): boolean {
+    const isLocalUrl = (url: string) =>
+      url.includes("localhost") || url.includes("127.0.0.1") || url.includes("0.0.0.0");
+
     try {
-      for (const provider of Object.values(modelsJson.providers || {}) as any[]) {
-        const url = provider.baseUrl || "";
-        const hasLocalUrl = url.includes("localhost") || url.includes("127.0.0.1") || url.includes("0.0.0.0");
-        // Check if this provider has the currently active model
-        const modelId = footerModel || "";
-        if (modelId && (provider.models || []).some((m: any) => m.id === modelId)) {
-          return hasLocalUrl;
-        }
-      }
-      // No model match — check if any provider is local (ollama-style)
-      for (const [name, provider] of Object.entries(modelsJson.providers || {}) as any[]) {
-        const url = (provider as any).baseUrl || "";
-        if (url.includes("localhost") || url.includes("127.0.0.1") || url.includes("0.0.0.0") || name === "ollama") {
-          return true;
+      // 1. Check the framework's active provider URL (covers built-in providers)
+      const ctxUrl = currentCtx?.provider?.baseUrl || currentCtx?.provider?.url || "";
+      if (ctxUrl) return isLocalUrl(ctxUrl);
+
+      // 2. Fall back to matching active model in models.json
+      const modelId = footerModel || "";
+      if (modelsJson && modelId) {
+        for (const provider of Object.values(modelsJson.providers || {}) as any[]) {
+          const url = provider.baseUrl || "";
+          if ((provider.models || []).some((m: any) => m.id === modelId)) {
+            return isLocalUrl(url);
+          }
         }
       }
     } catch { /* ignore */ }
+    // No provider URL found — assume cloud/remote
     return false;
   }
 
