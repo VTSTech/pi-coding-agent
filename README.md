@@ -567,43 +567,7 @@ subprocess.Popen(["ollama", "serve"])
 
 ## Tested Models
 
-Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via remote Ollama over Cloudflare Tunnel.
-
-### Ollama Models
-
-| Model | Tools | ReAct | Instructions | Tool Support | Score |
-|-------|-------|-------|--------------|--------------|-------|
-| `qwen3:0.6b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | NATIVE | **5/6** |
-| `qwen2.5-coder:0.5b-instruct-q4_k_m` | ✅ STRONG | ✅ STRONG | ✅ STRONG | REACT | **5/6** |
-| `granite4:350m` | ✅ STRONG | ✅ MODERATE | ✅ STRONG | NATIVE | **4/6** |
-| `qwen3:1.7b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | NATIVE | **4/6** |
-| `qwen3.5:0.8b` | ✅ STRONG | ❌ ERROR | ❌ ERROR | NATIVE | **2/6** |
-| `qwen2.5:0.5b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | NATIVE | **4/6** |
-| `llama3.2:1b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | NATIVE | **4/6** |
-| `qwen2.5-coder:1.5b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | REACT | **4/6** |
-| `deepseek-r1:1.5b` | ❌ ERROR | ❌ ERROR | ✅ STRONG | NONE | **3/6** |
-| `qwen:0.5b` | ❌ ERROR | ✅ STRONG | ✅ MODERATE | NONE | **2/6** |
-| `qwen2:0.5b` | ❌ ERROR | ✅ STRONG | ✅ STRONG | NONE | **2/6** |
-| `nchapman/dolphin3.0-qwen2.5:0.5b` | ❌ ERROR | ✅ STRONG | ✅ STRONG | NONE | **2/6** |
-| `functiongemma:270m` | ✅ STRONG | ❌ FAIL | ❌ FAIL | NATIVE | **2/6** |
-| `nchapman/dolphin3.0-llama3:1b` | ❌ ERROR | ✅ STRONG | ✅ STRONG | NONE | **2/6** |
-| `deepseek-coder:1.3b` | ❌ ERROR | ❌ FAIL | ✅ STRONG | NONE | **1/6** |
-| `gemma3:270m` | ❌ ERROR | ✅ MODERATE | ❌ FAIL | NONE | **1/6** |
-| `ishumilin/deepseek-r1-coder-tools:1.5b` | ❌ FAIL | ❌ FAIL | ❌ ERROR | NONE | **0/6** |
-| `smollm:135m` | ❌ ERROR | ❌ FAIL | ❌ FAIL | NONE | **0/6** |
-
-> **Tool Support Levels:**
-> - `NATIVE` — Model uses Ollama's structured `tool_calls` API
-> - `REACT` — Model outputs text-based `Action:` / `Action Input:` patterns
-> - `NONE` — No tool support detected
-
-### Cloud Providers
-
-| Model | Provider | Connectivity | Reasoning | Instructions | Tool Usage | Score |
-|-------|----------|-------------|-----------|--------------|------------|-------|
-| `openai/gpt-oss-120b:free` | OpenRouter | ✅ 1.9s | ✅ STRONG | ✅ STRONG | ✅ STRONG | **4/4** |
-
-> Cloud provider tests use the 4-test suite (connectivity, reasoning, instructions, tool usage). Ollama-specific tests are skipped.
+See [TESTS.md](TESTS.md) for full benchmark results across all tested Ollama and cloud provider models.
 
 ---
 
@@ -639,6 +603,7 @@ pi-coding-agent/
 │   ├── build-packages.sh    # Build all npm packages (esbuild TS→ESM)
 │   └── publish-packages.sh  # Publish to npm (shared first, then extensions)
 ├── CHANGELOG.md             # Version history
+├── TESTS.md                 # Model benchmark results
 ├── package.json             # Pi package manifest
 ├── README.md
 └── LICENSE
