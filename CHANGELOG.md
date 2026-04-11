@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.8] - 04-11-2026 11:12:22 AM
+
+### Fixed
+
+- **ReAct mode disabled by default with persistent config toggle** (`extensions/react-fallback.ts`)
+  - The `tool_call` bridge tool was always registered regardless of ReAct mode state, causing small models (e.g., `granite4:350m`) to see it in their tool list, attempt malformed calls, and fail validation.
+  - Bridge tool registration is now conditional — only registers when ReAct mode is enabled.
+  - Config persisted to `~/.pi/agent/react-mode.json` (`{"enabled": true|false}`), read on startup, written on toggle.
+  - `/react-mode` command now persists the toggle state across restarts and prompts the user to run `/reload` to apply tool registration changes.
+  - Default state is **disabled** — models only see `tool_call` when explicitly opted in.
+
+- **Spurious Ollama calls on first metrics cycle for cloud providers** (`extensions/status.ts`)
+  - `updateMetrics()` checked `isLocalProvider` after already entering the `if (currentCtx)` block, meaning the first cycle for cloud providers could still trigger a `/api/show` call to Ollama (which would fail or hang for remote-only setups).
+  - Moved `isLocalProvider = detectLocalProvider(modelsJson)` before the `if (currentCtx)` gate so local-only logic is skipped immediately for cloud providers.
+
+- **Shell injection surface in native context length fetcher** (`extensions/status.ts`)
+  - `getNativeModelCtx()` used `execSync("curl ...")` to query Ollama's `/api/show` endpoint, passing the base URL as a string interpolation — a shell injection vector if the URL contained special characters.
+  - Replaced with native `fetch()` + `AbortSignal.timeout(5000)`, matching the pattern used elsewhere in the codebase.
+  - Added a `nativeCtxPromise` guard variable to prevent concurrent requests when the 3-second metrics cycle overlaps a pending fetch.
+
+### Changed
+
+- **Model test branding bumped to v1.0.8** (`extensions/model-test.ts`)
+- **ReAct fallback branding bumped to v1.0.8** (`extensions/react-fallback.ts`)
+
+---
+
 ## [1.0.8] - 04-10-2026 11:30:00 PM
 
 ### Changed
