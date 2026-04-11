@@ -69,6 +69,7 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 | `qwen2.5-coder:0.5b-instruct-q4_k_m` | ✅ MODERATE | ✅ STRONG | ✅ STRONG | REACT | **4/6** |
 | `granite4:350m` | ✅ STRONG | ✅ MODERATE | ✅ STRONG | NATIVE | **4/6** |
 | `qwen2.5-coder:1.5b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | REACT | **4/6** |
+| `deepseek-r1:1.5b` | ❌ ERROR | ✅ STRONG | ✅ STRONG | NONE | **4/6** |
 | `qwen2.5:1.5b` | ❌ WEAK | ✅ STRONG | ✅ STRONG | NATIVE | **3/6** |
 | `functiongemma:270m` | ✅ STRONG | ❌ FAIL | ❌ FAIL | NATIVE | **2/6** |
 | `granite3.1-moe:1b` | ❌ FAIL | ❌ FAIL | ✅ STRONG | REACT | **2/6** |
