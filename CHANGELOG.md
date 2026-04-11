@@ -27,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Replaced with native `fetch()` + `AbortSignal.timeout(5000)`, matching the pattern used elsewhere in the codebase.
   - Added a `nativeCtxPromise` guard variable to prevent concurrent requests when the 3-second metrics cycle overlaps a pending fetch.
 
+### Added
+
+- **Upstream/downstream token display in status bar** (`extensions/status.ts`)
+  - Footer line 2 now shows per-LLM-call token counts as `↑1.2k ↓567` (dimmed), positioned between RAM/Swap and response time.
+  - Uses Pi's `message_end` event to capture the normalized `Usage` object (`input` = upstream/prompt tokens, `output` = downstream/completion tokens).
+  - Counters reset at the start of each agent cycle and on session shutdown so stale values are never displayed.
+  - Includes a `fmtTk()` helper that formats large token counts compactly (e.g., `1234` → `1.2k`).
+
 ### Changed
 
 - **Model test branding bumped to v1.0.8** (`extensions/model-test.ts`)
