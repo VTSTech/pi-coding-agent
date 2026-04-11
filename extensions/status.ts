@@ -354,7 +354,7 @@ export default function (pi: ExtensionAPI) {
 
           // ── Line 1 (conf): model · pwd · thinking · CPU% (if local) ──
           const line1Parts: string[] = [];
-          if (footerModel) line1Parts.push(footerModel);
+          if (footerModel) line1Parts.push(`conf:${footerModel}`);
           line1Parts.push(getPwd());
           if (footerThinking && footerThinking !== "off") line1Parts.push(dim(footerThinking));
           if (isLocalProvider) {
@@ -365,7 +365,7 @@ export default function (pi: ExtensionAPI) {
 
           // ── Line 2 (load): loaded model · M: · S: · RAM (if local) · Resp · params · security ──
           const line2Parts: string[] = [];
-          if (ollamaLoaded) line2Parts.push(ollamaLoaded);
+          if (ollamaLoaded) line2Parts.push(`load:${ollamaLoaded}`);
           if (footerNativeCtx) line2Parts.push(`M:${footerNativeCtx}`);
           if (footerCtxPct) line2Parts.push(`S:${footerCtxPct}`);
           if (isLocalProvider) {
