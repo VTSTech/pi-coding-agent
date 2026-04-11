@@ -10,11 +10,11 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 | `qwen2.5-coder:0.5b-instruct-q4_k_m` | ✅ STRONG | ✅ STRONG | ✅ STRONG | REACT | **5/6** |
 | `granite4:350m` | ✅ STRONG | ✅ MODERATE | ✅ STRONG | NATIVE | **4/6** |
 | `qwen3:1.7b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | NATIVE | **4/6** |
-| `qwen3.5:0.8b` | ✅ STRONG | ❌ ERROR | ❌ ERROR | NATIVE | **2/6** |
 | `qwen2.5:0.5b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | NATIVE | **4/6** |
 | `llama3.2:1b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | NATIVE | **4/6** |
 | `qwen2.5-coder:1.5b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | REACT | **4/6** |
 | `deepseek-r1:1.5b` | ❌ ERROR | ❌ ERROR | ✅ STRONG | NONE | **3/6** |
+| `qwen3.5:0.8b` | ✅ STRONG | ❌ ERROR | ❌ ERROR | NATIVE | **2/6** |
 | `qwen:0.5b` | ❌ ERROR | ✅ STRONG | ✅ MODERATE | NONE | **2/6** |
 | `qwen2:0.5b` | ❌ ERROR | ✅ STRONG | ✅ STRONG | NONE | **2/6** |
 | `nchapman/dolphin3.0-qwen2.5:0.5b` | ❌ ERROR | ✅ STRONG | ✅ STRONG | NONE | **2/6** |
