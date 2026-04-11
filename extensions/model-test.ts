@@ -1076,8 +1076,9 @@ export default function (pi: ExtensionAPI) {
           const aT = esc(dd.action);
           const iT = esc(dd.input);
           // Try primary (separate lines) then same-line then parenthetical
-          const primaryRe = new RegExp(`${aT}\\s*[\\x60"']?(\\w+)[\\x60"']?\\s*\\n?\\s*${iT}\\s*([\\s\\S]*?)(?=\\n\\s*(?:Observation:|Thought:|Final Answer:|$)`, "is");
-          const sameRe = new RegExp(`${aT}\\s*[\\x60"']?(\\w+)[\\x60"']?\\s+${iT}\\s*([\\s\\S]*?)(?=\\n\\s*(?:Observation:|Thought:|Final Answer:|$)`, "is");
+          // IMPORTANT: (?= must be closed — the `$` alternative goes OUTSIDE (?:)
+          const primaryRe = new RegExp(`${aT}\\s*[\\x60"']?(\\w+)[\\x60"']?\\s*\\n?\\s*${iT}\\s*([\\s\\S]*?)(?=\\n\\s*(?:Observation:|Thought:|Final Answer:|${dd.action})|$)`, "is");
+          const sameRe = new RegExp(`${aT}\\s*[\\x60"']?(\\w+)[\\x60"']?\\s+${iT}\\s*([\\s\\S]*?)(?=\\n\\s*(?:Observation:|Thought:|Final Answer:|${dd.action})|$)`, "is");
           const parenRe = new RegExp(`${aT}\\s*(\\w+)\\s*\\(([^)]*)\\)`, "i");
           let m = primaryRe.exec(content) || sameRe.exec(content);
           let isParen = false;
