@@ -477,6 +477,21 @@ export default function (pi: ExtensionAPI) {
   function captureUsage(event: any) {
     // message_end fires for every message type — only assistant has usage
     if (event?.message?.role !== "assistant") return;
+    // DEBUG: dump full event structure to diagnose missing Ollama token counts
+    try {
+      const fs = require("node:fs");
+      const path = require("node:path");
+      const debugPath = path.join(require("node:os").homedir(), ".pi/agent", "status-debug.log");
+      const dump = {
+        ts: new Date().toISOString(),
+        keys: Object.keys(event || {}),
+        messageKeys: Object.keys(event?.message || {}),
+        usage: event?.message?.usage ?? event?.usage ?? null,
+        rawMessage: JSON.stringify(event?.message ?? {}).slice(0, 2000),
+        rawEvent: JSON.stringify(event).slice(0, 3000),
+      };
+      fs.appendFileSync(debugPath, JSON.stringify(dump) + "\n");
+    } catch { /* ignore */ }
     const usage =
       event?.message?.usage ??    // normalised Pi usage
       event?.usage ??             // alternative path
