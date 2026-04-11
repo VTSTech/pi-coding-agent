@@ -13,6 +13,9 @@
  * Written by VTSTech — https://www.vts-tech.org
  */
 import type { ExtensionAPI, AgentToolResult } from "@mariozechner/pi-coding-agent";
+import os from "node:os";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { section, ok, fail, warn, info } from "../shared/format";
 
 // ============================================================================
@@ -354,100 +357,133 @@ function looksLikeSchemaDump(text: string): boolean {
 }
 
 // ============================================================================
+// Config Persistence
+// ============================================================================
+
+const REACT_CONFIG_PATH = path.join(os.homedir(), ".pi", "agent", "react-mode.json");
+
+interface ReactConfig {
+  enabled: boolean;
+}
+
+function readReactConfig(): ReactConfig {
+  try {
+    if (fs.existsSync(REACT_CONFIG_PATH)) {
+      const raw = JSON.parse(fs.readFileSync(REACT_CONFIG_PATH, "utf-8"));
+      if (typeof raw.enabled === "boolean") return raw;
+    }
+  } catch { /* ignore */ }
+  return { enabled: false };
+}
+
+function writeReactConfig(config: ReactConfig): void {
+  const dir = path.dirname(REACT_CONFIG_PATH);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(REACT_CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", "utf-8");
+}
+
+// ============================================================================
 // Extension
 // ============================================================================
 
 export default function (pi: ExtensionAPI) {
-  let reactModeEnabled = false;
+  let reactModeEnabled = readReactConfig().enabled;
   let stats = { bridgeCalls: 0, fuzzyMatches: 0, argNormalizations: 0, parseFailures: 0 };
 
   const branding = [
-    `  ⚡ Pi ReAct Fallback Extension v1.0.7`,
+    `  ⚡ Pi ReAct Fallback Extension v1.0.8`,
     `  Written by VTSTech`,
     `  GitHub: https://github.com/VTSTech`,
     `  Website: www.vts-tech.org`,
   ].join("\n");
 
-  // ── Universal bridge tool ─────────────────────────────────────────────
+  // ── Universal bridge tool (only registered when react-mode is enabled) ──
 
-  pi.registerTool({
-    name: "tool_call",
-    label: "Universal Tool Call",
-    description: `Universal tool call bridge. Use this to call any available tool by specifying its name and arguments as JSON.
+  function registerBridgeTool(): void {
+    pi.registerTool({
+      name: "tool_call",
+      label: "Universal Tool Call",
+      description: `Universal tool call bridge. Use this to call any available tool by specifying its name and arguments as JSON.
 
 To use: call tool_call with:
 - name: the exact tool name (e.g. "bash", "read", "write", "edit")
 - arguments: a JSON string of the tool's arguments (e.g. '{"command": "ls -la"}')
 
 The bridge will match your tool name (fuzzy matching supported) and normalize argument names automatically.`,
-    promptSnippet: "tool_call - universal bridge for calling any tool",
-    promptGuidelines: [
-      "When you need to use a tool but are unsure of the exact name, use tool_call with the tool name and arguments.",
-      "Example: tool_call(name='bash', arguments='{\"command\": \"ls -la\"}')",
-    ],
-    parameters: {
-      type: "object",
-      properties: {
-        name: { type: "string", description: "Name of the tool to call (fuzzy matching supported)" },
-        arguments: { type: "string", description: "Tool arguments as a JSON object string" },
-      },
-      required: ["name", "arguments"],
-    } as any,
-    execute: async (toolCallId, params, signal, onUpdate, ctx) => {
-      const p = params as { name?: string; arguments?: string };
-      const requestedName = p.name || "";
-      const argsStr = p.arguments || "{}";
+      promptSnippet: "tool_call - universal bridge for calling any tool",
+      promptGuidelines: [
+        "When you need to use a tool but are unsure of the exact name, use tool_call with the tool name and arguments.",
+        "Example: tool_call(name='bash', arguments='{\"command\": \"ls -la\"}')",
+      ],
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Name of the tool to call (fuzzy matching supported)" },
+          arguments: { type: "string", description: "Tool arguments as a JSON object string" },
+        },
+        required: ["name", "arguments"],
+      } as any,
+      execute: async (toolCallId, params, signal, onUpdate, ctx) => {
+        const p = params as { name?: string; arguments?: string };
+        const requestedName = p.name || "";
+        const argsStr = p.arguments || "{}";
 
-      stats.bridgeCalls++;
+        stats.bridgeCalls++;
 
-      // Parse arguments JSON
-      let args: Record<string, unknown>;
-      try {
-        args = JSON.parse(argsStr);
-        if (typeof args !== "object" || args === null || Array.isArray(args)) {
+        // Parse arguments JSON
+        let args: Record<string, unknown>;
+        try {
+          args = JSON.parse(argsStr);
+          if (typeof args !== "object" || args === null || Array.isArray(args)) {
+            args = { input: argsStr };
+          }
+        } catch {
           args = { input: argsStr };
         }
-      } catch {
-        args = { input: argsStr };
-      }
 
-      // Get all available tools
-      const allTools = pi.getAllTools();
-      let targetToolName: string | null = null;
+        // Get all available tools
+        const allTools = pi.getAllTools();
+        let targetToolName: string | null = null;
 
-      // Exact match first
-      if (allTools.includes(requestedName)) {
-        targetToolName = requestedName;
-      } else {
-        // Fuzzy match
-        targetToolName = fuzzyMatchToolName(requestedName, allTools);
-        if (targetToolName) stats.fuzzyMatches++;
-      }
+        // Exact match first
+        if (allTools.includes(requestedName)) {
+          targetToolName = requestedName;
+        } else {
+          // Fuzzy match
+          targetToolName = fuzzyMatchToolName(requestedName, allTools);
+          if (targetToolName) stats.fuzzyMatches++;
+        }
 
-      if (!targetToolName) {
-        stats.parseFailures++;
+        if (!targetToolName) {
+          stats.parseFailures++;
+          return {
+            content: [{ type: "text", text: `Error: Unknown tool "${requestedName}". Available tools: ${allTools.join(", ")}` }],
+            isError: true,
+          } as AgentToolResult;
+        }
+
+        // Try to execute the tool via pi.exec or find another way
+        // Since Pi doesn't expose a "call another tool" API from extensions,
+        // we return a structured message telling the agent to call the real tool
+        const normalizedArgs = Object.keys(args).length > 0 ? args : {};
+        stats.argNormalizations++;
+
+        const argsJson = JSON.stringify(normalizedArgs);
         return {
-          content: [{ type: "text", text: `Error: Unknown tool "${requestedName}". Available tools: ${allTools.join(", ")}` }],
-          isError: true,
+          content: [{
+            type: "text",
+            text: `[ReAct Bridge] Tool resolved: ${requestedName} → ${targetToolName}${targetToolName !== requestedName ? " (fuzzy matched)" : ""}\n\nPlease call ${targetToolName} with these arguments:\n${argsJson}`,
+          }],
+          isError: false,
         } as AgentToolResult;
-      }
+      },
+    });
+  }
 
-      // Try to execute the tool via pi.exec or find another way
-      // Since Pi doesn't expose a "call another tool" API from extensions,
-      // we return a structured message telling the agent to call the real tool
-      const normalizedArgs = Object.keys(args).length > 0 ? args : {};
-      stats.argNormalizations++;
-
-      const argsJson = JSON.stringify(normalizedArgs);
-      return {
-        content: [{
-          type: "text",
-          text: `[ReAct Bridge] Tool resolved: ${requestedName} → ${targetToolName}${targetToolName !== requestedName ? " (fuzzy matched)" : ""}\n\nPlease call ${targetToolName} with these arguments:\n${argsJson}`,
-        }],
-        isError: false,
-      } as AgentToolResult;
-    },
-  });
+  // Only register the bridge tool if react-mode starts enabled
+  if (reactModeEnabled) {
+    registerBridgeTool();
+  }
 
   // ── Context modification for ReAct mode ──────────────────────────────
 
@@ -480,20 +516,27 @@ The bridge will match your tool name (fuzzy matching supported) and normalize ar
     description: "Toggle ReAct fallback mode for models without native tool calling",
     handler: async (_args, ctx) => {
       reactModeEnabled = !reactModeEnabled;
+      writeReactConfig({ enabled: reactModeEnabled });
       const status = reactModeEnabled ? "ENABLED" : "DISABLED";
       ctx.ui.notify(`ReAct mode ${status}`, "success");
 
       const lines: string[] = [branding];
       lines.push(section("REACT FALLBACK MODE"));
       lines.push(info(`Status: ${status}`));
+      lines.push(info(`Config: ${REACT_CONFIG_PATH}`));
       lines.push(info(`Bridge calls: ${stats.bridgeCalls}`));
       lines.push(info(`Fuzzy matches: ${stats.fuzzyMatches}`));
       lines.push(info(`Argument normalizations: ${stats.argNormalizations}`));
       lines.push(info(`Parse failures: ${stats.parseFailures}`));
 
       if (reactModeEnabled) {
+        registerBridgeTool();
         lines.push(ok("The tool_call bridge tool is now available to the model"));
         lines.push(info("ReAct system prompt instructions have been added"));
+        lines.push(info("Run /reload to make the bridge tool available to the current model"));
+      } else {
+        lines.push(warn("The tool_call bridge tool has been unregistered"));
+        lines.push(info("Run /reload to remove the tool from the current model"));
       }
 
       const report = lines.join("\n");
