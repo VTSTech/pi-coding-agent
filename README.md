@@ -228,7 +228,7 @@ Sample output (cloud provider):
 ```
  [model-test-report]
 
-   ⚡ Pi Model Benchmark v1.0.7
+   ⚡ Pi Model Benchmark v1.0.8
    Written by VTSTech
    GitHub: https://github.com/VTSTech
    Website: www.vts-tech.org

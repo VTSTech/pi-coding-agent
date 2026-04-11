@@ -22,7 +22,7 @@ SHARED_SRC="$REPO_ROOT/shared"
 EXT_SRC="$REPO_ROOT/extensions"
 BUILD_DIR="$REPO_ROOT/.build-npm"
 
-VERSION="1.0.7"
+VERSION="1.0.8"
 
 # Colors
 GREEN='\033[0;32m'
@@ -145,7 +145,7 @@ build_extension() {
 
 # ── Build all extensions ──────────────────────────────────────────────────
 build_all_extensions() {
-  local extensions=("api" "diag" "model-test" "ollama-sync" "react-fallback" "security" "status")
+  local extensions=("api" "diag" "model-test" "ollama-sync" "openrouter-sync" "react-fallback" "security" "status")
   for ext in "${extensions[@]}"; do
     build_extension "$ext"
   done
@@ -194,7 +194,7 @@ main() {
       echo ""
       sync_to_pkg_dir
       ;;
-    api|diag|model-test|ollama-sync|react-fallback|security|status)
+    api|diag|model-test|ollama-sync|openrouter-sync|react-fallback|security|status)
       build_shared
       echo ""
       build_extension "$target"

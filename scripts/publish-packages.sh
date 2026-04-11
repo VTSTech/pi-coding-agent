@@ -20,7 +20,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BUILD_DIR="$REPO_ROOT/.build-npm"
 
-VERSION="1.0.7"
+VERSION="1.0.8"
 DRY_RUN=false
 DIST_TAG="latest"
 
@@ -47,7 +47,7 @@ while [[ $# -gt 0 ]]; do
       DIST_TAG="$2"
       shift 2
       ;;
-    shared|api|diag|model-test|ollama-sync|react-fallback|security|status|all)
+    shared|api|diag|model-test|ollama-sync|openrouter-sync|react-fallback|security|status|all)
       TARGET="$1"
       shift
       ;;
@@ -111,12 +111,12 @@ case "$TARGET" in
     # Shared must be published first — all extensions depend on it
     publish_one "shared"
     echo ""
-    for ext in api diag model-test ollama-sync react-fallback security status; do
+    for ext in api diag model-test ollama-sync openrouter-sync react-fallback security status; do
       publish_one "$ext"
       echo ""
     done
     ;;
-  api|diag|model-test|ollama-sync|react-fallback|security|status)
+  api|diag|model-test|ollama-sync|openrouter-sync|react-fallback|security|status)
     # Ensure shared is published first
     publish_one "shared"
     echo ""

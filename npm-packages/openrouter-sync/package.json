@@ -1,0 +1,25 @@
+{
+  "name": "@vtstech/pi-openrouter-sync",
+  "version": "1.0.3",
+  "description": "OpenRouter model sync extension for Pi Coding Agent — add models from OpenRouter URLs or IDs",
+  "main": "openrouter-sync.js",
+  "keywords": ["pi-extensions"],
+  "license": "MIT",
+  "access": "public",
+  "type": "module",
+  "author": "VTSTech",
+  "homepage": "https://www.vts-tech.org",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VTSTech/pi-coding-agent"
+  },
+  "dependencies": {
+    "@vtstech/pi-shared": "1.0.3"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": ">=0.66"
+  },
+  "pi": {
+    "extensions": ["./openrouter-sync.js"]
+  }
+}
