@@ -11,15 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Model test output now shows API mode and context window** (`extensions/model-test.ts`)
+- **Model test output now shows API mode and native context length** (`extensions/model-test.ts`)
   - `testModelOllama()` reads `models.json` to display the active API mode (e.g., `openai-completions`, `openai-responses`) alongside the provider info at the start of the test report.
-  - Context window (from `ctx.model.contextWindow` or `models.json` `contextLength`) is displayed for both Ollama and cloud provider tests, giving a quick reference to the model's token limit.
-  - `testModelProvider()` also receives the `ctx` parameter and shows context window info for cloud provider tests.
+  - Context length now queries Ollama's `/api/show` endpoint via `fetchModelContextLength()` to display the model's **native max context** (e.g., `32.0k tokens (native max)`) instead of the configured `num-ctx` value. This matches what `ollama-sync` reports and gives a true picture of the model's capabilities.
 
 ### Added
 
-- **`qwen2.5:0.5b` openai-responses benchmark** (`TESTS.md`)
-  - Added test result to the Ollama openai-responses table: 3/4 pass (WEAK reasoning, STRONG instructions, STRONG tool usage, 36.4s).
+- **`qwen2.5-coder:0.5b-instruct-q4_k_m` openai-responses benchmark** (`TESTS.md`)
+  - Added test result to the Ollama openai-responses table: 4/6 pass (MODERATE tools, STRONG ReAct, STRONG instructions, REACT tool support).
+  - Restructured the openai-responses table to match the 6-test Ollama format (Tools, ReAct, Instructions, Tool Support, Score /6) instead of the 4-test cloud provider format.
 
 ---
 

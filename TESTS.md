@@ -48,11 +48,9 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 
 ## Ollama Models — openai-responses
 
-| Model | Provider | Connectivity | Reasoning | Instructions | Tool Usage | Score |
-|-------|----------|-------------|-----------|--------------|------------|-------|
-| `qwen:0.5b` | Ollama | ✅ 23.9s | ✅ STRONG | ✅ MODERATE | ❌ ERROR | **3/4** |
-| `qwen2:0.5b` | Ollama | ✅ 26.7s | ❌ WEAK | ✅ STRONG | ❌ ERROR | **2/4** |
-| `qwen2.5:0.5b` | Ollama | ✅ 36.4s | ❌ WEAK | ✅ STRONG | ✅ STRONG | **3/4** |
+| Model | Tools | ReAct | Instructions | Tool Support | Score |
+|-------|-------|-------|--------------|--------------|-------|
+| `qwen2.5-coder:0.5b-instruct-q4_k_m` | ✅ MODERATE | ✅ STRONG | ✅ STRONG | REACT | **4/6** |
 
 > Tests run with API mode set to `openai-responses`. Results may differ from `openai-completions` due to different request/response formats and tool calling behavior.
 
