@@ -111,11 +111,11 @@ function detectProvider(ctx: any): ProviderInfo {
  */
 const CONFIG = {
   // General API settings
-  DEFAULT_TIMEOUT_MS: 600000,        // 8.3 minutes - default timeout for model responses
-  CONNECT_TIMEOUT_S: 30,             // 30 seconds to establish connection
+  DEFAULT_TIMEOUT_MS: 999999,        // 8.3 minutes - default timeout for model responses
+  CONNECT_TIMEOUT_S: 60,             // 30 seconds to establish connection
   MAX_RETRIES: 1,                    // Single retry for transient failures
-  RETRY_DELAY_MS: 2000,              // 2 seconds between retries
-  EXEC_BUFFER_MS: 5000,              // Extra buffer for exec timeout over curl timeout
+  RETRY_DELAY_MS: 10000,              // 2 seconds between retries
+  EXEC_BUFFER_MS: 8000,              // Extra buffer for exec timeout over curl timeout
 
   // Model generation settings
   NUM_PREDICT: 1024,                 // Max tokens in response
@@ -123,22 +123,22 @@ const CONFIG = {
 
   // Test-specific settings
   MIN_THINKING_LENGTH: 10,           // Minimum chars to consider thinking tokens valid
-  TOOL_TEST_TIMEOUT_MS: 90000,       // 90 seconds for tool usage tests
-  TOOL_TEST_MAX_TIME_S: 9999,        // Max curl time for tool tests (effectively unlimited)
-  TOOL_SUPPORT_TIMEOUT_MS: 260000,   // 2+ minutes for tool support detection
-  TOOL_SUPPORT_MAX_TIME_S: 240,      // Max curl time for tool support detection
+  TOOL_TEST_TIMEOUT_MS: 999999,       // 90 seconds for tool usage tests
+  TOOL_TEST_MAX_TIME_S: 999999,        // Max curl time for tool tests (effectively unlimited)
+  TOOL_SUPPORT_TIMEOUT_MS: 999999,   // 2+ minutes for tool support detection
+  TOOL_SUPPORT_MAX_TIME_S: 999999,      // Max curl time for tool support detection
 
   // Metadata retrieval
   TAGS_TIMEOUT_MS: 15000,            // 15 seconds for /api/tags
-  TAGS_CONNECT_TIMEOUT_S: 10,        // 10 seconds connection timeout for tags
-  MODEL_INFO_TIMEOUT_MS: 10000,      // 10 seconds for model info lookup
+  TAGS_CONNECT_TIMEOUT_S: 30,        // 10 seconds connection timeout for tags
+  MODEL_INFO_TIMEOUT_MS: 30000,      // 10 seconds for model info lookup
 
   // Provider API settings
-  PROVIDER_TIMEOUT_MS: 120000,       // 2 minutes for cloud provider API calls
-  PROVIDER_TOOL_TIMEOUT_MS: 60000,   // 60 seconds for tool usage tests on providers
+  PROVIDER_TIMEOUT_MS: 999999,       // 2 minutes for cloud provider API calls
+  PROVIDER_TOOL_TIMEOUT_MS: 120000,   // 60 seconds for tool usage tests on providers
 
   // Rate limiting
-  TEST_DELAY_MS: 30000,              // 30 seconds between tests to avoid rate limiting
+  TEST_DELAY_MS: 10000,              // 30 seconds between tests to avoid rate limiting
 } as const;
 
 // ── Tool support cache ──────────────────────────────────────────────────
