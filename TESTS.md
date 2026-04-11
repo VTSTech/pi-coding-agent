@@ -43,6 +43,7 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 | Model | Provider | Connectivity | Reasoning | Instructions | Tool Usage | Score |
 |-------|----------|-------------|-----------|--------------|------------|-------|
 | `openai/gpt-oss-120b:free` | OpenRouter | ✅ 1.9s | ✅ STRONG | ✅ STRONG | ✅ STRONG | **4/4** |
+| `openrouter/free` | OpenRouter | ✅ 2.0s | ✅ STRONG | ✅ STRONG | ✅ STRONG | **4/4** |
 | `openai/gpt-oss-20b:free` | OpenRouter | ✅ 954ms | ✅ MODERATE | ✅ STRONG | ✅ STRONG | **4/4** |
 | `minimax/minimax-m2.5:free` | OpenRouter | ✅ 4.1s | ✅ STRONG | ✅ STRONG | ✅ STRONG | **4/4** |
 | `nvidia/nemotron-3-nano-30b-a3b:free` | OpenRouter | ✅ 449ms | ✅ MODERATE | ✅ STRONG | ✅ STRONG | **4/4** |
