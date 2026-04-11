@@ -145,43 +145,54 @@ export default function (pi: ExtensionAPI) {
     return false;
   }
 
+  // Cached native context lookup — populated asynchronously, read synchronously
+  let nativeCtxPromise: Promise<void> | null = null;
+
   /**
    * Fetch the native max context length for the active model from Ollama /api/show.
    * Looks for architecture-specific keys like "qwen3.context_length".
    * Returns a human-readable string like "32k" or "131072".
    * Cached per-model to avoid redundant calls.
+   *
+   * Uses fire-and-forget fetch — the result populates footerNativeCtx and is
+   * available on the next metrics render cycle (3s). No shell invocation needed.
    */
   function getNativeModelCtx(modelId: string): string {
     if (!modelId) return "";
     if (modelId === nativeCtxModel && footerNativeCtx) return footerNativeCtx;
     nativeCtxModel = modelId;
-    try {
-      const ollamaBase = getOllamaBaseUrl();
-      const out = execSync(
-        `curl -s -X POST "${ollamaBase}/api/show" -d '${JSON.stringify({ name: modelId })}'`,
-        { encoding: "utf-8", timeout: 5000 }
-      );
-      if (out.trim()) {
-        const data = JSON.parse(out.trim());
-        for (const key of Object.keys(data?.model_info ?? {})) {
-          if (key.endsWith(".context_length")) {
-            const val = data.model_info[key];
-            if (typeof val === "number") {
-              footerNativeCtx = val >= 1000 ? `${(val / 1000).toFixed(0)}k` : String(val);
-              return footerNativeCtx;
+    // Fire-and-forget fetch (results available on next cycle via cache)
+    if (!nativeCtxPromise) {
+      nativeCtxPromise = (async () => {
+        try {
+          const ollamaBase = getOllamaBaseUrl();
+          const res = await fetch(`${ollamaBase}/api/show`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: modelId }),
+            signal: AbortSignal.timeout(5000),
+          });
+          if (!res.ok) return;
+          const data = (await res.json()) as { model_info?: Record<string, unknown> };
+          for (const key of Object.keys(data?.model_info ?? {})) {
+            if (key.endsWith(".context_length")) {
+              const val = data.model_info[key];
+              if (typeof val === "number") {
+                footerNativeCtx = val >= 1000 ? `${(val / 1000).toFixed(0)}k` : String(val);
+                return;
+              }
             }
           }
-        }
-        // Fallback: generic "num_ctx" key
-        const numCtx = data?.model_info?.["num_ctx"];
-        if (typeof numCtx === "number") {
-          footerNativeCtx = numCtx >= 1000 ? `${(numCtx / 1000).toFixed(0)}k` : String(numCtx);
-          return footerNativeCtx;
-        }
-      }
-    } catch { /* ignore */ }
-    footerNativeCtx = "";
-    return "";
+          // Fallback: generic "num_ctx" key
+          const numCtx = data?.model_info?.["num_ctx"];
+          if (typeof numCtx === "number") {
+            footerNativeCtx = numCtx >= 1000 ? `${(numCtx / 1000).toFixed(0)}k` : String(numCtx);
+          }
+        } catch { /* ignore — network error, timeout, or parse failure */ }
+        finally { nativeCtxPromise = null; }
+      })();
+    }
+    return footerNativeCtx;
   }
 
   function getOllamaLoadedModel(): string {
@@ -285,6 +296,10 @@ export default function (pi: ExtensionAPI) {
       modelsJson = JSON.parse(raw);
     } catch { /* ignore */ }
 
+    // Detect local vs remote/cloud provider FIRST (uses pre-parsed modelsJson)
+    // Must run before getNativeModelCtx() which depends on isLocalProvider
+    isLocalProvider = modelsJson ? detectLocalProvider(modelsJson) : false;
+
     if (currentCtx) {
       footerModel = currentCtx.model?.id || "";
       footerThinking = pi.getThinkingLevel?.() ?? "";
@@ -295,15 +310,12 @@ export default function (pi: ExtensionAPI) {
       } else {
         footerCtxPct = "";
       }
-      // Fetch native model max context from Ollama /api/show
+      // Fetch native model max context from Ollama /api/show (local only)
       const modelId = currentCtx.model?.id || "";
       if (modelId && isLocalProvider) {
         getNativeModelCtx(modelId);
       }
     }
-
-    // Detect local vs remote/cloud provider (uses pre-parsed modelsJson)
-    isLocalProvider = modelsJson ? detectLocalProvider(modelsJson) : false;
 
     // Refresh security audit count on every metrics cycle
     refreshBlockedCount();
