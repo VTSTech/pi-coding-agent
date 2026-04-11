@@ -59,6 +59,7 @@ pi install "npm:@vtstech/pi-api"
 pi install "npm:@vtstech/pi-diag"
 pi install "npm:@vtstech/pi-model-test"
 pi install "npm:@vtstech/pi-ollama-sync"
+pi install "npm:@vtstech/pi-openrouter-sync"
 pi install "npm:@vtstech/pi-react-fallback"
 pi install "npm:@vtstech/pi-security"
 pi install "npm:@vtstech/pi-status"
@@ -368,6 +369,22 @@ Automatically loaded — no commands needed. When a model lacks native tool call
 - Per-model metadata in sync report (parameter size, quantization level, model family)
 - Registered as both `/ollama-sync` slash command and `ollama_sync` tool
 
+### 🔗 OpenRouter Sync (`openrouter-sync.ts`)
+
+**Add OpenRouter models to models.json from URLs or bare model IDs.**
+
+```bash
+/or-sync <url-or-id> [url-or-id ...]        # Alias
+/openrouter-sync <url-or-id> [url-or-id ...]
+```
+
+- Accepts full OpenRouter URLs (`https://openrouter.ai/model/name:free`) or bare IDs (`model/name:free`)
+- Multiple models in one command
+- Creates `openrouter` provider in models.json if missing (inherits baseUrl/api from built-in provider registry)
+- Appends models, never removes existing entries
+- Reorders providers so openrouter sits above ollama
+- Registered as both `/openrouter-sync` slash command (alias `/or-sync`) and `openrouter_sync` tool
+
 ### 📊 System Monitor (`status.ts`)
 
 **Replaces the Pi footer with a 2-line status bar showing system metrics, model info, and generation params.**
@@ -586,6 +603,7 @@ pi-coding-agent/
 │   ├── diag.ts              # System diagnostic suite
 │   ├── model-test.ts        # Model benchmark — Ollama & cloud providers
 │   ├── ollama-sync.ts       # Ollama ↔ models.json sync
+│   ├── openrouter-sync.ts   # OpenRouter → models.json sync
 │   ├── react-fallback.ts    # ReAct fallback for non-native tool models
 │   ├── security.ts          # Command/path/SSRF protection
 │   └── status.ts            # System resource monitor & status bar
@@ -602,6 +620,7 @@ pi-coding-agent/
 │   ├── diag/                # @vtstech/pi-diag
 │   ├── model-test/          # @vtstech/pi-model-test
 │   ├── ollama-sync/         # @vtstech/pi-ollama-sync
+│   ├── openrouter-sync/     # @vtstech/pi-openrouter-sync
 │   ├── react-fallback/      # @vtstech/pi-react-fallback
 │   ├── security/            # @vtstech/pi-security
 │   └── status/              # @vtstech/pi-status
