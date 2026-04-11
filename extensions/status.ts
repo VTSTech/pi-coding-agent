@@ -43,6 +43,8 @@ export default function (pi: ExtensionAPI) {
   let footerModel = "";
   let footerThinking = "";
   let footerCtxPct = "";
+  let footerNativeCtx = "";
+  let nativeCtxModel = "";
   let isLocalProvider = true;
 
   // ── Audit / recovery tracking ────────────────────────────────────────────
@@ -140,6 +142,45 @@ export default function (pi: ExtensionAPI) {
     } catch { /* ignore */ }
     // No provider URL found — assume cloud/remote
     return false;
+  }
+
+  /**
+   * Fetch the native max context length for the active model from Ollama /api/show.
+   * Looks for architecture-specific keys like "qwen3.context_length".
+   * Returns a human-readable string like "32k" or "131072".
+   * Cached per-model to avoid redundant calls.
+   */
+  function getNativeModelCtx(modelId: string): string {
+    if (!modelId) return "";
+    if (modelId === nativeCtxModel && footerNativeCtx) return footerNativeCtx;
+    nativeCtxModel = modelId;
+    try {
+      const ollamaBase = getOllamaBaseUrl();
+      const out = execSync(
+        `curl -s -X POST "${ollamaBase}/api/show" -d '${JSON.stringify({ name: modelId })}'`,
+        { encoding: "utf-8", timeout: 5000 }
+      );
+      if (out.trim()) {
+        const data = JSON.parse(out.trim());
+        for (const key of Object.keys(data?.model_info ?? {})) {
+          if (key.endsWith(".context_length")) {
+            const val = data.model_info[key];
+            if (typeof val === "number") {
+              footerNativeCtx = val >= 1000 ? `${(val / 1000).toFixed(0)}k` : String(val);
+              return footerNativeCtx;
+            }
+          }
+        }
+        // Fallback: generic "num_ctx" key
+        const numCtx = data?.model_info?.["num_ctx"];
+        if (typeof numCtx === "number") {
+          footerNativeCtx = numCtx >= 1000 ? `${(numCtx / 1000).toFixed(0)}k` : String(numCtx);
+          return footerNativeCtx;
+        }
+      }
+    } catch { /* ignore */ }
+    footerNativeCtx = "";
+    return "";
   }
 
   function getOllamaLoadedModel(): string {
@@ -253,16 +294,10 @@ export default function (pi: ExtensionAPI) {
       } else {
         footerCtxPct = "";
       }
-      // Show model's max context length from models.json if available
+      // Fetch native model max context from Ollama /api/show
       const modelId = currentCtx.model?.id || "";
-      if (modelId && !footerCtxPct && modelsJson) {
-        for (const prov of Object.values(modelsJson.providers || {}) as any[]) {
-          const match = (prov.models || []).find((m: any) => m.id === modelId);
-          if (match?.contextLength) {
-            footerCtxPct = `${(match.contextLength / 1000).toFixed(0)}k ctx`;
-            break;
-          }
-        }
+      if (modelId && isLocalProvider) {
+        getNativeModelCtx(modelId);
       }
     }
 
@@ -304,7 +339,8 @@ export default function (pi: ExtensionAPI) {
           if (footerModel) parts.push(dim(footerModel));
 
           if (footerThinking && footerThinking !== "off") parts.push(dim(footerThinking));
-          if (footerCtxPct) parts.push(footerCtxPct);
+          if (footerNativeCtx) parts.push(`M:${footerNativeCtx}`);
+          if (footerCtxPct) parts.push(`S:${footerCtxPct}`);
 
           // CPU/RAM/Swap only relevant for local providers
           if (isLocalProvider) {

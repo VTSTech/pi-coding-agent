@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `testModelOllama()` reads `models.json` to display the active API mode (e.g., `openai-completions`, `openai-responses`) alongside the provider info at the start of the test report.
   - Context length now queries Ollama's `/api/show` endpoint via `fetchModelContextLength()` to display the model's **native max context** (e.g., `32.0k tokens (native max)`) instead of the configured `num-ctx` value. This matches what `ollama-sync` reports and gives a true picture of the model's capabilities.
 
+- **Status bar now shows native model context and session context separately** (`extensions/status.ts`)
+  - Context display split into two fields: `M:32k` (native model max context from Ollama `/api/show`) and `S:2.2%/128k` (session context usage from framework).
+  - Native model context is cached per-model to avoid redundant API calls.
+  - Only shown for local/Ollama providers (cloud providers have no `/api/show` endpoint).
+
 ### Added
 
 - **`qwen2.5-coder:0.5b-instruct-q4_k_m` openai-responses benchmark** (`TESTS.md`)
