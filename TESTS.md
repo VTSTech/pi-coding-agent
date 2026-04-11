@@ -55,6 +55,7 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 | `granite4:350m` | ✅ STRONG | ✅ MODERATE | ✅ STRONG | NATIVE | **4/6** |
 | `gemma3:270m` | ❌ ERROR | ✅ MODERATE | ❌ FAIL | NONE | **1/6** |
 | `functiongemma:270m` | ✅ STRONG | ❌ FAIL | ❌ FAIL | NATIVE | **2/6** |
+| `qwen2:0.5b` | ❌ ERROR | ✅ STRONG | ✅ STRONG | NONE | **2/6** |
 | `qwen:0.5b` | ❌ ERROR | ✅ STRONG | ✅ MODERATE | NONE | **2/6** |
 | `smollm:135m` | ❌ ERROR | ❌ FAIL | ❌ FAIL | NONE | **0/6** |
 
