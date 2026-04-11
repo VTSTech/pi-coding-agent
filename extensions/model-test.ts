@@ -1588,13 +1588,44 @@ The JSON object must have exactly these 4 keys:
   /**
    * Run the full Ollama test suite (existing behavior).
    */
-  async function testModelOllama(model: string): Promise<string> {
+  async function testModelOllama(model: string, providerInfo?: ProviderInfo, ctx?: any): Promise<string> {
     const lines: string[] = [];
     const totalStart = Date.now();
 
     lines.push(branding);
     lines.push(section(`MODEL: ${model}`));
     lines.push(info("Provider: Ollama (local/remote)"));
+
+    // Show API mode and context window (from models.json if available)
+    const modelsJson = readModelsJson();
+    let apiMode = "ollama";
+    let contextWindow = ctx?.model?.contextWindow ?? null;
+    let maxTokens = ctx?.model?.maxTokens ?? null;
+    const providerName = ctx?.model?.provider || providerInfo?.name || "";
+    if (providerName && modelsJson) {
+      const providerCfg = (modelsJson.providers || {})[providerName];
+      if (providerCfg) {
+        apiMode = providerCfg.api || "ollama";
+      }
+      // Look up contextLength for this model in models.json
+      if (contextWindow === null) {
+        for (const p of Object.values(modelsJson.providers || {}) as any[]) {
+          const m = (p.models || []).find((entry: any) => entry.id === model);
+          if (m && m.contextLength) {
+            contextWindow = m.contextLength;
+            break;
+          }
+        }
+      }
+    }
+    lines.push(info(`API: ${apiMode}`));
+    if (contextWindow !== null) {
+      const ctxStr = contextWindow >= 1000 ? `${(contextWindow / 1000).toFixed(1)}k` : String(contextWindow);
+      lines.push(info(`Context: ${ctxStr} tokens`));
+    }
+    if (maxTokens !== null) {
+      lines.push(info(`Max tokens: ${maxTokens}`));
+    }
 
     // Get model info from Ollama /api/tags (structured JSON)
     let modelSize = "unknown";
@@ -1832,7 +1863,7 @@ The JSON object must have exactly these 4 keys:
    * Tests: connectivity, reasoning, instruction following, tool usage.
    * Skips: thinking, ReAct parsing, tool support detection, model metadata.
    */
-  async function testModelProvider(providerInfo: ProviderInfo, model: string): Promise<string> {
+  async function testModelProvider(providerInfo: ProviderInfo, model: string, ctx?: any): Promise<string> {
     const lines: string[] = [];
     const totalStart = Date.now();
 
@@ -1845,6 +1876,13 @@ The JSON object must have exactly these 4 keys:
       lines.push(info(`API Key: ****${providerInfo.apiKey.slice(-4)}`));
     } else {
       lines.push(warn(`API Key: NOT SET (${providerInfo.envKey || "env var not found"})`));
+    }
+
+    // Show context window if available from framework
+    const contextWindow = ctx?.model?.contextWindow ?? null;
+    if (contextWindow !== null) {
+      const ctxStr = contextWindow >= 1000 ? `${(contextWindow / 1000).toFixed(1)}k` : String(contextWindow);
+      lines.push(info(`Context: ${ctxStr} tokens`));
     }
 
     // 1. Connectivity test
@@ -1991,9 +2029,9 @@ The JSON object must have exactly these 4 keys:
     const providerInfo = ctx ? detectProvider(ctx) : { kind: "ollama" as const, name: "ollama" };
 
     if (providerInfo.kind === "ollama") {
-      return testModelOllama(model);
+      return testModelOllama(model, providerInfo, ctx);
     } else if (providerInfo.kind === "builtin") {
-      return testModelProvider(providerInfo, model);
+      return testModelProvider(providerInfo, model, ctx);
     } else {
       // Unknown provider — try Ollama as fallback
       return testModelOllama(model);
