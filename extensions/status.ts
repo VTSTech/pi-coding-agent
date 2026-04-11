@@ -2,7 +2,7 @@
  * System Monitor — Pi Coding Agent Extension
  * Replaces the default footer with a unified 2-line status bar:
  *   Line 1 (conf): model · pwd · thinking level · CPU% (if local Ollama)
- *   Line 2 (load): loaded model · M: · S: · RAM (if local Ollama) · Resp · params · security
+ *   Line 2 (load): loaded model · ↑↓ tokens · M: · S: · RAM (if local Ollama) · Resp · params · security
  *   Line 3: (active tool timing when agent is running)
  * Metrics update every 3 seconds. Restores default footer on session shutdown.
  * Includes audit/recovery status indicators from shared security layer.
@@ -47,6 +47,10 @@ export default function (pi: ExtensionAPI) {
   let footerNativeCtx = "";
   let nativeCtxModel = "";
   let isLocalProvider = true;
+
+  // ── Upstream / downstream token tracking (per LLM call) ──
+  let lastUpstream = 0;
+  let lastDownstream = 0;
 
   // ── Audit / recovery tracking ────────────────────────────────────────────
 
@@ -228,6 +232,12 @@ export default function (pi: ExtensionAPI) {
     return params;
   }
 
+  /** Format token count: 1234 → "1.2k", 456 → "456". */
+  function fmtTk(n: number): string {
+    if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+    return String(n);
+  }
+
   function getPwd(): string {
     const cwd = process.cwd();
     if (cwd.startsWith(os.homedir())) return "~" + cwd.slice(os.homedir().length);
@@ -386,6 +396,9 @@ export default function (pi: ExtensionAPI) {
               line2Parts.push(`Swap ${fmtBytes(swapUsed)}/${fmtBytes(swapTotal)}`);
             }
           }
+          if (lastUpstream > 0 || lastDownstream > 0) {
+            line2Parts.push(dim(`\u2191${fmtTk(lastUpstream)} \u2193${fmtTk(lastDownstream)}`));
+          }
           if (lastResponseTime !== null) line2Parts.push(`Resp ${fmtDur(lastResponseTime)}`);
           if (lastPayload) {
             const params = extractParams(lastPayload);
@@ -444,14 +457,31 @@ export default function (pi: ExtensionAPI) {
     activeTool = "";
     activeToolStart = 0;
     blockedCount = 0;
+    lastUpstream = 0;
+    lastDownstream = 0;
   });
 
   pi.on("before_provider_request", (event) => {
     lastPayload = event.payload as Record<string, any>;
   });
 
+  /**
+   * Capture per-LLM-call token usage from message_end event.
+   * Pi normalises all providers to { input, output, cacheRead, cacheWrite }.
+   */
+  pi.on("message_end", (event: any) => {
+    if (!event?.message) return;
+    const usage = event.message.usage;
+    if (!usage) return;
+    // Reset cumulative counters each prompt cycle
+    if (usage.input != null) lastUpstream = usage.input as number;
+    if (usage.output != null) lastDownstream = usage.output as number;
+  });
+
   pi.on("agent_start", async () => {
     agentStartTime = performance.now();
+    lastUpstream = 0;
+    lastDownstream = 0;
   });
 
   pi.on("agent_end", async () => {
