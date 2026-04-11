@@ -212,6 +212,8 @@ Features:
 - **Timeout resilience** — 180s default with `--connect-timeout`, auto-retry on empty responses and connection failures (handles flaky tunnels)
 - **Rate limit delay** — configurable delay (default 30s) between tests to avoid upstream rate limiting on free-tier providers
 - **Thinking model fallback** — if a model returns empty without `think:true`, automatically retries with thinking enabled (supports qwen3 and similar models)
+- **Displays API mode** — shows the active API mode (e.g., `openai-completions`, `openai-responses`) from `models.json`
+- **Native context length** — displays the model's true max context from Ollama `/api/show`, not the configured `num-ctx`
 - Retrieves model metadata (size, params, quantization, family) from `/api/tags`
 - **Auto-updates `models.json`** reasoning field based on thinking test results
 - **Tool support cache** — persistent cache at `~/.pi/agent/cache/tool_support.json` avoids re-probing on every run
@@ -368,26 +370,30 @@ Automatically loaded — no commands needed. When a model lacks native tool call
 
 ### 📊 System Monitor (`status.ts`)
 
-**Replaces the Pi footer with a unified status bar showing system metrics, model info, and generation params.**
+**Replaces the Pi footer with a 2-line status bar showing system metrics, model info, and generation params.**
 
 ```
-~/.pi/agent · main · qwen3:0.6b · medium · 5.6%/128k · CPU 9% · RAM 2.2G/15.1G · qwen3:0.6b · Resp 5m24s · temp:0.0 · max:16384
+qwen3.5:0.8b · ~/.pi/agent · medium · CPU 9%
+qwen3.5:0.8b · M:33k · S:9.0%/128k · RAM 2.2G/15.1G · Resp 5m24s · temp:0.0 · max:16384
 ```
 
-**Displays:**
-- **Working directory** — compact `~`-relative path
-- **Git branch** — current branch name via framework API with `git rev-parse` fallback (cached)
+CPU/RAM/Swap are only shown when using a local Ollama provider (not for cloud/remote). For cloud providers, system metrics are omitted.
+
+**Line 1 (conf):**
 - **Active model** — the model Pi is currently using from agent context
+- **Working directory** — compact `~`-relative path
 - **Thinking level** — shown when active (off is hidden)
-- **Context usage** — percentage and window size (`5.6%/128k`)
-- **CPU%** — per-core delta via `os.cpus()` (updates every 3s)
-- **RAM** — used/total via `os.totalmem()` / `os.freemem()`
-- **Swap** — used/total from `/proc/meminfo` (shown only when swap is active)
+- **CPU%** — per-core delta via `os.cpus()` (updates every 3s, local Ollama only)
+
+**Line 2 (load):**
 - **Loaded model** — Ollama model currently in memory via `/api/ps` (works with remote Ollama, cached 15s)
+- **Context info** — native model max context (`M:33k`) and session usage percentage/window (`S:9.0%/128k`)
+- **RAM** — used/total via `os.totalmem()` / `os.freemem()` (local Ollama only)
+- **Swap** — used/total from `/proc/meminfo` (shown only when swap is active)
 - **Response time** — agent loop duration via `agent_start`/`agent_end` events
 - **Generation params** — temperature, top_p, top_k, max tokens, num_predict, context size captured via `before_provider_request` interception
 - **Security indicator** — 3s flash on blocked tools + persistent blocked count from audit log
-- **Active tool timing** — live elapsed timer for the currently running tool
+- **Active tool timing** — live elapsed timer on line 3 for the currently running tool
 
 Restores the default footer on session shutdown. Automatically truncates to terminal width with ANSI-safe clipping.
 

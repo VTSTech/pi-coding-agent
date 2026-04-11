@@ -1,8 +1,9 @@
 /**
  * System Monitor — Pi Coding Agent Extension
  * Replaces the default footer with a unified 2-line status bar:
- *   Line 1: pwd · git branch · model · thinking level · context% · CPU/RAM/Swap · VRAM · response time · params · security
- *   Line 2: (active tool timing when agent is running)
+ *   Line 1 (conf): model · pwd · thinking level · CPU% (if local Ollama)
+ *   Line 2 (load): loaded model · M: · S: · RAM (if local Ollama) · Resp · params · security
+ *   Line 3: (active tool timing when agent is running)
  * Metrics update every 3 seconds. Restores default footer on session shutdown.
  * Includes audit/recovery status indicators from shared security layer.
  *
@@ -326,70 +327,56 @@ export default function (pi: ExtensionAPI) {
       return {
         render(width: number): string[] {
           const lines: string[] = [];
-          const parts: string[] = [];
-          parts.push(getPwd());
 
           // Git branch — try framework API first, fall back to git command
           let branch = "";
           try { branch = footerData?.getGitBranch?.() || ""; } catch { /* no api */ }
           if (!branch) branch = getGitBranch();
-          if (branch) parts.push(dim(branch));
 
-          // Active model from agent context
-          if (footerModel) parts.push(dim(footerModel));
-
-          if (footerThinking && footerThinking !== "off") parts.push(dim(footerThinking));
-          if (footerNativeCtx) parts.push(`M:${footerNativeCtx}`);
-          if (footerCtxPct) parts.push(`S:${footerCtxPct}`);
-
-          // CPU/RAM/Swap only relevant for local providers
+          // ── Line 1 (conf): model · pwd · thinking · CPU% (if local) ──
+          const line1Parts: string[] = [];
+          if (footerModel) line1Parts.push(footerModel);
+          line1Parts.push(getPwd());
+          if (footerThinking && footerThinking !== "off") line1Parts.push(dim(footerThinking));
           if (isLocalProvider) {
-            parts.push(dim(`CPU ${cpuUsage.toFixed(0)}%`));
-            parts.push(`RAM ${fmtBytes(memUsed)}/${fmtBytes(memTotal)}`);
+            line1Parts.push(dim(`CPU ${cpuUsage.toFixed(0)}%`));
+          }
+          let line1 = truncateLine(line1Parts.join(sep), width);
+          lines.push(line1);
+
+          // ── Line 2 (load): loaded model · M: · S: · RAM (if local) · Resp · params · security ──
+          const line2Parts: string[] = [];
+          if (ollamaLoaded) line2Parts.push(ollamaLoaded);
+          if (footerNativeCtx) line2Parts.push(`M:${footerNativeCtx}`);
+          if (footerCtxPct) line2Parts.push(`S:${footerCtxPct}`);
+          if (isLocalProvider) {
+            line2Parts.push(`RAM ${fmtBytes(memUsed)}/${fmtBytes(memTotal)}`);
             if (hasSwap && swapUsed > 0) {
-              parts.push(`Swap ${fmtBytes(swapUsed)}/${fmtBytes(swapTotal)}`);
+              line2Parts.push(`Swap ${fmtBytes(swapUsed)}/${fmtBytes(swapTotal)}`);
             }
           }
-          if (ollamaLoaded) parts.push(`${ollamaLoaded}`);
-          if (lastResponseTime !== null) parts.push(`Resp ${fmtDur(lastResponseTime)}`);
+          if (lastResponseTime !== null) line2Parts.push(`Resp ${fmtDur(lastResponseTime)}`);
           if (lastPayload) {
             const params = extractParams(lastPayload);
-            if (params.length > 0) parts.push(...params.map(p => dim(p)));
+            if (params.length > 0) line2Parts.push(...params.map(p => dim(p)));
           }
 
           // ── Security status indicator ──────────────────────────────
           // Flash indicator: briefly highlight a blocked tool name
           const now = Date.now();
           if (securityFlashTool && now < securityFlashUntil) {
-            parts.push(red(`BLOCKED:${securityFlashTool}`));
+            line2Parts.push(red(`BLOCKED:${securityFlashTool}`));
           }
 
           // Persistent SEC:N indicator from audit log
           if (blockedCount > 0) {
-            parts.push(red(`SEC:${blockedCount}`));
+            line2Parts.push(red(`SEC:${blockedCount}`));
           }
 
-          let line = parts.join(sep);
-          // Strip ANSI codes for visible-width measurement
-          const visible = line.replace(/\x1b\[[0-9;]*m/g, "");
-          if (visible.length > width) {
-            // Truncate by visible chars, then find the ANSI-safe cut point
-            let vis = 0, cut = 0;
-            for (let i = 0; i < line.length && vis < width - 3; i++) {
-              if (line[i] === "\x1b") {
-                // skip to end of escape sequence
-                while (i < line.length && line[i] !== "m") i++;
-              } else {
-                vis++;
-              }
-              cut = i + 1;
-            }
-            line = line.slice(0, cut) + dim("...");
-          }
+          let line2 = truncateLine(line2Parts.join(sep), width);
+          if (line2) lines.push(line2);
 
-          lines.push(line);
-
-          // ── Line 2: active tool timing ─────────────────────────────
+          // ── Line 3: active tool timing ─────────────────────────────
           if (activeTool && activeToolStart > 0) {
             const elapsed = performance.now() - activeToolStart;
             lines.push(`${yellow("\u23f3")} ${activeTool}: ${fmtDur(elapsed)}`);
@@ -403,6 +390,24 @@ export default function (pi: ExtensionAPI) {
         dispose(): void {},
       };
     });
+
+    // ── Truncation helper ──────────────────────────────────────────
+    function truncateLine(line: string, width: number, ellipsis = dim("...")): string {
+      const visible = line.replace(/\x1b\[[0-9;]*m/g, "");
+      if (visible.length > width) {
+        let vis = 0, cut = 0;
+        for (let i = 0; i < line.length && vis < width - 3; i++) {
+          if (line[i] === "\x1b") {
+            while (i < line.length && line[i] !== "m") i++;
+          } else {
+            vis++;
+          }
+          cut = i + 1;
+        }
+        return line.slice(0, cut) + ellipsis;
+      }
+      return line;
+    }
 
     if (updateInterval) clearInterval(updateInterval);
     updateInterval = setInterval(() => {
