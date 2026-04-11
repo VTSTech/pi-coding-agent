@@ -2,7 +2,7 @@
 
 Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via remote Ollama over Cloudflare Tunnel.
 
-## Ollama Models
+## Ollama Models — openai-completions
 
 | Model | Tools | ReAct | Instructions | Tool Support | Score |
 |-------|-------|-------|--------------|--------------|-------|
@@ -32,7 +32,7 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 
 ---
 
-## Cloud Providers
+## Cloud Providers — openai-completions (default API mode)
 
 | Model | Provider | Connectivity | Reasoning | Instructions | Tool Usage | Score |
 |-------|----------|-------------|-----------|--------------|------------|-------|
@@ -43,6 +43,17 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 | `z-ai/glm-4.5-air:free` | OpenRouter | ✅ 1.1s | ❌ ERROR | ✅ STRONG | ✅ STRONG | **3/4** |
 
 > Cloud provider tests use the 4-test suite (connectivity, reasoning, instructions, tool usage). Ollama-specific tests are skipped.
+
+---
+
+## Ollama Models — openai-responses
+
+| Model | Provider | Connectivity | Reasoning | Instructions | Tool Usage | Score |
+|-------|----------|-------------|-----------|--------------|------------|-------|
+| `qwen:0.5b` | Ollama | ✅ 23.9s | ✅ STRONG | ✅ MODERATE | ❌ ERROR | **3/4** |
+| `qwen2:0.5b` | Ollama | ✅ 26.7s | ❌ WEAK | ✅ STRONG | ❌ ERROR | **2/4** |
+
+> Tests run with API mode set to `openai-responses`. Results may differ from `openai-completions` due to different request/response formats and tool calling behavior.
 
 ### Sample Report — `minimax/minimax-m2.5:free` via OpenRouter
 
