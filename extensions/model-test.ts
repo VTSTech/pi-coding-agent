@@ -8,7 +8,7 @@ import {
   section, ok, fail, warn, info,
   msHuman, truncate, sanitizeForReport,
 } from "../shared/format";
-import { getOllamaBaseUrl, MODELS_JSON_PATH, detectModelFamily, readModelsJson, BUILTIN_PROVIDERS } from "../shared/ollama";
+import { getOllamaBaseUrl, MODELS_JSON_PATH, detectModelFamily, readModelsJson, BUILTIN_PROVIDERS, fetchModelContextLength } from "../shared/ollama";
 import type { ToolSupportLevel } from "../shared/types";
 
 // ── Provider Detection ──────────────────────────────────────────────────
@@ -1596,35 +1596,23 @@ The JSON object must have exactly these 4 keys:
     lines.push(section(`MODEL: ${model}`));
     lines.push(info("Provider: Ollama (local/remote)"));
 
-    // Show API mode and context window (from models.json if available)
+    // Show API mode and native context length
     const modelsJson = readModelsJson();
     let apiMode = "ollama";
-    let contextWindow = ctx?.model?.contextWindow ?? null;
-    let maxTokens = ctx?.model?.maxTokens ?? null;
     const providerName = ctx?.model?.provider || providerInfo?.name || "";
     if (providerName && modelsJson) {
       const providerCfg = (modelsJson.providers || {})[providerName];
       if (providerCfg) {
         apiMode = providerCfg.api || "ollama";
       }
-      // Look up contextLength for this model in models.json
-      if (contextWindow === null) {
-        for (const p of Object.values(modelsJson.providers || {}) as any[]) {
-          const m = (p.models || []).find((entry: any) => entry.id === model);
-          if (m && m.contextLength) {
-            contextWindow = m.contextLength;
-            break;
-          }
-        }
-      }
     }
     lines.push(info(`API: ${apiMode}`));
-    if (contextWindow !== null) {
-      const ctxStr = contextWindow >= 1000 ? `${(contextWindow / 1000).toFixed(1)}k` : String(contextWindow);
-      lines.push(info(`Context: ${ctxStr} tokens`));
-    }
-    if (maxTokens !== null) {
-      lines.push(info(`Max tokens: ${maxTokens}`));
+
+    // Fetch native max context from Ollama /api/show (same as ollama-sync)
+    const nativeContext = await fetchModelContextLength(OLLAMA_BASE, model);
+    if (nativeContext !== undefined) {
+      const ctxStr = nativeContext >= 1000 ? `${(nativeContext / 1000).toFixed(1)}k` : String(nativeContext);
+      lines.push(info(`Context: ${ctxStr} tokens (native max)`));
     }
 
     // Get model info from Ollama /api/tags (structured JSON)
