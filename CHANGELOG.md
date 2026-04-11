@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.9] - 04-11-2026 7:11:30PM
+
+### Added
+
+- **Multi-dialect ReAct parser** (`extensions/react-fallback.ts`)
+  - `ReactDialect` interface and `REACT_DIALECTS` registry supporting 4 dialects: classic ReAct (`Action:`), Function (`Function:`), Tool (`Tool:`), and Call (`Call:`).
+  - `buildDialectPatterns()` dynamically constructs regex patterns (primary, same-line, loose, parenthetical, thought, final answer) for each dialect from its tag definitions.
+  - `ALL_DIALECT_PATTERNS` pre-built at module load for zero-overhead runtime dispatch.
+  - `parseReactWithPatterns()` — core per-dialect parser with optional `tightLoose` mode that rejects natural-language false positives (used by model-test for validated scoring).
+  - `detectReactDialect()` — exported utility that identifies which dialect tag is present in text without attempting a full parse.
+  - `ParsedToolCall` interface extended with `dialect?: string` field to report which dialect matched.
+  - Shared parser exposed via `pi._reactParser` with new exports: `parseReactWithPatterns`, `detectReactDialect`, `REACT_DIALECTS`, `ALL_DIALECT_PATTERNS`.
+  - `/react-test` debug output now displays detected dialect name (e.g., `dialect: function`) and shows available dialect info when a non-classic dialect is detected.
+
+- **Multi-dialect ReAct detection in model tests** (`extensions/model-test.ts`)
+  - `testReactParsing()` refactored to use the shared multi-dialect parser from react-fallback via `pi._reactParser`, with a local inline fallback if the shared parser is unavailable.
+  - `testReActOutput()` (tool support probing) now checks all 4 dialect patterns — classic ReAct, Function, Tool, and Call — instead of only classic `Action:` tags. Matched patterns are collected and the dialect name is included in the evidence string.
+  - Benchmark report output displays dialect tag for non-classic dialects (e.g., `[function dialect]`) alongside score and tool call info.
+  - Alternative tag detection expanded: FAIL cases now check for `<function_call`, `<invoke`, and other XML-style tool-call tags that indicate a model attempted structured output in a format the parser doesn't support.
+  - `dialect` field added to `testReactParsing()` return type for downstream reporting.
+
+- **nemotron-3-nano:4b benchmark result** (`TESTS.md`)
+  - New top-scoring result: 6/6 pass (STRONG tools, STRONG ReAct, STRONG instructions, NATIVE tool support) on AMD Ryzen 5 2400G via Ollama.
+
+### Fixed
+
+- **Template literal escape sequences in dialect pattern builder** (`extensions/react-fallback.ts`)
+  - `buildDialectPatterns()` used single-escaped metacharacters (`\s`, `\n`, `\(`, `\)`) inside template literals passed to `RegExp()`. JavaScript template literals silently drop unrecognized escape sequences — `\s` becomes the literal string `"s"`, `\n` becomes a newline — causing all dynamically-built patterns to match incorrectly.
+  - Doubled all regex metacharacter escapes to `\\s`, `\\n`, `\\(`, `\\)`, `\\w`, `\\S`, etc. so the escaped characters survive template literal processing and produce valid regex patterns.
+
+- **Lookahead closure in model-test inline fallback** (`extensions/model-test.ts`)
+  - Local inline multi-dialect regex patterns (used when the shared parser is unavailable) had `$` inside the `(?:…)` non-capturing group instead of outside it, causing the lookahead to never match end-of-string.
+  - Moved `$` outside the `(?:…)` group and added `${dd.action}` to the stop-tag alternatives so multi-line action blocks terminate correctly for non-classic dialects.
+
+---
+
 ## [1.0.8] - 04-11-2026 11:12:22 AM
 
 ### Fixed
