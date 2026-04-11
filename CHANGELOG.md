@@ -20,12 +20,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Native model context is cached per-model to avoid redundant API calls.
   - Only shown for local/Ollama providers (cloud providers have no `/api/show` endpoint).
 
-### Added
-
-- **`qwen2.5-coder:0.5b-instruct-q4_k_m` openai-responses benchmark** (`TESTS.md`)
-  - Added test result to the Ollama openai-responses table: 4/6 pass (MODERATE tools, STRONG ReAct, STRONG instructions, REACT tool support).
-  - Restructured the openai-responses table to match the 6-test Ollama format (Tools, ReAct, Instructions, Tool Support, Score /6) instead of the 4-test cloud provider format.
-
 ---
 
 ## [1.0.7] - 04-10-2026 4:00:00 PM
