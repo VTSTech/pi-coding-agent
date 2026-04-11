@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.8] - 04-10-2026 11:30:00 PM
+
+### Changed
+
+- **Model test output now shows API mode and context window** (`extensions/model-test.ts`)
+  - `testModelOllama()` reads `models.json` to display the active API mode (e.g., `openai-completions`, `openai-responses`) alongside the provider info at the start of the test report.
+  - Context window (from `ctx.model.contextWindow` or `models.json` `contextLength`) is displayed for both Ollama and cloud provider tests, giving a quick reference to the model's token limit.
+  - `testModelProvider()` also receives the `ctx` parameter and shows context window info for cloud provider tests.
+
+### Added
+
+- **`qwen2.5:0.5b` openai-responses benchmark** (`TESTS.md`)
+  - Added test result to the Ollama openai-responses table: 3/4 pass (WEAK reasoning, STRONG instructions, STRONG tool usage, 36.4s).
+
+---
+
 ## [1.0.7] - 04-10-2026 4:00:00 PM
 
 ### Fixed
