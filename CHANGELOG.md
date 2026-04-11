@@ -41,6 +41,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Local inline multi-dialect regex patterns (used when the shared parser is unavailable) had `$` inside the `(?:…)` non-capturing group instead of outside it, causing the lookahead to never match end-of-string.
   - Moved `$` outside the `(?:…)` group and added `${dd.action}` to the stop-tag alternatives so multi-line action blocks terminate correctly for non-classic dialects.
 
+- **Missing final newlines** (`extensions/react-fallback.ts`, `extensions/model-test.ts`)
+  - Both files lacked a trailing newline (POSIX violation), causing `\ No newline at end of file` markers in every git diff and potential issues with tools that append to files.
+
+- **Untyped JSON.parse of Ollama `/api/ps` response** (`extensions/status.ts`)
+  - `getOllamaLoadedModel()` called `JSON.parse()` on raw curl output without a try/catch. Malformed or empty responses (e.g., Ollama mid-restart) would throw and crash the entire 3-second metrics cycle, freezing the status bar.
+  - Wrapped in a dedicated try/catch so parse failures fall through to the empty-cache path gracefully.
+
+### Changed
+
+- **Diagnostics uses shared `readModelsJson()`** (`extensions/diag.ts`)
+  - Replaced manual `fs.existsSync` + `JSON.parse(fs.readFileSync(...))` with `readModelsJson()` from `shared/ollama`, matching the pattern used by every other extension.
+  - Removed redundant `agentDir` and `modelsJsonPath` variables (already encapsulated in the shared utility).
+
+- **`security_audit` tool parameter shape** (`extensions/security.ts`)
+  - Replaced `parameters: {} as any` with a proper `{ type: "object", properties: {} }` JSON Schema shape, consistent with all other tool registrations in the project.
+
 ---
 
 ## [1.0.8] - 04-11-2026 11:12:22 AM

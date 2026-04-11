@@ -8,7 +8,7 @@ import {
   section, ok, fail, warn, info,
   bytesHuman, msHuman, pct, padRight,
 } from "../shared/format";
-import { MODELS_JSON_PATH, getOllamaBaseUrl, BUILTIN_PROVIDERS } from "../shared/ollama";
+import { MODELS_JSON_PATH, getOllamaBaseUrl, BUILTIN_PROVIDERS, readModelsJson } from "../shared/ollama";
 import {
   BLOCKED_COMMANDS, BLOCKED_URL_PATTERNS,
   validatePath, isSafeUrl, sanitizeCommand, readRecentAuditEntries,
@@ -187,14 +187,11 @@ export default function (pi: ExtensionAPI) {
 
     // ── MODELS.JSON ──
     lines.push(section("MODELS.JSON"));
-    const agentDir = path.join(os.homedir(), ".pi", "agent");
-    const modelsJsonPath = MODELS_JSON_PATH;
     let configuredModels: string[] = [];
-    let modelsJson: any = null;
+    const modelsJson = readModelsJson();
 
-    if (fs.existsSync(modelsJsonPath)) {
+    if (modelsJson && Object.keys(modelsJson.providers || {}).length > 0) {
       try {
-        modelsJson = JSON.parse(fs.readFileSync(modelsJsonPath, "utf-8"));
         const providers = modelsJson.providers || {};
         lines.push(info(`Providers configured: ${Object.keys(providers).length}`));
         for (const [providerName, providerConfig] of Object.entries(providers)) {

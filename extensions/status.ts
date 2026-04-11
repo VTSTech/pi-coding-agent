@@ -207,7 +207,8 @@ export default function (pi: ExtensionAPI) {
       const ollamaBase = getOllamaBaseUrl();
       const out = execSync(`curl -s "${ollamaBase}/api/ps"`, { encoding: "utf-8", timeout: 5000 });
       if (out.trim()) {
-        const data = JSON.parse(out.trim());
+        let data: any;
+        try { data = JSON.parse(out.trim()); } catch { /* malformed response */ }
         const models = data?.models || [];
         if (Array.isArray(models) && models.length > 0) {
           ollamaLoadedCache = models[0].name || models[0].model || "unknown";

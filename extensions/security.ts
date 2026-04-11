@@ -269,7 +269,10 @@ export default function (pi: ExtensionAPI) {
     promptGuidelines: [
       "When the user asks about security, blocked operations, or audit log, call security_audit.",
     ],
-    parameters: {} as any,
+    parameters: {
+      type: "object",
+      properties: {},
+    },
     execute: async (_toolCallId, _params, _signal, _onUpdate, _ctx) => {
       try {
         const report = await generateAuditReport();
