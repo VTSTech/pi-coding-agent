@@ -187,6 +187,7 @@ export default function (pi: ExtensionAPI) {
 
     // ── MODELS.JSON ──
     lines.push(section("MODELS.JSON"));
+    const agentDir = path.join(os.homedir(), ".pi", "agent");
     let configuredModels: string[] = [];
     const modelsJson = readModelsJson();
 
