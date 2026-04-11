@@ -975,8 +975,11 @@ export default function (pi: ExtensionAPI) {
     thought: string;
     response: string;
     elapsedMs: number;
+    dialect?: string;  // which ReAct dialect the model used
   }> {
     // ReAct prompt — NO tools in the request, force model to use text format
+    // The prompt uses the classic "Action:" / "Action Input:" format but models
+    // may respond with any dialect (Function:, Tool:, Call:, etc.)
     const systemPrompt = [
       "You are a helpful assistant with access to tools.",
       "When you need to use a tool, you MUST output in this EXACT format:",
@@ -1022,100 +1025,100 @@ export default function (pi: ExtensionAPI) {
         return { pass: false, score: "FAIL", toolCall: "empty response", thought: "", response: "", elapsedMs };
       }
 
-      // ── Parse ReAct format using same patterns as react-fallback.ts ──
-      const THOUGHT_RE = /Thought:\s*(.*?)(?=Action:|Final Answer:|$)/is;
-      const ACTION_RE = /Action:\s*[`"']?(\w+)[`"']?\s*\n?\s*Action Input:\s*(.*?)(?=\n\s*(?:Observation:|Thought:|Final Answer:|Action:)|$)/is;
-      const ACTION_RE_SAMELINE = /Action:\s*[`"']?(\w+)[`"']?\s+Action Input:\s*(.*?)(?=\n\s*(?:Observation:|Thought:|Final Answer:)|$)/is;
-      const ACTION_RE_LOOSE = /Action:\s*(.+?)\n\s*Action Input:\s*(.*?)(?=\n\s*(?:Observation:|Thought:|Final Answer:|Action:)|$)/is;
-      // Parenthetical style: Action: get_weather(location: "Tokyo") — single line, no Action Input
-      const ACTION_RE_PAREN = /Action:\s*(\w+)\s*\(([^)]*)\)/i;
-
-      let thought = "";
-      const thoughtMatch = THOUGHT_RE.exec(content);
-      if (thoughtMatch) thought = thoughtMatch[1].trim();
-
-      let match = ACTION_RE.exec(content);
-      if (!match) match = ACTION_RE_SAMELINE.exec(content);
-
-      // Tight fallback: only match if the action text starts with a known tool name
-      // (not arbitrary natural language like "Open the get_weather tool.")
-      let looseMatch = false;
-      if (!match) {
-        const looseResult = ACTION_RE_LOOSE.exec(content);
-        if (looseResult) {
-          const candidate = looseResult[1].trim().replace(/[`"']/g, "");
-          // Only accept if the captured text IS a tool-like identifier (snake_case/camelCase)
-          // Reject natural language sentences
-          const isToolIdentifier = /^\w+$/.test(candidate) && (candidate.includes("_") || candidate.includes("-"));
-          const isKnownTool = /^(get_weather|calculate)$/i.test(candidate);
-          if (isToolIdentifier || isKnownTool) {
-            match = looseResult;
-            looseMatch = true;
+      // ── Multi-dialect ReAct parsing ──
+      // Try all registered ReAct dialects (Action:, Function:, Tool:, Call:, etc.)
+      // Uses the shared parser from react-fallback.ts via pi._reactParser if available,
+      // otherwise falls back to a local inline multi-dialect implementation.
+      let parsedResult: { name: string; args: string; thought: string; dialect?: string } | null = null;
+      // Try using the shared parser from react-fallback extension
+      const sharedParser = (pi as any)._reactParser;
+      if (sharedParser?.ALL_DIALECT_PATTERNS) {
+        for (const dp of sharedParser.ALL_DIALECT_PATTERNS) {
+          // Use parseReactWithPatterns in tight mode (reject natural language)
+          const result = sharedParser.parseReactWithPatterns(content, dp, true);
+          if (result) {
+            let toolName = result.name;
+            // Extract args as string
+            let argsStr: string;
+            const rawArgs = result.args ? JSON.stringify(result.args) : "";
+            if (rawArgs && rawArgs !== "{}") {
+              argsStr = rawArgs;
+            } else if (result.raw) {
+              // Try to extract JSON from raw match
+              const jsonStart = result.raw.indexOf("{");
+              if (jsonStart !== -1) {
+                let depth = 0, jsonEnd = -1;
+                for (let i = jsonStart; i < result.raw.length; i++) {
+                  if (result.raw[i] === "{") depth++;
+                  else if (result.raw[i] === "}") { depth--; if (depth === 0) { jsonEnd = i; break; } }
+                }
+                argsStr = jsonEnd !== -1 ? result.raw.slice(jsonStart, jsonEnd + 1) : "";
+              } else {
+                argsStr = "";
+              }
+            } else {
+              argsStr = "";
+            }
+            parsedResult = { name: toolName, args: argsStr, thought: result.thought || "", dialect: result.dialect };
+            break;
+          }
+        }
+      } else {
+        // Fallback: local inline multi-dialect patterns (same as react-fallback.ts)
+        const dialectDefs = [
+          { name: "react", action: "Action:", input: "Action Input:" },
+          { name: "function", action: "Function:", input: "Function Input:" },
+          { name: "tool", action: "Tool:", input: "Tool Input:" },
+          { name: "call", action: "Call:", input: "Input:" },
+        ];
+        for (const dd of dialectDefs) {
+          const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const aT = esc(dd.action);
+          const iT = esc(dd.input);
+          // Try primary (separate lines) then same-line then parenthetical
+          const primaryRe = new RegExp(`${aT}\\s*[\\x60"']?(\\w+)[\\x60"']?\\s*\\n?\\s*${iT}\\s*([\\s\\S]*?)(?=\\n\\s*(?:Observation:|Thought:|Final Answer:|$)`, "is");
+          const sameRe = new RegExp(`${aT}\\s*[\\x60"']?(\\w+)[\\x60"']?\\s+${iT}\\s*([\\s\\S]*?)(?=\\n\\s*(?:Observation:|Thought:|Final Answer:|$)`, "is");
+          const parenRe = new RegExp(`${aT}\\s*(\\w+)\\s*\\(([^)]*)\\)`, "i");
+          let m = primaryRe.exec(content) || sameRe.exec(content);
+          let isParen = false;
+          if (!m) { m = parenRe.exec(content); isParen = true; }
+          if (m) {
+            const toolName = m[1].trim().replace(/[`"']/g, "");
+            const rawArgs = m[2].trim().replace(/^```\w*\s*/gm, "").replace(/```\s*$/gm, "").trim();
+            let argsStr = "";
+            if (isParen && rawArgs && !rawArgs.startsWith("{")) {
+              const pairs = rawArgs.match(/(\w+)\s*:\s*("[^"]*"|'[^']*'|\S+)/g);
+              if (pairs) {
+                const obj: Record<string, string> = {};
+                for (const p of pairs) {
+                  const ci = p.indexOf(":");
+                  let v = p.slice(ci + 1).trim();
+                  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+                  obj[p.slice(0, ci).trim()] = v;
+                }
+                argsStr = JSON.stringify(obj);
+              } else { argsStr = rawArgs; }
+            } else {
+              const js = rawArgs.indexOf("{");
+              if (js !== -1) {
+                let d = 0, je = -1;
+                for (let i = js; i < rawArgs.length; i++) { if (rawArgs[i]==="{") d++; else if (rawArgs[i]==="}") { d--; if (d===0) { je=i; break; } } }
+                argsStr = je !== -1 ? rawArgs.slice(js, je+1) : rawArgs;
+              } else { argsStr = rawArgs; }
+            }
+            // Extract thought from any dialect
+            let thought = "";
+            const thoughtRe = /Thought:\s*(.*?)(?=Action:|Function:|Tool:|Call:|Final Answer:|$)/is;
+            const tm = thoughtRe.exec(content);
+            if (tm) thought = tm[1].trim();
+            parsedResult = { name: toolName, args: argsStr, thought, dialect: dd.name };
+            break;
           }
         }
       }
-      let parenMatch = false;
-      if (!match) match = ACTION_RE_PAREN.exec(content), parenMatch = true;
-
-      if (match) {
-        let toolName = match[1].trim().replace(/[`"']/g, "");
-
-        // If matched by loose regex, extract tool name from the action text
-        if (looseMatch) {
-          const actionText = toolName.toLowerCase();
-          if (actionText.includes("get_weather")) toolName = "get_weather";
-          else {
-            const toolWords = actionText.match(/\b[a-z][a-z0-9]*(?:[_-][a-z0-9]+)+\b/gi) || [];
-            if (toolWords.length > 0) toolName = toolWords[0];
-          }
-        }
-
-        const rawArgs = parenMatch
-          ? match[2].trim().replace(/^```\w*\s*/gm, "").replace(/```\s*$/gm, "").trim()
-          : match[2].trim().replace(/^```\w*\s*/gm, "").replace(/```\s*$/gm, "").trim();
-
-        // Parenthetical args (e.g., 'location: "Tokyo"') — convert to JSON
-        let argsParsed = false;
-        let argsStr = rawArgs;
-        if (parenMatch && rawArgs && !rawArgs.startsWith("{")) {
-          // Convert key: value pairs to JSON object
-          const pairs = rawArgs.match(/(\w+)\s*:\s*("[^"]*"|'[^']*'|\S+)/g);
-          if (pairs) {
-            const obj: Record<string, string> = {};
-            for (const p of pairs) {
-              const colonIdx = p.indexOf(":");
-              const key = p.slice(0, colonIdx).trim();
-              let val: string = p.slice(colonIdx + 1).trim();
-              if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-                val = val.slice(1, -1);
-              }
-              obj[key] = val;
-            }
-            try { argsStr = JSON.stringify(obj); argsParsed = true; } catch { /* ignore */ }
-          }
-        }
-
-        // Try to extract JSON args from Action Input block
-        if (!argsParsed) {
-        const jsonStart = rawArgs.indexOf("{");
-        if (jsonStart !== -1) {
-          let depth = 0;
-          let jsonEnd = -1;
-          for (let i = jsonStart; i < rawArgs.length; i++) {
-            if (rawArgs[i] === "{") depth++;
-            else if (rawArgs[i] === "}") { depth--; if (depth === 0) { jsonEnd = i; break; } }
-          }
-          if (jsonEnd !== -1) {
-            const jsonStr = rawArgs.slice(jsonStart, jsonEnd + 1);
-            try {
-              JSON.parse(jsonStr);
-              argsParsed = true;
-              argsStr = jsonStr;
-            } catch { /* args not valid JSON */ }
-          }
-        }
-        }
-
+      if (parsedResult) {
+        let { name: toolName, args: argsStr, thought, dialect } = parsedResult;
+        const argsParsed = argsStr.length > 0;
         // Score: correct tool name + valid args = STRONG, correct tool = MODERATE, wrong tool = WEAK (fail)
         let score: string;
         const isWeatherTool = toolName.toLowerCase().includes("get_weather") || toolName.toLowerCase() === "get_weather";
@@ -1126,10 +1129,8 @@ export default function (pi: ExtensionAPI) {
         } else {
           score = "WEAK";
         }
-
         // WEAK = wrong tool entirely → not a meaningful pass
         const pass = score !== "WEAK";
-
         return {
           pass,
           score,
@@ -1137,23 +1138,33 @@ export default function (pi: ExtensionAPI) {
           thought,
           response: content,
           elapsedMs,
+          dialect: dialect || "react",
         };
       }
-
-      // No ReAct patterns found
-      // Check if model still tried to call a tool in some other way
+      // No ReAct patterns found — check if model tried some other format
+      // Check for alternative tag-based dialects that might have been missed
+      const altTagPatterns = [
+        /^\s*Function:\s*/im,
+        /^\s*Tool:\s*/im,
+        /^\s*Call:\s*/im,
+        /<function_call/i,
+        /<invoke\s/i,
+      ];
+      const hasAltTag = altTagPatterns.some(p => p.test(content));
       const hasToolMention = /\bget_weather\b/i.test(content) || /\btool\b/i.test(content);
-      if (hasToolMention) {
+      if (hasAltTag || hasToolMention) {
+        const detail = hasAltTag
+          ? "model used alternative tool-call tags but format was not parseable"
+          : "model mentioned tool but not in ReAct format";
         return {
           pass: false,
           score: "FAIL",
-          toolCall: "none — model mentioned tool but not in ReAct format",
+          toolCall: `none — ${detail}`,
           thought: "",
           response: content,
           elapsedMs,
         };
       }
-
       return {
         pass: false,
         score: "FAIL",
@@ -1441,26 +1452,47 @@ The JSON object must have exactly these 4 keys:
         };
       }
 
-      // ── Check ReAct format ──────────────────────────────────────
-      // ReAct patterns: "Action:", "Action Input:", "Thought:"
-      // Case-insensitive, may have extra whitespace or formatting
+      // ── Check ReAct format (multi-dialect) ──────────────────────
+      // Detect any known ReAct dialect: Action:, Function:, Tool:, Call:, etc.
       const reactPatterns = [
-        /^\s*Action:\s*/im,           // "Action: get_weather"
-        /^\s*Action Input:\s*/im,     // "Action Input: {"location": "Tokyo"}"
-        /^\s*Thought:\s*/im,          // "Thought: I need to look up the weather"
-        /Action:\s*\w+/i,            // "Action: get_weather" anywhere
-        /Action Input:\s*\{/i,       // "Action Input: {..." anywhere
+        // Classic ReAct
+        /^\s*Action:\s*/im,
+        /^\s*Action Input:\s*/im,
+        /^\s*Thought:\s*/im,
+        /Action:\s*\w+/i,
+        /Action Input:\s*\{/i,
+        // Function dialect
+        /^\s*Function:\s*/im,
+        /^\s*Function Input:\s*/im,
+        /Function:\s*\w+/i,
+        // Tool dialect
+        /^\s*Tool:\s*/im,
+        /^\s*Tool Input:\s*/im,
+        /Tool:\s*\w+/i,
+        // Call dialect
+        /^\s*Call:\s*/im,
+        /^\s*Input:\s*/im,
+        /Call:\s*\w+/i,
       ];
 
-      const hasReActPattern = reactPatterns.some(p => p.test(content));
+      const matchedPatterns: string[] = [];
+      for (const p of reactPatterns) {
+        if (p.test(content)) matchedPatterns.push(p.source);
+      }
 
-      if (hasReActPattern) {
+      if (matchedPatterns.length > 0) {
+        // Determine which dialect was matched for evidence
+        let dialectName = "react";
+        if (/Function:/i.test(content)) dialectName = "function";
+        else if (/Tool:/i.test(content)) dialectName = "tool";
+        else if (/Call:/i.test(content)) dialectName = "call";
+
         const level: ToolSupportLevel = "react";
         cacheToolSupport(model, level, family);
         return {
           level,
           cached: false,
-          evidence: `ReAct format detected in text response`,
+          evidence: `ReAct format detected (${dialectName} dialect) in text response`,
           elapsedMs,
         };
       }
@@ -1735,23 +1767,25 @@ The JSON object must have exactly these 4 keys:
 
     const react = await testReactParsing(model);
     lines.push(info(`Time: ${msHuman(react.elapsedMs)}`));
+    // Show detected dialect if non-classic
+    const dialectTag = react.dialect && react.dialect !== "react" ? ` [${react.dialect} dialect]` : "";
     if (react.score === "STRONG") {
-      lines.push(ok(`ReAct parsed: ${react.toolCall} (${react.score})`));
+      lines.push(ok(`ReAct parsed: ${react.toolCall} (${react.score})${dialectTag}`));
       if (react.thought) {
         lines.push(info(`Thought: ${sanitizeForReport(react.thought)}`));
       }
     } else if (react.score === "MODERATE") {
-      lines.push(ok(`ReAct parsed: ${react.toolCall} (${react.score})`));
+      lines.push(ok(`ReAct parsed: ${react.toolCall} (${react.score})${dialectTag}`));
       if (react.thought) {
         lines.push(info(`Thought: ${sanitizeForReport(react.thought)}`));
       }
     } else if (react.score === "WEAK") {
-      lines.push(warn(`ReAct parsed: ${react.toolCall} (${react.score}) — wrong tool or malformed args`));
+      lines.push(warn(`ReAct parsed: ${react.toolCall} (${react.score}) — wrong tool or malformed args${dialectTag}`));
       if (react.thought) {
         lines.push(info(`Thought: ${sanitizeForReport(react.thought)}`));
       }
     } else if (react.score === "FAIL") {
-      lines.push(fail(`ReAct parsing: ${react.toolCall} (${react.score})`));
+      lines.push(fail(`ReAct parsing: ${react.toolCall} (${react.score})${dialectTag}`));
       if (react.response) {
         lines.push(info(`Response: ${sanitizeForReport(react.response)}`));
       }

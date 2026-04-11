@@ -40,15 +40,124 @@ function sanitizeModelJson(text: string): string {
 }
 
 // ============================================================================
-// ReAct Parser (ported from AgentNova tool_parse._parse_react)
+// ReAct Dialect Registry
 // ============================================================================
+//
+// Models use different tag names for the same ReAct structure.
+// This registry maps each dialect's tag names to build regex patterns dynamically.
+//
+// Each dialect defines:
+//   actionTag   — the tag introducing a tool call  (e.g. "Action:", "Function:", "Tool:")
+//   inputTag    — the tag introducing the arguments  (e.g. "Action Input:", "Function Input:")
+//   thoughtTag  — optional tag for chain-of-thought  (e.g. "Thought:", "Scratchpad:")
+//   stopTags    — tags that terminate the Action Input block
+//   finalTag    — tag for the final answer
+//
 
-const THOUGHT_RE = /Thought:\s*(.*?)(?=Action:|Final Answer:|$)/is;
-const ACTION_RE = /Action:\s*[`"']?(\w+)[`"']?\s*\n?\s*Action Input:\s*(.*?)(?=\n\s*(?:Observation:|Thought:|Final Answer:|Action:)|$)/is;
-const ACTION_RE_SAMELINE = /Action:\s*[`"']?(\w+)[`"']?\s+Action Input:\s*(.*?)(?=\n\s*(?:Observation:|Thought:|Final Answer:)|$)/is;
-const ACTION_RE_LOOSE = /Action:\s*(.+?)\n\s*Action Input:\s*(.*?)(?=\n\s*(?:Observation:|Thought:|Final Answer:|Action:)|$)/is;
-const ACTION_RE_PAREN = /Action:\s*(\w+)\s*\(([^)]*)\)/i;
-const FINAL_ANSWER_RE = /Final Answer:\s*([\s\S]*?)$/i;
+export interface ReactDialect {
+  name: string;           // human-readable dialect name
+  actionTag: string;      // e.g. "Action:"
+  inputTag: string;       // e.g. "Action Input:"
+  thoughtTag?: string;    // e.g. "Thought:"
+  stopTags: string[];     // tags that terminate the input block
+  finalTag?: string;      // e.g. "Final Answer:"
+}
+
+/**
+ * Dialect definitions ordered by specificity — earlier dialects are tried first.
+ * The classic ReAct dialect is first since it's the most common.
+ */
+const REACT_DIALECTS: ReactDialect[] = [
+  {
+    name: "react",
+    actionTag: "Action:",
+    inputTag: "Action Input:",
+    thoughtTag: "Thought:",
+    stopTags: ["Observation:", "Thought:", "Final Answer:", "Action:"],
+    finalTag: "Final Answer:",
+  },
+  {
+    name: "function",
+    actionTag: "Function:",
+    inputTag: "Function Input:",
+    thoughtTag: "Thought:",
+    stopTags: ["Observation:", "Thought:", "Final Answer:", "Function:", "Action:"],
+    finalTag: "Final Answer:",
+  },
+  {
+    name: "tool",
+    actionTag: "Tool:",
+    inputTag: "Tool Input:",
+    thoughtTag: "Thought:",
+    stopTags: ["Observation:", "Thought:", "Final Answer:", "Tool:", "Action:"],
+    finalTag: "Final Answer:",
+  },
+  {
+    name: "call",
+    actionTag: "Call:",
+    inputTag: "Input:",
+    thoughtTag: "Thought:",
+    stopTags: ["Observation:", "Thought:", "Final Answer:", "Call:", "Action:"],
+    finalTag: "Final Answer:",
+  },
+];
+
+/**
+ * Build regex patterns for a given dialect.
+ * Returns the same 5 pattern types used by the original hardcoded ReAct parser.
+ */
+function buildDialectPatterns(d: ReactDialect) {
+  // Escape regex special chars in tag names
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const aT = esc(d.actionTag);
+  const iT = esc(d.inputTag);
+  const stopAlt = d.stopTags.map(esc).join("|");
+
+  const tT = d.thoughtTag ? esc(d.thoughtTag) : undefined;
+  const fT = d.finalTag ? esc(d.finalTag) : undefined;
+
+  // Thought: extracts reasoning before the action tag (or final answer)
+  const thoughtRe = tT
+    ? new RegExp(`${tT}\s*(.*?)(?=${aT}|${fT}|$)`, "is")
+    : undefined;
+
+  // Primary: action tag + input tag on separate lines
+  const actionRe = new RegExp(
+    `${aT}\s*[\x60"']?(\\w+)[\x60"']?\s*\n?\s*${iT}\s*(.*?)(?=\n\s*(?:${stopAlt})|$)`, "is"
+  );
+
+  // Same-line: action tag + input tag on one line
+  const actionReSameline = new RegExp(
+    `${aT}\s*[\x60"']?(\\w+)[\x60"']?\s+${iT}\s*(.*?)(?=\n\s*(?:${stopAlt})|$)`, "is"
+  );
+
+  // Loose: action tag captures broader text (natural language tool reference)
+  const actionReLoose = new RegExp(
+    `${aT}\s*(.+?)\n\s*${iT}\s*(.*?)(?=\n\s*(?:${stopAlt})|$)`, "is"
+  );
+
+  // Parenthetical: Action: tool_name(args) — no input tag
+  const actionReParen = new RegExp(`${aT}\s*(\\w+)\s*\\([^)]*\\)`, "i");
+
+  // Final answer
+  const finalAnswerRe = fT
+    ? new RegExp(`${fT}\s*([\\s\\S]*?)$`, "i")
+    : undefined;
+
+  return { thoughtRe, actionRe, actionReSameline, actionReLoose, actionReParen, finalAnswerRe, dialect: d };
+}
+
+// Pre-build patterns for all dialects (done once at module load)
+const ALL_DIALECT_PATTERNS = REACT_DIALECTS.map(buildDialectPatterns);
+
+// Classic ReAct patterns as default (backward compatibility shorthand)
+const CLASSIC_PATTERNS = ALL_DIALECT_PATTERNS[0];
+const THOUGHT_RE = CLASSIC_PATTERNS.thoughtRe!;
+const ACTION_RE = CLASSIC_PATTERNS.actionRe;
+const ACTION_RE_SAMELINE = CLASSIC_PATTERNS.actionReSameline;
+const ACTION_RE_LOOSE = CLASSIC_PATTERNS.actionReLoose;
+const ACTION_RE_PAREN = CLASSIC_PATTERNS.actionReParen;
+const FINAL_ANSWER_RE = CLASSIC_PATTERNS.finalAnswerRe!;
 
 interface ParsedToolCall {
   name: string;
@@ -56,6 +165,7 @@ interface ParsedToolCall {
   thought?: string;
   finalAnswer?: string;
   raw: string;
+  dialect?: string;  // which ReAct dialect matched (e.g. "react", "function", "tool", "call")
 }
 
 function extractJsonArgs(rawArgs: string): Record<string, unknown> | null {
@@ -96,32 +206,65 @@ function extractJsonArgs(rawArgs: string): Record<string, unknown> | null {
 }
 
 function parseReact(text: string): ParsedToolCall | null {
+  // Try all registered dialects in order (classic ReAct first)
+  for (const dp of ALL_DIALECT_PATTERNS) {
+    const result = parseReactWithPatterns(text, dp);
+    if (result) return result;
+  }
+  return null;
+}
+
+/**
+ * Parse ReAct text using a specific dialect's patterns.
+ * This is the core per-dialect parser — shared by parseReact() and model-test.
+ */
+function parseReactWithPatterns(
+  text: string,
+  dp: ReturnType<typeof buildDialectPatterns>,
+  tightLoose = false,  // if true, reject natural language in loose match (for testing)
+): ParsedToolCall | null {
   let thought: string | undefined;
-  const thoughtMatch = THOUGHT_RE.exec(text);
-  if (thoughtMatch) thought = thoughtMatch[1].trim();
+  if (dp.thoughtRe) {
+    const thoughtMatch = dp.thoughtRe.exec(text);
+    if (thoughtMatch) thought = thoughtMatch[1].trim();
+  }
 
-  let match = ACTION_RE.exec(text);
-  if (!match) match = ACTION_RE_SAMELINE.exec(text);
+  let match = dp.actionRe.exec(text);
+  if (!match) match = dp.actionReSameline.exec(text);
 
-  // Loose fallback: Action line contains natural language (e.g., "Action: Open the get_weather tool.")
-  // Extract tool name from the action text using fuzzy matching against available tools.
+  // Loose fallback: action line contains natural language (e.g., "Action: Open the get_weather tool.")
   let looseMatch = false;
-  if (!match) match = ACTION_RE_LOOSE.exec(text), looseMatch = true;
+  if (!match) {
+    const looseResult = dp.actionReLoose.exec(text);
+    if (looseResult) {
+      if (tightLoose) {
+        // Testing mode: only accept if captured text IS a tool-like identifier
+        const candidate = looseResult[1].trim().replace(/[`"']/g, "");
+        const isToolIdentifier = /^\w+$/.test(candidate) && (candidate.includes("_") || candidate.includes("-"));
+        const isKnownTool = /^(get_weather|calculate)$/i.test(candidate);
+        if (isToolIdentifier || isKnownTool) {
+          match = looseResult;
+          looseMatch = true;
+        }
+      } else {
+        match = looseResult;
+        looseMatch = true;
+      }
+    }
+  }
   let parenMatch = false;
-  if (!match) match = ACTION_RE_PAREN.exec(text), parenMatch = true;
+  if (!match) match = dp.actionReParen.exec(text), parenMatch = true;
 
   if (match) {
     let toolName = match[1].trim().replace(/[`"']/g, "");
 
     // If matched by loose regex, extract tool name from the action text
-    if (looseMatch && pi.context?.session?.tools) {
+    if (looseMatch && !tightLoose && pi.context?.session?.tools) {
       const availableTools = (pi.context.session.tools as string[]) || [];
-      // Try to find a known tool name in the action text
       for (const real of availableTools) {
         const rl = real.toLowerCase().replace(/_/g, "");
         if (toolName.toLowerCase().includes(rl)) { toolName = real; break; }
       }
-      // Also try extracting the first word that looks like a tool name
       if (toolName.includes(" ")) {
         const words = toolName.split(/\s+/);
         for (const w of words) {
@@ -162,12 +305,28 @@ function parseReact(text: string): ParsedToolCall | null {
     }
 
     let finalAnswer: string | undefined;
-    const faMatch = FINAL_ANSWER_RE.exec(text);
-    if (faMatch) finalAnswer = faMatch[1].trim();
+    if (dp.finalAnswerRe) {
+      const faMatch = dp.finalAnswerRe.exec(text);
+      if (faMatch) finalAnswer = faMatch[1].trim();
+    }
 
-    return { name: toolName, args, thought, finalAnswer, raw: match[0] };
+    return { name: toolName, args, thought, finalAnswer, raw: match[0], dialect: dp.dialect.name };
   }
 
+  return null;
+}
+
+/**
+ * Detect which ReAct dialect (if any) is present in the given text.
+ * Returns the dialect name or null if no dialect matched.
+ * Useful for model-test to report which dialect a model uses.
+ */
+export function detectReactDialect(text: string): ReactDialect | null {
+  for (const dp of ALL_DIALECT_PATTERNS) {
+    // Quick check: does the action tag appear anywhere in the text?
+    const tagPattern = new RegExp(`^\\s*${dp.dialect.actionTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*`, "im");
+    if (tagPattern.test(text)) return dp.dialect;
+  }
   return null;
 }
 
@@ -563,16 +722,28 @@ The bridge will match your tool name (fuzzy matching supported) and normalize ar
       lines.push(section("REACT PARSER TEST"));
       lines.push(info(`Input: ${text.slice(0, 100)}${text.length > 100 ? "..." : ""}`));
 
+      // Detect dialect before parsing
+      const detectedDialect = detectReactDialect(text);
+
       // Try ReAct parse
       const reactResult = parseReact(text);
       if (reactResult) {
-        lines.push(ok("ReAct format detected!"));
+        lines.push(ok(`ReAct format detected! (dialect: ${reactResult.dialect || "react"})`));
         lines.push(info(`Tool: ${reactResult.name}`));
         lines.push(info(`Args: ${JSON.stringify(reactResult.args)}`));
         if (reactResult.thought) lines.push(info(`Thought: ${reactResult.thought}`));
         if (reactResult.finalAnswer) lines.push(info(`Final Answer: ${reactResult.finalAnswer}`));
       } else {
-        lines.push(fail("No ReAct format detected"));
+        if (detectedDialect) {
+          lines.push(warn(`Dialect tag "${detectedDialect.actionTag}" detected but no valid tool call parsed`));
+        } else {
+          lines.push(fail("No ReAct format detected"));
+        }
+      }
+
+      // Show available dialects if we detected a non-classic one
+      if (detectedDialect && detectedDialect.name !== "react") {
+        lines.push(info(`Detected dialect: ${detectedDialect.name} (${detectedDialect.actionTag} / ${detectedDialect.inputTag})`));
       }
 
       // Try JSON extraction
@@ -619,10 +790,14 @@ The bridge will match your tool name (fuzzy matching supported) and normalize ar
   // Store parser functions on pi.events for other extensions to use
   (pi as any)._reactParser = {
     parseReact,
+    parseReactWithPatterns,
+    detectReactDialect,
     sanitizeModelJson,
     extractToolFromJson,
     fuzzyMatchToolName,
     normalizeArguments,
     looksLikeSchemaDump,
+    REACT_DIALECTS,
+    ALL_DIALECT_PATTERNS,
   };
 }
