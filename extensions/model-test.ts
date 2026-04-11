@@ -1612,7 +1612,7 @@ The JSON object must have exactly these 4 keys:
   // ── run all tests on one model ───────────────────────────────────────
 
   const branding = [
-    `  ⚡ Pi Model Benchmark v1.0.8`,
+    `  ⚡ Pi Model Benchmark v1.0.9`,
     `  Written by VTSTech`,
     `  GitHub: https://github.com/VTSTech`,
     `  Website: www.vts-tech.org`,

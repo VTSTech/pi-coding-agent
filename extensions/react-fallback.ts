@@ -554,7 +554,7 @@ export default function (pi: ExtensionAPI) {
   let stats = { bridgeCalls: 0, fuzzyMatches: 0, argNormalizations: 0, parseFailures: 0 };
 
   const branding = [
-    `  ⚡ Pi ReAct Fallback Extension v1.0.8`,
+    `  ⚡ Pi ReAct Fallback Extension v1.0.9`,
     `  Written by VTSTech`,
     `  GitHub: https://github.com/VTSTech`,
     `  Website: www.vts-tech.org`,

@@ -15,7 +15,7 @@ import { section, ok, fail, warn, info, bytesHuman, estimateVram } from "../shar
 // ── Branding ──────────────────────────────────────────────────────────────
 
 const BRANDING = [
-  `  ⚡ Pi Ollama Sync v1.0.8`,
+  `  ⚡ Pi Ollama Sync v1.0.9`,
   `  Written by VTSTech`,
   `  GitHub: https://github.com/VTSTech`,
   `  Website: www.vts-tech.org`,

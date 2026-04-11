@@ -28,7 +28,7 @@ import { section, ok, warn } from "../shared/format";
 // ── Branding ──────────────────────────────────────────────────────────────
 
 const BRANDING = [
-  `  ⚡ Pi OpenRouter Sync v1.0.8`,
+  `  ⚡ Pi OpenRouter Sync v1.0.9`,
   `  Written by VTSTech`,
   `  GitHub: https://github.com/VTSTech`,
   `  Website: www.vts-tech.org`,
