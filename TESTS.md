@@ -30,6 +30,11 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 > - `NATIVE` — Model uses Ollama's structured `tool_calls` API
 > - `REACT` — Model outputs text-based `Action:` / `Action Input:` patterns
 > - `NONE` — No tool support detected
+>
+> **v1.0.8 Notes:**
+> - ReAct mode is **disabled by default** as of v1.0.8 (persistent config at `~/.pi/agent/react-mode.json`). Enable via `/react-mode` command.
+> - `granite4:350m` scores above reflect testing with ReAct **disabled** (native tool calling only). With ReAct enabled, this model fails due to `tool_call` validation errors.
+> - `arcee-ai/trinity-mini:free` removed from OpenRouter catalog (returns 404) — not a code issue.
 
 ---
 
@@ -41,6 +46,7 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 | `openai/gpt-oss-20b:free` | OpenRouter | ✅ 954ms | ✅ MODERATE | ✅ STRONG | ✅ STRONG | **4/4** |
 | `minimax/minimax-m2.5:free` | OpenRouter | ✅ 4.1s | ✅ STRONG | ✅ STRONG | ✅ STRONG | **4/4** |
 | `nvidia/nemotron-3-nano-30b-a3b:free` | OpenRouter | ✅ 449ms | ✅ MODERATE | ✅ STRONG | ✅ STRONG | **4/4** |
+| `nvidia/nemotron-nano-9b-v2:free` | OpenRouter | ✅ | ✅ | ✅ | ✅ | **3/4** |
 | `z-ai/glm-4.5-air:free` | OpenRouter | ✅ 1.1s | ❌ ERROR | ✅ STRONG | ✅ STRONG | **3/4** |
 
 > Cloud provider tests use the 4-test suite (connectivity, reasoning, instructions, tool usage). Ollama-specific tests are skipped.
@@ -71,7 +77,7 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 ```
  [model-test-report]
 
-   ⚡ Pi Model Benchmark v1.0.7
+   ⚡ Pi Model Benchmark v1.0.8
    Written by VTSTech
    GitHub: https://github.com/VTSTech
    Website: www.vts-tech.org
@@ -149,7 +155,7 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 ```
  [model-test-report]
 
-   ⚡ Pi Model Benchmark v1.0.7
+   ⚡ Pi Model Benchmark v1.0.8
    Written by VTSTech
    GitHub: https://github.com/VTSTech
    Website: www.vts-tech.org

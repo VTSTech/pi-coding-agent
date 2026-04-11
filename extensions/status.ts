@@ -2,7 +2,7 @@
  * System Monitor — Pi Coding Agent Extension
  * Replaces the default footer with a unified 2-line status bar:
  *   Line 1 (conf): model · pwd · thinking level · CPU% (if local Ollama)
- *   Line 2 (load): loaded model · ↑↓ tokens · M: · S: · RAM (if local Ollama) · Resp · params · security
+ *   Line 2 (load): loaded model · ↑↓ tokens (from message_end/turn_end) · M: · S: · RAM (if local Ollama) · Resp · params · security
  *   Line 3: (active tool timing when agent is running)
  * Metrics update every 3 seconds. Restores default footer on session shutdown.
  * Includes audit/recovery status indicators from shared security layer.
@@ -466,17 +466,29 @@ export default function (pi: ExtensionAPI) {
   });
 
   /**
-   * Capture per-LLM-call token usage from message_end event.
-   * Pi normalises all providers to { input, output, cacheRead, cacheWrite }.
+   * Capture per-LLM-call token usage from message_end / turn_end events.
+   * Pi fires message_end for ALL message types (user, assistant, toolResult).
+   * Only assistant messages carry token usage (input/output from the LLM).
+   * We also listen on turn_end as a fallback (same payload shape).
+   *
+   * Usage shape: { input, output, cacheRead, cacheWrite, totalTokens }
    */
-  pi.on("message_end", (event: any) => {
-    if (!event?.message) return;
-    const usage = event.message.usage;
+  function captureUsage(event: any) {
+    // message_end fires for every message type — only assistant has usage
+    if (event?.message?.role !== "assistant") return;
+    const usage =
+      event?.message?.usage ??    // normalised Pi usage
+      event?.usage ??             // alternative path
+      null;
     if (!usage) return;
-    // Reset cumulative counters each prompt cycle
-    if (usage.input != null) lastUpstream = usage.input as number;
-    if (usage.output != null) lastDownstream = usage.output as number;
-  });
+    const inp = usage.input ?? usage.promptTokens ?? usage.prompt_tokens;
+    const out = usage.output ?? usage.completionTokens ?? usage.completion_tokens;
+    if (inp != null) lastUpstream = inp as number;
+    if (out != null) lastDownstream = out as number;
+  }
+
+  pi.on("message_end", captureUsage);
+  pi.on("turn_end", captureUsage);
 
   pi.on("agent_start", async () => {
     agentStartTime = performance.now();
