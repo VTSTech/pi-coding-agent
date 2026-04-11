@@ -63,6 +63,7 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 
 | Model | Tools | ReAct | Instructions | Tool Support | Score |
 |-------|-------|-------|--------------|--------------|-------|
+| `nemotron-3-nano:4b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | NATIVE | **6/6** |
 | `llama3.2:1b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | NATIVE | **5/6** |
 | `lfm2.5-thinking:1.2b` | ✅ STRONG | ❌ FAIL | ✅ STRONG | NATIVE | **5/6** |
 | `qwen3:0.6b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | NATIVE | **4/6** |
@@ -72,7 +73,6 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 | `qwen2.5-coder:1.5b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | REACT | **4/6** |
 | `deepseek-r1:1.5b` | ❌ ERROR | ✅ STRONG | ✅ STRONG | NONE | **4/6** |
 | `gemma4:e2b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | NATIVE | **4/6** |
-| `nemotron-3-nano:4b` | ✅ STRONG | ✅ STRONG | ✅ STRONG | NATIVE | **6/6** |
 | `qwen2.5:1.5b` | ❌ WEAK | ✅ STRONG | ✅ STRONG | NATIVE | **3/6** |
 | `functiongemma:270m` | ✅ STRONG | ❌ FAIL | ❌ FAIL | NATIVE | **2/6** |
 | `granite3.1-moe:1b` | ❌ FAIL | ❌ FAIL | ✅ STRONG | REACT | **2/6** |
