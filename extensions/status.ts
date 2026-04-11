@@ -324,6 +324,25 @@ export default function (pi: ExtensionAPI) {
       const yellow = (s: string) => theme?.fg?.("yellow", s) ?? s;
       const sep = dim(" \u00b7 ");
 
+      // ── Truncation helper (inside setFooter to access dim) ──
+      const truncateLine = (line: string, maxW: number): string => {
+        const ellipsis = dim("...");
+        const visible = line.replace(/\x1b\[[0-9;]*m/g, "");
+        if (visible.length > maxW) {
+          let vis = 0, cut = 0;
+          for (let i = 0; i < line.length && vis < maxW - 3; i++) {
+            if (line[i] === "\x1b") {
+              while (i < line.length && line[i] !== "m") i++;
+            } else {
+              vis++;
+            }
+            cut = i + 1;
+          }
+          return line.slice(0, cut) + ellipsis;
+        }
+        return line;
+      };
+
       return {
         render(width: number): string[] {
           const lines: string[] = [];
@@ -390,24 +409,6 @@ export default function (pi: ExtensionAPI) {
         dispose(): void {},
       };
     });
-
-    // ── Truncation helper ──────────────────────────────────────────
-    function truncateLine(line: string, width: number, ellipsis = dim("...")): string {
-      const visible = line.replace(/\x1b\[[0-9;]*m/g, "");
-      if (visible.length > width) {
-        let vis = 0, cut = 0;
-        for (let i = 0; i < line.length && vis < width - 3; i++) {
-          if (line[i] === "\x1b") {
-            while (i < line.length && line[i] !== "m") i++;
-          } else {
-            vis++;
-          }
-          cut = i + 1;
-        }
-        return line.slice(0, cut) + ellipsis;
-      }
-      return line;
-    }
 
     if (updateInterval) clearInterval(updateInterval);
     updateInterval = setInterval(() => {
