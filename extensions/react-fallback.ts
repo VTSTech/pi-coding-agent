@@ -116,32 +116,36 @@ function buildDialectPatterns(d: ReactDialect) {
   const tT = d.thoughtTag ? esc(d.thoughtTag) : undefined;
   const fT = d.finalTag ? esc(d.finalTag) : undefined;
 
+  // IMPORTANT: Template literals silently drop unrecognized escape sequences.
+  // \s → "s", \n → newline, \( → "(", \) → ")".
+  // All regex metacharacter escapes MUST be doubled: \\s, \\n, \\(, \\), etc.
+
   // Thought: extracts reasoning before the action tag (or final answer)
   const thoughtRe = tT
-    ? new RegExp(`${tT}\s*(.*?)(?=${aT}|${fT}|$)`, "is")
+    ? new RegExp(`${tT}\\s*(.*?)(?=${aT}|${fT}|$)`, "is")
     : undefined;
 
   // Primary: action tag + input tag on separate lines
   const actionRe = new RegExp(
-    `${aT}\s*[\x60"']?(\\w+)[\x60"']?\s*\n?\s*${iT}\s*(.*?)(?=\n\s*(?:${stopAlt})|$)`, "is"
+    `${aT}\\s*[\\x60"']?(\\w+)[\\x60"']?\\s*\\n?\\s*${iT}\\s*(.*?)(?=\\n\\s*(?:${stopAlt})|$)`, "is"
   );
 
   // Same-line: action tag + input tag on one line
   const actionReSameline = new RegExp(
-    `${aT}\s*[\x60"']?(\\w+)[\x60"']?\s+${iT}\s*(.*?)(?=\n\s*(?:${stopAlt})|$)`, "is"
+    `${aT}\\s*[\\x60"']?(\\w+)[\\x60"']?\\s+${iT}\\s*(.*?)(?=\\n\\s*(?:${stopAlt})|$)`, "is"
   );
 
   // Loose: action tag captures broader text (natural language tool reference)
   const actionReLoose = new RegExp(
-    `${aT}\s*(.+?)\n\s*${iT}\s*(.*?)(?=\n\s*(?:${stopAlt})|$)`, "is"
+    `${aT}\\s*(.+?)\\n\\s*${iT}\\s*(.*?)(?=\\n\\s*(?:${stopAlt})|$)`, "is"
   );
 
   // Parenthetical: Action: tool_name(args) — no input tag
-  const actionReParen = new RegExp(`${aT}\s*(\\w+)\s*\\([^)]*\\)`, "i");
+  const actionReParen = new RegExp(`${aT}\\s*(\\w+)\\s*\\(([^)]*)\\)`, "i");
 
   // Final answer
   const finalAnswerRe = fT
-    ? new RegExp(`${fT}\s*([\\s\\S]*?)$`, "i")
+    ? new RegExp(`${fT}\\s*([\\s\\S]*?)$`, "i")
     : undefined;
 
   return { thoughtRe, actionRe, actionReSameline, actionReLoose, actionReParen, finalAnswerRe, dialect: d };
