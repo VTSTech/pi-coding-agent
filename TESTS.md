@@ -57,10 +57,10 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 | `qwen2.5-coder:0.5b-instruct-q4_k_m` | ✅ MODERATE | ✅ STRONG | ✅ STRONG | REACT | **4/6** |
 | `granite4:350m` | ✅ STRONG | ✅ MODERATE | ✅ STRONG | NATIVE | **4/6** |
 | `qwen2.5:1.5b` | ❌ WEAK | ✅ STRONG | ✅ STRONG | NATIVE | **3/6** |
-| `gemma3:270m` | ❌ ERROR | ✅ MODERATE | ❌ FAIL | NONE | **1/6** |
 | `functiongemma:270m` | ✅ STRONG | ❌ FAIL | ❌ FAIL | NATIVE | **2/6** |
 | `qwen2:0.5b` | ❌ ERROR | ✅ STRONG | ✅ STRONG | NONE | **2/6** |
 | `qwen:0.5b` | ❌ ERROR | ✅ STRONG | ✅ MODERATE | NONE | **2/6** |
+| `gemma3:270m` | ❌ ERROR | ✅ MODERATE | ❌ FAIL | NONE | **1/6** |
 | `smollm:135m` | ❌ ERROR | ❌ FAIL | ❌ FAIL | NONE | **0/6** |
 
 > Tests run with API mode set to `openai-responses`. Results may differ from `openai-completions` due to different request/response formats and tool calling behavior.
