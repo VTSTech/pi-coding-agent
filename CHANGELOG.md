@@ -29,6 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **OpenRouter Sync extension** (`extensions/openrouter-sync.ts`)
+  - New `/openrouter-sync` command (alias `/or-sync`) adds OpenRouter models to `models.json` from URLs or bare model IDs.
+  - Parses full OpenRouter URLs (`https://openrouter.ai/model/name:free`) and bare IDs (`model/name:free`).
+  - Creates `openrouter` provider in models.json if missing, inheriting baseUrl/api from the built-in provider registry.
+  - Appends models without removing existing entries; reorders providers so openrouter sits above ollama.
+  - Registered as both slash command and `openrouter_sync` tool.
+  - Published as `@vtstech/pi-openrouter-sync` npm package.
+
 - **Upstream/downstream token display in status bar** (`extensions/status.ts`)
   - Footer line 2 now shows per-LLM-call token counts as `↑1.2k ↓567` (dimmed), positioned between RAM/Swap and response time.
   - Uses Pi's `message_end` event to capture the normalized `Usage` object (`input` = upstream/prompt tokens, `output` = downstream/completion tokens).
