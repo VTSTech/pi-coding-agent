@@ -140,7 +140,7 @@ export default function (pi: ExtensionAPI) {
         toolCallId,
         action: "allowed",
         rule: result.rule || "none",
-        detail: "Dangerous tool executed",
+        detail: "Bash/tool executed (allowed)",
         input: sanitizeInputForLog(input),
       });
     }
