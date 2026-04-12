@@ -208,11 +208,6 @@ export default function (pi: ExtensionAPI) {
       footerNativeCtx ? `${dim("CtxMax:")}${green(footerNativeCtx)}` : undefined,
     );
 
-    // Response time
-    ctxUi.setStatus("status-resp",
-      lastResponseTime !== null ? `${dim("Resp")} ${green(fmtDur(lastResponseTime))}` : undefined,
-    );
-
     // Max response/completion tokens (green highlighted, k-notation)
     if (lastPayload) {
       const rawMax = lastPayload.max_completion_tokens ?? lastPayload.max_tokens;
@@ -225,6 +220,11 @@ export default function (pi: ExtensionAPI) {
     } else {
       ctxUi.setStatus("status-resp-max", undefined);
     }
+
+    // Response time
+    ctxUi.setStatus("status-resp",
+      lastResponseTime !== null ? `${dim("Resp")} ${green(fmtDur(lastResponseTime))}` : undefined,
+    );
 
     // Active parameters from last payload
     if (lastPayload) {
