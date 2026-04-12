@@ -368,8 +368,8 @@ function parseParamCount(s: string): number | undefined {
 function bitsPerParamForQuant(quant: string): number {
   const q = quant.toUpperCase().replace(/[-_.]/g, "");
 
-  if (q.startsWith("FP32") || q === "FP32") return 32;
-  if (q.startsWith("F16") || q === "F16" || q.startsWith("BF16")) return 16;
+  if (q.startsWith("FP32") || q === "F32" || q === "TF32") return 32;
+  if (q.startsWith("F16") || q === "BF16") return 16;
   if (q.startsWith("Q8")) return 8;
   if (q.startsWith("IQ4")) return 4.5;
   if (q.startsWith("IQ3")) return 3.5;
