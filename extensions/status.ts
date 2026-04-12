@@ -170,8 +170,7 @@ export default function (pi: ExtensionAPI) {
     if (payload.temperature !== undefined) params.push(`temp:${payload.temperature}`);
     if (payload.top_p !== undefined) params.push(`top_p:${payload.top_p}`);
     if (payload.top_k !== undefined) params.push(`top_k:${payload.top_k}`);
-    if (payload.max_completion_tokens !== undefined) params.push(`RespMax:${payload.max_completion_tokens}`);
-    else if (payload.max_tokens !== undefined) params.push(`RespMax:${payload.max_tokens}`);
+    // RespMax handled separately in flushStatus with green highlighting
     if (payload.num_predict !== undefined) params.push(`predict:${payload.num_predict}`);
     if (payload.num_ctx !== undefined) params.push(`ctx:${payload.num_ctx}`);
     if (payload.reasoning_effort !== undefined) params.push(`think:${payload.reasoning_effort}`);
@@ -219,6 +218,19 @@ export default function (pi: ExtensionAPI) {
     ctxUi.setStatus("status-resp",
       lastResponseTime !== null ? `${dim("Resp")} ${green(fmtDur(lastResponseTime))}` : undefined,
     );
+
+    // Max response/completion tokens (green highlighted, k-notation)
+    if (lastPayload) {
+      const rawMax = lastPayload.max_completion_tokens ?? lastPayload.max_tokens;
+      if (rawMax !== undefined) {
+        const formatted = rawMax >= 1000 ? `${(rawMax / 1000).toFixed(rawMax % 1000 === 0 ? 0 : 1)}k` : String(rawMax);
+        ctxUi.setStatus("status-resp-max", `${dim("RespMax:")}${green(formatted)}`);
+      } else {
+        ctxUi.setStatus("status-resp-max", undefined);
+      }
+    } else {
+      ctxUi.setStatus("status-resp-max", undefined);
+    }
 
     // Active parameters from last payload
     if (lastPayload) {
@@ -306,6 +318,7 @@ export default function (pi: ExtensionAPI) {
       ui.setStatus("status-native-ctx", undefined);
       ui.setStatus("status-thinking", undefined);
       ui.setStatus("status-resp", undefined);
+      ui.setStatus("status-resp-max", undefined);
       ui.setStatus("status-params", undefined);
       ui.setStatus("system-prompt", undefined);
       ui.setStatus("status-sec", undefined);
