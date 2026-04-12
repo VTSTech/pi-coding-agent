@@ -18,6 +18,22 @@
 #
 # Requires: Node.js, npm (for esbuild — must be in devDependencies)
 # ---------------------------------------------------------------------------
+#
+# Pre-Publish testing flow
+#
+## 1) Build all packages + tarballs
+#./scripts/build-packages.sh all
+#
+## 2) Publish shared prerelease (when shared changes)
+#npm publish .build-npm/shared --tag dev
+#
+## 3) Install + register extension
+#pi install npm:/absolute/path/to/dist/<pkg>.tgz
+#ln -s ~/.npm-global/lib/node_modules/@vtstech/pi-<name> ~/.pi/agent/extensions/pi-<name>
+#
+## 4) Test
+#pi   # /diag, /model-test, etc.
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
