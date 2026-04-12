@@ -170,8 +170,8 @@ export default function (pi: ExtensionAPI) {
     if (payload.temperature !== undefined) params.push(`temp:${payload.temperature}`);
     if (payload.top_p !== undefined) params.push(`top_p:${payload.top_p}`);
     if (payload.top_k !== undefined) params.push(`top_k:${payload.top_k}`);
-    if (payload.max_completion_tokens !== undefined) params.push(`max:${payload.max_completion_tokens}`);
-    else if (payload.max_tokens !== undefined) params.push(`max:${payload.max_tokens}`);
+    if (payload.max_completion_tokens !== undefined) params.push(`RespMax:${payload.max_completion_tokens}`);
+    else if (payload.max_tokens !== undefined) params.push(`RespMax:${payload.max_tokens}`);
     if (payload.num_predict !== undefined) params.push(`predict:${payload.num_predict}`);
     if (payload.num_ctx !== undefined) params.push(`ctx:${payload.num_ctx}`);
     if (payload.reasoning_effort !== undefined) params.push(`think:${payload.reasoning_effort}`);
@@ -207,7 +207,7 @@ export default function (pi: ExtensionAPI) {
 
     // Native model context length (local & remote Ollama)
     ctxUi.setStatus("status-native-ctx",
-      footerNativeCtx ? `${dim("M:")}${green(footerNativeCtx)}` : undefined,
+      footerNativeCtx ? `${dim("CtxMax:")}${green(footerNativeCtx)}` : undefined,
     );
 
     // Thinking level
