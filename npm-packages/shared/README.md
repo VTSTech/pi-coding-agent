@@ -1,28 +1,54 @@
-# @vtstech/pi-shared
+# @vtstech/pi-status
 
-Shared utilities for [Pi Coding Agent](https://github.com/badlogic/pi-mono) extensions by VTSTech.
+System monitor extension for the [Pi Coding Agent](https://github.com/badlogic/pi-mono).
 
-This is an internal dependency — you don't need to install it directly. It's pulled in automatically when you install any `@vtstech/pi-*` extension package.
+Adds composable named status items to the framework footer using `ctx.ui.setStatus()`. Each metric gets its own named slot so it coexists cleanly with other extensions' status items.
 
-## Modules
+## Install
 
-| Module | Description |
-|--------|-------------|
-| `format` | Section headers, indicators (ok/fail/warn/info), numeric formatters (bytes, ms, percentages), string utilities |
-| `ollama` | Ollama base URL resolution, models.json I/O with TTL cache, model family detection, provider detection, Ollama API helpers |
-| `security` | Command blocklist (65), SSRF patterns (29), path validation with symlink dereference, URL validation, command sanitization, audit logging (`AUDIT_LOG_PATH` exported) |
-| `types` | Type definitions (ToolSupportLevel, AuditEntry, etc.) |
-
-## Usage
-
-```js
-import { section, ok, fail, info } from "@vtstech/pi-shared/format";
-import { readModelsJson, getOllamaBaseUrl } from "@vtstech/pi-shared/ollama";
+```bash
+pi install "npm:@vtstech/pi-status"
 ```
+
+## How It Works
+
+Automatically loaded — no commands needed. Slots are rendered in the framework footer alongside framework items (model name, session tokens, context usage). All labels use dimmed coloring; all values use green highlighting.
+
+CPU/RAM/Swap are only shown when using a local Ollama provider (not for cloud/remote). For cloud providers, system metrics are omitted.
+
+**Example (local Ollama):**
+```
+CtxMax:41k RespMax:16.4k Resp 2m3s CPU 12% RAM 2.2G/15.1G Prompt: 2840 chr 393 tok pi:0.66.1
+```
+
+**Example (cloud provider):**
+```
+CtxMax:128k RespMax:16.4k Resp 1m22s Prompt: 2840 chr 393 tok pi:0.66.1
+```
+
+## Status Slots
+
+Slots are updated every 5 seconds (1 second for active tool timing). Render order is deterministic — all slots are managed through `flushStatus()`.
+
+| Slot | Description | Condition |
+|------|-------------|-----------|
+| **CtxMax** | Native model context window from Ollama `/api/show` (k-notation) | Local or remote Ollama |
+| **RespMax** | Max response/completion tokens with k-notation (e.g., `16k`) | After first provider request |
+| **Resp** | Agent loop duration (e.g., `2m3s`) | After first agent cycle |
+| **CPU%** | Per-core CPU usage delta | Local Ollama only |
+| **RAM** | Used/total system memory | Local Ollama only |
+| **Swap** | Used/total swap space | Local only, when active |
+| **Generation params** | Temperature, top_p, top_k, num_predict, context size, reasoning_effort (dimmed) | After first provider request |
+| **SEC** | Session-scoped blocked tool count + 3s flash on block event | When blocks occur |
+| **Active tool** | Live elapsed timer with `>` indicator | While a tool is running |
+| **Prompt** | System prompt size as `chars chr tokens tok` | After first agent start |
+| **Pi version** | `pi:0.66.1` (dimmed, always last) | Always shown |
+
+All slots are cleared on `session_shutdown`. Metrics that the framework already provides (model name, session tokens, context usage, thinking level) are intentionally omitted to avoid duplication.
 
 ## Links
 
-- [Main Repository](https://github.com/VTSTech/pi-coding-agent)
+- [Full Documentation](https://github.com/VTSTech/pi-coding-agent#system-monitor-status-ts)
 - [Changelog](https://github.com/VTSTech/pi-coding-agent/blob/main/CHANGELOG.md)
 
 ## License
