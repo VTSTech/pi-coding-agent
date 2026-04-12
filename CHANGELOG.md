@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.4] - 04-13-2026 TBD
+
+### Fixed
+
+- **Duplicated thinking level in status bar** (`extensions/status.ts`)
+  - The `status-thinking` slot displayed the thinking level (e.g., `medium`, `high`), but the framework already shows this in its built-in footer. Removed the slot and all associated state (`footerThinking`, `pi.getThinkingLevel()` polling).
+
+### Changed
+
+- **Status bar slots use green theme highlighting** (`extensions/status.ts`)
+  - All status slots now use `ctx.ui.theme.fg()` for consistent coloring: labels (`CPU`, `RAM`, `Swap`, `Resp`, `CtxMax`, `RespMax`, `SEC`, tool name) rendered with `dim`, values rendered with `success` (green). Generation params remain fully dimmed as secondary info.
+  - Theme reference cached at `session_start` via `ctxTheme` to avoid repeated access.
+
+- **RespMax gets its own highlighted slot with k-notation** (`extensions/status.ts`)
+  - `max:16384` was previously embedded in the dimmed params string. Extracted into a dedicated `status-resp-max` slot with green highlighting and k-notation formatting (e.g., `16384` → `16k`, `4096` → `4k`), matching the style of `CtxMax`.
+
+- **Native model context shown for remote Ollama** (`extensions/status.ts`)
+  - `CtxMax` (native max context from `/api/show`) was previously gated behind `isLocalProvider` and hidden for remote/tunneled Ollama instances. Removed the local-only gate so it displays for any Ollama provider.
+
+- **Status bar labels renamed for clarity** (`extensions/status.ts`)
+  - `M:33k` → `CtxMax:33k` (native model context window)
+  - `max:16384` → `RespMax:16k` (max response/completion tokens)
+
+---
+
 ## [1.1.3] - 04-12-2026 5:55:55PM
 
 ### Fixed

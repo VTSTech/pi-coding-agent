@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Pi Version](https://img.shields.io/badge/Pi-v0.66%2B-green.svg)](https://github.com/badlogic/pi-mono)
 [![Pi Package](https://img.shields.io/badge/Install-pi%20install%20git-blue.svg)](#installation)
-[![Version](https://img.shields.io/badge/Version-v1.1.3-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-v1.1.4-dev-orange.svg)](CHANGELOG.md)
 
 <p>
   <a href="https://github.com/VTSTech"><strong>VTSTech</strong></a> •
@@ -46,7 +46,7 @@ pi update
 
 Pin to a specific tag:
 ```bash
-pi install git:github.com/VTSTech/pi-coding-agent@v1.1.3
+pi install git:github.com/VTSTech/pi-coding-agent@v1.1.4-dev
 ```
 
 ### Individual npm packages
@@ -95,7 +95,7 @@ This repo is a standard Pi package. The `package.json` contains a `pi` manifest 
 ```json
 {
   "name": "@vtstech/pi-coding-agent-extensions",
-  "version": "1.1.3",
+  "version": "1.1.4-dev",
   "keywords": ["pi-package"],
   "pi": {
     "extensions": ["./extensions"],
@@ -229,7 +229,7 @@ Sample output (cloud provider):
 ```
  [model-test-report]
 
-   ⚡ Pi Model Benchmark v1.1.3
+   ⚡ Pi Model Benchmark v1.1.4-dev
    Written by VTSTech
    GitHub: https://github.com/VTSTech
    Website: www.vts-tech.org

@@ -46,7 +46,6 @@ export default function (pi: ExtensionAPI) {
   let swapTotal = 0;
   let hasSwap = false;
   let footerModel = "";
-  let footerThinking = "";
   let footerNativeCtx = "";
   let nativeCtxModel = "";
   let isLocalProvider = true;
@@ -209,11 +208,6 @@ export default function (pi: ExtensionAPI) {
       footerNativeCtx ? `${dim("CtxMax:")}${green(footerNativeCtx)}` : undefined,
     );
 
-    // Thinking level
-    ctxUi.setStatus("status-thinking",
-      (footerThinking && footerThinking !== "off") ? green(footerThinking) : undefined,
-    );
-
     // Response time
     ctxUi.setStatus("status-resp",
       lastResponseTime !== null ? `${dim("Resp")} ${green(fmtDur(lastResponseTime))}` : undefined,
@@ -279,7 +273,6 @@ export default function (pi: ExtensionAPI) {
 
     if (currentCtx) {
       footerModel = currentCtx.model?.id || "";
-      footerThinking = pi.getThinkingLevel?.() ?? "";
       const modelId = currentCtx.model?.id || "";
       if (modelId) {
         getNativeModelCtx(modelId);
@@ -316,7 +309,6 @@ export default function (pi: ExtensionAPI) {
       ui.setStatus("status-ram", undefined);
       ui.setStatus("status-swap", undefined);
       ui.setStatus("status-native-ctx", undefined);
-      ui.setStatus("status-thinking", undefined);
       ui.setStatus("status-resp", undefined);
       ui.setStatus("status-resp-max", undefined);
       ui.setStatus("status-params", undefined);
