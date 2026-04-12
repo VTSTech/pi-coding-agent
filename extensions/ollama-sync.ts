@@ -11,7 +11,7 @@ import {
   getOllamaBaseUrl,
   EXTENSION_VERSION,
 } from "../shared/ollama";
-import { section, ok, fail, warn, info, bytesHuman, estimateVram } from "../shared/format";
+import { section, ok, fail, warn, info, bytesHuman, estimateMemory } from "../shared/format";
 
 // ── Branding ──────────────────────────────────────────────────────────────
 
@@ -45,7 +45,7 @@ function getProviderConfig(existing: PiModelsJson) {
  * (parameter_size, quantization_level) and detecting model family.
  */
 function buildModelEntry(m: { name: string; details: { parameter_size: string; quantization_level: string; family: string; families?: string[] }; size: number }, contextLength?: number): PiModelEntry {
-  const estimatedSize = estimateVram(m.details.parameter_size, m.details.quantization_level);
+  const estimatedSize = estimateMemory(m.details.parameter_size, m.details.quantization_level);
   return {
     id: m.name,
     reasoning: isReasoningModel(m.name),
@@ -164,9 +164,9 @@ export default function (pi: ExtensionAPI) {
         for (const m of newModels) {
           lines.push(ok(m.id));
           const ctxStr = m.contextLength != null ? m.contextLength.toLocaleString() : "?";
-          const sizeStr = m.estimatedSize ? bytesHuman(m.estimatedSize) : "?";
+          const sizeStr = m.estimatedSize ? `GPU: ~${bytesHuman(m.estimatedSize.gpu)} · CPU: ~${bytesHuman(m.estimatedSize.cpu)}` : "?";
           lines.push(
-            `       Params: ${m.parameterSize ?? "?"} · Quant: ${m.quantizationLevel ?? "?"} · Family: ${m.modelFamily ?? "?"} · Context: ${ctxStr} · VRAM: ~${sizeStr}`
+            `       Params: ${m.parameterSize ?? "?"} · Quant: ${m.quantizationLevel ?? "?"} · Family: ${m.modelFamily ?? "?"} · Context: ${ctxStr} · ${sizeStr}`
           );
         }
 
@@ -267,8 +267,8 @@ export default function (pi: ExtensionAPI) {
           .map(
             (m) => {
               const ctxStr = m.contextLength ?? "?";
-              const sizeStr = m.estimatedSize ? bytesHuman(m.estimatedSize) : "?";
-              return `  • ${m.id} (${m.parameterSize}, ${m.quantizationLevel}, ctx: ${ctxStr}, ~${sizeStr})`;
+              const sizeStr = m.estimatedSize ? `GPU: ~${bytesHuman(m.estimatedSize.gpu)}, CPU: ~${bytesHuman(m.estimatedSize.cpu)}` : "?";
+              return `  • ${m.id} (${m.parameterSize}, ${m.quantizationLevel}, ctx: ${ctxStr}, ${sizeStr})`;
             }
           )
           .join("\n");

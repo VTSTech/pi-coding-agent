@@ -295,7 +295,7 @@ export function padRight(s: string, n: number): string {
 // ============================================================================
 
 /**
- * Estimate VRAM usage (in bytes) from parameter size and quantization level.
+ * Estimate memory usage (in bytes) from parameter size and quantization level.
  *
  * Uses bits-per-parameter based on the quantization format:
  * - FP32/BF16/F16: 16 bits (full precision)
@@ -307,28 +307,33 @@ export function padRight(s: string, n: number): string {
  * - IQ variants (IQ3_XS, IQ4_XS, etc.): mapped to nearest Q equivalent
  * - Fallback: 5 bits
  *
- * Adds 10% overhead for KV cache and runtime allocations.
+ * Returns both GPU (VRAM) and CPU (RAM) estimates:
+ * - GPU: base size + 10% overhead (KV cache, runtime allocs — weights dominate)
+ * - CPU: base size + 30% overhead (mmap overhead, intermediate buffers,
+ *   layer activations, OS memory management)
  *
  * @param parameterSize - Human-readable parameter count (e.g., "7B", "1.5B", "350M")
  * @param quantizationLevel - Quantization format string (e.g., "Q4_K_M", "BF16")
- * @returns Estimated VRAM in bytes, or undefined if parameter size can't be parsed
+ * @returns Object with GPU and CPU estimates in bytes, or undefined if unparseable
  *
  * @example
  * ```typescript
- * estimateVram("7B", "Q4_K_M");       // ~3.5GB
- * estimateVram("1.2B", "Q8_0");      // ~1.3GB
- * estimateVram("350M", "BF16");      // ~0.7GB
+ * estimateMemory("7B", "Q4_K_M");    // { gpu: ~3.5GB, cpu: ~4.0GB }
+ * estimateMemory("1.2B", "Q8_0");    // { gpu: ~1.3GB, cpu: ~1.5GB }
+ * estimateMemory("350M", "BF16");    // { gpu: ~0.7GB, cpu: ~0.8GB }
  * ```
  */
-export function estimateVram(parameterSize: string, quantizationLevel: string): number | undefined {
+export function estimateMemory(parameterSize: string, quantizationLevel: string): { gpu: number; cpu: number } | undefined {
   const params = parseParamCount(parameterSize);
   if (params === undefined) return undefined;
 
   const bitsPerParam = bitsPerParamForQuant(quantizationLevel);
   // Base model size in bytes
   const modelBytes = (params * bitsPerParam) / 8;
-  // Add 10% overhead for KV cache, runtime allocations
-  return Math.ceil(modelBytes * 1.1);
+  return {
+    gpu: Math.ceil(modelBytes * 1.1),   // 10% overhead — GPU: weights dominate
+    cpu: Math.ceil(modelBytes * 1.3),   // 30% overhead — CPU: mmap, activations, fragmentation
+  };
 }
 
 /**

@@ -126,7 +126,7 @@ export interface PiModelEntry {
   parameterSize?: string;
   quantizationLevel?: string;
   contextLength?: number;
-  estimatedSize?: number;
+  estimatedSize?: { gpu: number; cpu: number };
   [key: string]: unknown;
 }
 
