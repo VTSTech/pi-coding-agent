@@ -13,10 +13,10 @@ pi install "npm:@vtstech/pi-security"
 ## Protection
 
 - **65 blocked commands** — system modification, privilege escalation, network attacks, package management, process control, shell escapes
-- **SSRF protection** — 27 blocked hostname patterns (loopback, RFC1918 private ranges, cloud metadata endpoints)
-- **Path validation** — prevents filesystem escape and access to critical system directories
+- **SSRF protection** — 29 blocked hostname patterns (full `127.0.0.0/8` loopback range, RFC1918 private ranges, cloud metadata endpoints, IPv4-mapped IPv6 `::ffff:127.0.0.1` and `::ffff:0.0.0.0`)
+- **Path validation** — prevents filesystem escape and access to critical system directories; symlinks are dereferenced via `fs.realpathSync()` to block `/tmp/evil → /etc/passwd` bypasses
 - **Shell injection detection** — regex patterns for command chaining, substitution, and redirection
-- **Audit logging** — JSON-lines audit log at `~/.pi/agent/audit.log`
+- **Audit logging** — JSON-lines audit log at `~/.pi/agent/audit.log` (path exported as `AUDIT_LOG_PATH` for cross-extension use)
 
 ## Links
 

@@ -9,9 +9,9 @@ This is an internal dependency — you don't need to install it directly. It's p
 | Module | Description |
 |--------|-------------|
 | `format` | Section headers, indicators (ok/fail/warn/info), numeric formatters (bytes, ms, percentages), string utilities |
-| `ollama` | Ollama base URL resolution, models.json I/O, model family detection, Ollama API helpers |
-| `security` | Command blocklist, SSRF patterns, path validation, URL validation, command sanitization, audit logging |
-| `types` | Custom error classes, type definitions (ToolSupportLevel, StepResultType, AuditEntry, etc.) |
+| `ollama` | Ollama base URL resolution, models.json I/O with TTL cache, model family detection, provider detection, Ollama API helpers |
+| `security` | Command blocklist (65), SSRF patterns (29), path validation with symlink dereference, URL validation, command sanitization, audit logging (`AUDIT_LOG_PATH` exported) |
+| `types` | Type definitions (ToolSupportLevel, AuditEntry, etc.) |
 
 ## Usage
 

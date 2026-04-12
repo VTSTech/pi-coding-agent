@@ -14,15 +14,17 @@ pi install "npm:@vtstech/pi-status"
 
 Automatically loaded — no commands needed. Displays a 2-line status bar at the bottom of the Pi interface.
 
-**Line 1:**
+**Line 1 (conf):**
 ```
-~/.pi/agent · main · qwen3:0.6b · medium · 5.6%/128k · CPU 9% · RAM 2.2G/15.1G · Resp 5m24s · temp:0.0
+qwen3.5:0.8b · ~/.pi/agent · medium · CPU 9%
 ```
 
-**Line 2:**
+**Line 2 (load):**
 ```
-⏱ bash (12s)
+qwen3.5:0.8b · M:33k · S:9.0%/128k · RAM 2.2G/15.1G · Resp 5m24s · temp:0.0 · max:16384
 ```
+
+CPU/RAM/Swap are only shown when using a local Ollama provider (not for cloud/remote).
 
 ## What's Displayed
 

@@ -50,6 +50,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Build script help text** (`scripts/build-packages.sh`)
   - Added `openrouter-sync` to the usage/argument list output, which was missing from the package enumeration.
 
+- **Removed dead barrel export from shared package.json** (`npm-packages/shared/package.json`)
+  - The `"."` export in the `exports` map pointed to `"./index.js"` — a barrel file that does not exist. No extension or import path references the barrel; all consumers use subpath imports (`@vtstech/pi-shared/format`, `@vtstech/pi-shared/ollama`, etc.).
+  - Removed the `"."` entry from the `exports` map. This also eliminates the confusing `"main": "index.js"` fallback that some Node.js resolution strategies would follow, which would also point to a nonexistent file.
+
+- **Documentation updates** (all READMEs)
+  - Root README: version badges and examples updated to 1.1.1; SSRF pattern count corrected from 28 to 29 (added `::ffff:0.0.0.0`); added symlink dereference to path validation description; added multi-dialect ReAct support and `/react-mode` toggle; removed stale HTML sanitization bullet (feature was removed); added native `fetch()` and dynamic Ollama URL mentions to model-test.
+  - `npm-packages/security/README.md`: SSRF pattern count corrected from 27 to 29; added `127.0.0.0/8` range, IPv4-mapped IPv6, symlink dereference, and `AUDIT_LOG_PATH` export mentions.
+  - `npm-packages/react-fallback/README.md`: added multi-dialect support (4 dialects), `/react-mode` config toggle, and disabled-by-default mention.
+  - `npm-packages/model-test/README.md`: added native `fetch()` communication, dynamic Ollama URL resolution, and stack-based JSON repair mentions.
+  - `npm-packages/shared/README.md`: updated module descriptions to reflect TTL cache, provider detection, symlink dereference, blocklist/SSRF counts, and removed stale "Custom error classes" from types module (removed in 1.1.0).
+  - `npm-packages/status/README.md`: fixed status bar example to match the current 2-line layout (Line 1: conf, Line 2: load).
+  - `npm-packages/ollama-sync/README.md`: added `qwen3` to the reasoning-capable models list.
+
 - **npm package sources synced with shared modules** (`npm-packages/shared/`)
   - `npm-packages/shared/ollama.ts` was behind the canonical `shared/ollama.ts` — missing the TTL-based `readModelsJson()`/`getOllamaBaseUrl()` cache, cache invalidation in `writeModelsJson()`, `fetchModelContextLength()`, `fetchContextLengthsBatched()`, `BUILTIN_PROVIDERS` registry, `ProviderInfo`/`detectProvider()`, `EXTENSION_VERSION`, and updated `isReasoningModel()` patterns.
   - `npm-packages/shared/security.ts` was behind the canonical `shared/security.ts` — missing the `127.` blocklist fix, `::ffff:0.0.0.0` entry, symlink resolution in `validatePath()`, `catch(e: unknown)` fix, and exported `AUDIT_LOG_PATH`.

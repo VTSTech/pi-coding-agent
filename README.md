@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Pi Version](https://img.shields.io/badge/Pi-v0.66%2B-green.svg)](https://github.com/badlogic/pi-mono)
 [![Pi Package](https://img.shields.io/badge/Install-pi%20install%20git-blue.svg)](#installation)
-[![Version](https://img.shields.io/badge/Version-v1.1.0-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-v1.1.1-orange.svg)](CHANGELOG.md)
 
 <p>
   <a href="https://github.com/VTSTech"><strong>VTSTech</strong></a> •
@@ -46,7 +46,7 @@ pi update
 
 Pin to a specific tag:
 ```bash
-pi install git:github.com/VTSTech/pi-coding-agent@v1.1.0
+pi install git:github.com/VTSTech/pi-coding-agent@v1.1.1
 ```
 
 ### Individual npm packages
@@ -95,7 +95,7 @@ This repo is a standard Pi package. The `package.json` contains a `pi` manifest 
 ```json
 {
   "name": "@vtstech/pi-coding-agent-extensions",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "keywords": ["pi-package"],
   "pi": {
     "extensions": ["./extensions"],
@@ -229,7 +229,7 @@ Sample output (cloud provider):
 ```
  [model-test-report]
 
-   ⚡ Pi Model Benchmark v1.1.0
+   ⚡ Pi Model Benchmark v1.1.1
    Written by VTSTech
    GitHub: https://github.com/VTSTech
    Website: www.vts-tech.org
@@ -334,10 +334,9 @@ Supports all 10 Pi API modes:
 Automatically loaded — no commands needed. Protects against:
 
 - **65 blocked commands** — system modification, privilege escalation, network attacks, package management, process control, shell escapes
-- **SSRF protection** — 28 blocked hostname patterns (loopback, RFC1918 private ranges, cloud metadata endpoints, IPv4-mapped IPv6 `::ffff:127.0.0.1`)
-- **Path validation** — prevents filesystem escape and access to critical system directories
+- **SSRF protection** — 29 blocked hostname patterns (full `127.0.0.0/8` loopback range, RFC1918 private ranges, cloud metadata endpoints, IPv4-mapped IPv6 `::ffff:127.0.0.1` and `::ffff:0.0.0.0`)
+- **Path validation** — prevents filesystem escape and access to critical system directories; symlinks are dereferenced via `fs.realpathSync()` to block `/tmp/evil → /etc/passwd` bypasses
 - **Shell injection detection** — regex patterns for command chaining, substitution, and redirection
-- **HTML sanitization** — strict pattern matching to prevent false positives on normal text containing angle brackets
 - **Audit logging** — JSON-lines audit log at `~/.pi/agent/audit.log` (path exported as `AUDIT_LOG_PATH` for cross-extension use)
 
 ### 🔄 ReAct Fallback (`react-fallback.ts`)
@@ -347,9 +346,10 @@ Automatically loaded — no commands needed. Protects against:
 Automatically loaded — no commands needed. When a model lacks native tool calling:
 
 - Parses `Thought:`, `Action:`, `Action Input:` patterns from model output
-- Multi-dialect support: classic ReAct (`Action:`), Function (`Function:`), Tool (`Tool:`), Call (`Call:`)
+- **Multi-dialect support**: classic ReAct (`Action:`), Function (`Function:`), Tool (`Tool:`), Call (`Call:`) — each with dynamically-built regex patterns
 - Multiple regex strategies including parenthetical style and loose matching
 - Bridges text-based tool calls into Pi's native tool execution pipeline
+- Disabled by default; toggle via `/react-mode` with persistent config across restarts
 
 ### 🔄 Ollama Sync (`ollama-sync.ts`)
 

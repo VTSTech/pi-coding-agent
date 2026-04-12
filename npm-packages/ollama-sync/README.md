@@ -25,7 +25,7 @@ pi install "npm:@vtstech/pi-ollama-sync"
 - Preserves existing provider config (apiKey, compat settings)
 - Defaults to `openai-completions` API mode
 - Sorts models by size (smallest first)
-- Auto-detects reasoning-capable models (deepseek-r1, qwq, o1, o3, think, reason)
+- Auto-detects reasoning-capable models (deepseek-r1, qwq, qwen3, o1, o3, think, reason)
 - Merges with existing per-model settings
 - Per-model metadata in sync report (parameter size, quantization level, model family)
 - Registered as both `/ollama-sync` slash command and `ollama_sync` tool

@@ -43,12 +43,13 @@ pi install "npm:@vtstech/pi-model-test"
 ## Features
 
 - Auto-detects Ollama vs cloud provider (OpenRouter, Anthropic, Google, OpenAI, Groq, DeepSeek, Mistral, xAI, Together, Fireworks, Cohere)
-- Automatic remote Ollama URL resolution
+- Uses native `fetch()` for all HTTP communication (no shell subprocess or curl dependency)
+- Automatic remote Ollama URL resolution (reads from `models.json` on every call — picks up config changes immediately)
 - Timeout resilience with auto-retry on empty responses
 - Rate limit delay between tests (configurable)
 - Thinking model fallback (retries with `think: true`)
 - Tool support cache (`~/.pi/agent/cache/tool_support.json`)
-- JSON repair for truncated output
+- JSON repair for truncated output (stack-based nesting-aware parser)
 - Tab-completion for model names
 
 ## Links

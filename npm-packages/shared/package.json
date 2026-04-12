@@ -3,7 +3,6 @@
   "version": "1.1.1",
   "description": "Shared utilities for Pi Coding Agent extensions",
   "exports": {
-    ".": "./index.js",
     "./format": "./format.js",
     "./ollama": "./ollama.js",
     "./security": "./security.js",
