@@ -35,6 +35,7 @@ export default function (pi: ExtensionAPI) {
   let toolTimerInterval: ReturnType<typeof setInterval> | null = null;
   let currentCtx: any = null;
   let ctxUi: any = null;
+  let ctxTheme: any = null;
   let prevCpuInfo = getCpuSnapshot();
   let lastPayload: Record<string, any> | null = null;
   // Cached metrics
@@ -187,39 +188,42 @@ export default function (pi: ExtensionAPI) {
    */
   function flushStatus() {
     if (!ctxUi) return;
+    const theme = ctxTheme;
+    const dim = (s: string) => theme?.fg?.("dim", s) ?? s;
+    const green = (s: string) => theme?.fg?.("success", s) ?? s;
 
     // CPU (local only)
-    ctxUi.setStatus("status-cpu", isLocalProvider ? `CPU ${cpuUsage.toFixed(0)}%` : undefined);
+    ctxUi.setStatus("status-cpu", isLocalProvider ? `${dim("CPU")} ${green(cpuUsage.toFixed(0) + "%")}` : undefined);
 
     // RAM (local only)
-    ctxUi.setStatus("status-ram", isLocalProvider ? `RAM ${fmtBytes(memUsed)}/${fmtBytes(memTotal)}` : undefined);
+    ctxUi.setStatus("status-ram", isLocalProvider ? `${dim("RAM")} ${green(fmtBytes(memUsed) + "/" + fmtBytes(memTotal))}` : undefined);
 
     // Swap (local only, only when swap is in use)
     ctxUi.setStatus("status-swap",
       (isLocalProvider && hasSwap && swapUsed > 0)
-        ? `Swap ${fmtBytes(swapUsed)}/${fmtBytes(swapTotal)}`
+        ? `${dim("Swap")} ${green(fmtBytes(swapUsed) + "/" + fmtBytes(swapTotal))}`
         : undefined,
     );
 
-    // Native model context length (local only)
+    // Native model context length (local & remote Ollama)
     ctxUi.setStatus("status-native-ctx",
-      (isLocalProvider && footerNativeCtx) ? `M:${footerNativeCtx}` : undefined,
+      footerNativeCtx ? `${dim("M:")}${green(footerNativeCtx)}` : undefined,
     );
 
     // Thinking level
     ctxUi.setStatus("status-thinking",
-      (footerThinking && footerThinking !== "off") ? footerThinking : undefined,
+      (footerThinking && footerThinking !== "off") ? green(footerThinking) : undefined,
     );
 
     // Response time
     ctxUi.setStatus("status-resp",
-      lastResponseTime !== null ? `Resp ${fmtDur(lastResponseTime)}` : undefined,
+      lastResponseTime !== null ? `${dim("Resp")} ${green(fmtDur(lastResponseTime))}` : undefined,
     );
 
     // Active parameters from last payload
     if (lastPayload) {
       const params = extractParams(lastPayload);
-      ctxUi.setStatus("status-params", params.length > 0 ? params.join(" ") : undefined);
+      ctxUi.setStatus("status-params", params.length > 0 ? dim(params.join(" ")) : undefined);
     } else {
       ctxUi.setStatus("status-params", undefined);
     }
@@ -227,9 +231,9 @@ export default function (pi: ExtensionAPI) {
     // Security: flash indicator (3s window) + persistent counter
     const now = Date.now();
     if (securityFlashTool && now < securityFlashUntil) {
-      ctxUi.setStatus("status-sec", `SEC:${blockedCount} (blocked: ${securityFlashTool})`);
+      ctxUi.setStatus("status-sec", `${dim("SEC:")}${green(String(blockedCount))} ${dim("(blocked: " + securityFlashTool + ")")}`);
     } else if (blockedCount > 0) {
-      ctxUi.setStatus("status-sec", `SEC:${blockedCount}`);
+      ctxUi.setStatus("status-sec", `${dim("SEC:")}${green(String(blockedCount))}`);
     } else {
       ctxUi.setStatus("status-sec", undefined);
     }
@@ -237,7 +241,7 @@ export default function (pi: ExtensionAPI) {
     // Active tool timing (updated by a fast 1s interval while tool is running)
     if (activeTool && activeToolStart > 0) {
       const elapsed = performance.now() - activeToolStart;
-      ctxUi.setStatus("status-tool", `> ${activeTool}: ${fmtDur(elapsed)}`);
+      ctxUi.setStatus("status-tool", `${green(">")} ${dim(activeTool + ":")} ${green(fmtDur(elapsed))}`);
     } else {
       ctxUi.setStatus("status-tool", undefined);
     }
@@ -265,7 +269,7 @@ export default function (pi: ExtensionAPI) {
       footerModel = currentCtx.model?.id || "";
       footerThinking = pi.getThinkingLevel?.() ?? "";
       const modelId = currentCtx.model?.id || "";
-      if (modelId && isLocalProvider) {
+      if (modelId) {
         getNativeModelCtx(modelId);
       }
     }
@@ -278,6 +282,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     currentCtx = ctx;
     ctxUi = ctx.ui;
+    ctxTheme = ctx.ui.theme;
     prevCpuInfo = getCpuSnapshot();
     updateMetrics();
 
