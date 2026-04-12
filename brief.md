@@ -1,6 +1,6 @@
 # Codebase Intelligence Brief: Pi Coding Agent Extensions (VTSTech)
 
-> Generated: 04-12-2026 | Commit: ad5bdab | Version: 1.1.2-dev
+> Generated: 04-13-2026 | Auditor: Super-Z (GLM-5) | Commit: 659e405 | Version: 1.1.2
 
 ---
 
@@ -13,7 +13,7 @@
 | **Entry Point** | Pi auto-discovers `extensions/*.ts` and `themes/*.json` from the `pi` manifest in root `package.json` |
 | **Build/Run** | `./scripts/build-packages.sh` (esbuild TS→ESM + npm pack), `./scripts/publish-packages.sh` (npm publish); runtime: `pi install git:github.com/VTSTech/pi-coding-agent` |
 | **Test Command** | No automated test suite. Testing is manual via Pi's `/model-test`, `/diag`, and `/ollama-sync` commands |
-| **Total Source** | ~7,200 lines across 12 TypeScript files + 1 JSON theme |
+| **Total Source** | ~7,725 lines across 12 TypeScript files + 1 JSON theme |
 
 ---
 
@@ -60,15 +60,15 @@ dist/             → npm pack tarball output (gitignored) — for offline testi
 | `shared/security.ts` | 588 | Command blocklist (65), SSRF (29 patterns), path validation, audit log | Imported by 3 extensions. `validatePath()` with `fs.realpathSync()` for symlink bypass prevention. `AUDIT_LOG_PATH` exported. |
 | `extensions/status.ts` | 535 | 2-line status bar (system metrics, model info, generation params) | Session-scoped SEC counter, native fetch for Ollama `/api/ps`, `fmtTk()` for token display. 11 event listeners. |
 | `extensions/diag.ts` | 534 | Full system diagnostic suite | `self_diagnostic` tool registration, 9 check categories, imports `AUDIT_LOG_PATH` from shared |
-| `shared/format.ts` | 384 | Formatting utilities (ok/fail/warn/info, bytes, ms, percentages) | Imported by 7/8 extensions. `estimateVram()`, `pct()`, `fmtBytes()`, `sanitizeForReport()` |
+| `shared/format.ts` | 400 | Formatting utilities (ok/fail/warn/info, bytes, ms, percentages) | Imported by 7/8 extensions. `estimateMemory()` with dual GPU/CPU estimates, `pct()`, `fmtBytes()`, `sanitizeForReport()` |
 | `extensions/security.ts` | 307 | Security tool registrations for Pi's tool execution hooks | Wraps shared security functions into `checkBashToolInput`, `checkFileToolInput`, `checkHttpToolInput`, `checkInjectionPatterns`. Intercepts `tool_call` and `tool_result` events. |
-| `extensions/ollama-sync.ts` | 293 | Ollama model sync to models.json | `/ollama-sync` command + `ollama_sync` tool, URL write-back, VRAM estimation |
+| `extensions/ollama-sync.ts` | 293 | Ollama model sync to models.json | `/ollama-sync` command + `ollama_sync` tool, URL write-back, context-aware memory estimation |
 | `extensions/openrouter-sync.ts` | 282 | OpenRouter model addition to models.json | `/openrouter-sync` + `/or-sync` commands, URL query param stripping, provider creation |
 | `shared/types.ts` | 74 | TypeScript type definitions | `ToolSupportLevel`, `SecurityCheckResult`, `AuditEntry`, `ToolSupportCacheEntry` |
 | `themes/matrix.json` | — | Matrix-inspired TUI theme | Neon green on black; 12 custom color variables, full Pi theme schema |
 | `shared/package.json` | — | Shared package manifest (canonical) | Subpath exports only (no barrel), `"type": "module"`. Synced to npm-packages by build script. |
-| `scripts/build-packages.sh` | ~270 | Build pipeline | esbuild TS→ESM, preflight checks, rewrites `../shared/*` → `@vtstech/pi-shared/*`, syncs to npm-packages/, packs tarballs to dist/ |
-| `scripts/publish-packages.sh` | ~134 | npm publisher | Publishes in dependency order (shared first), supports `--dry-run` and `--tag` |
+| `scripts/build-packages.sh` | ~302 | Build pipeline | esbuild TS→ESM, preflight checks, rewrites `../shared/*` → `@vtstech/pi-shared/*`, syncs to npm-packages/, packs tarballs to dist/ |
+| `scripts/publish-packages.sh` | ~133 | npm publisher | Publishes in dependency order (shared first), supports `--dry-run` and `--tag` |
 
 ---
 
@@ -88,7 +88,7 @@ extensions/openrouter-sync.ts ──→ shared/ollama.ts + shared/format.ts
 
 shared/ollama.ts ←── imported by ALL 8 extensions (central hub)
 shared/format.ts ←── imported by 7 extensions
-shared/security.ts ←── imported by 3 extensions (diag, security ext, and indirectly via security.ts)
+shared/security.ts ←── imported by 3 extensions (diag, security ext)
 shared/types.ts ←── imported by 1 extension (model-test)
 ```
 
@@ -126,7 +126,8 @@ At npm publish time, relative `../shared/*` imports are rewritten to `@vtstech/p
 | Security model | Blocklist-based: 65 blocked commands, 29 SSRF hostname patterns, path validation, injection detection. All enforced via shared security module. |
 | Config persistence | `~/.pi/agent/settings.json` for Pi settings, `~/.pi/agent/models.json` for model config, `~/.pi/agent/react-mode.json` for ReAct toggle |
 | HTTP client | Native `fetch()` exclusively — no curl subprocesses (migrated in 1.1.1 to eliminate shell injection vectors) |
-| Versioning strategy | GitHub tracks `1.1.2-dev` (one ahead of npm's `1.1.1`). Drop `-dev` suffix in 4 places before publish. |
+| Memory estimation | `estimateMemory()` returns dual `{ gpu, cpu }` estimates. GPU: 10% overhead. CPU: context-aware `1.5 + (contextLength / 100_000)` calibrated against real Colab data. |
+| Versioning strategy | GitHub and npm track the same stable version. Dev builds use `-dev` suffix dropped in 4 places before publish. |
 
 ---
 
@@ -154,6 +155,8 @@ At npm publish time, relative `../shared/*` imports are rewritten to `@vtstech/p
 
 - **`status.ts` git branch detection** uses `execSync("git rev-parse --abbrev-ref HEAD")` — a raw shell call, inconsistent with the fetch() migration pattern used elsewhere.
 
+- **`PiModelEntry.estimatedSize` is now `{ gpu: number; cpu: number }`** (changed in 1.1.2 from plain `number`). Any code reading `estimatedSize` must access `.gpu` and `.cpu` properties. The `ollama-sync` display shows both values.
+
 ---
 
 ## Active Decisions
@@ -171,6 +174,7 @@ At npm publish time, relative `../shared/*` imports are rewritten to `@vtstech/p
 | esbuild dependency | Pinned devDependency with lockfile | Reproducible builds, no implicit version resolution, works offline |
 | Drift prevention | Build preflight guard + no .ts in npm-packages/shared | Automated detection prevents shared source drift from recurring |
 | Pre-publish testing | npm pack tarballs in dist/ | Offline installable packages for testing without publishing to npm |
+| Memory estimation | Context-aware CPU formula calibrated to Colab | Flat multipliers are wrong for CPU inference where KV cache dominates; `1.5 + (ctx/100k)` matches real-world observations |
 
 ---
 
@@ -182,7 +186,7 @@ At npm publish time, relative `../shared/*` imports are rewritten to `@vtstech/p
 - **No `.npmignore`** — published packages include everything in their directory; build artifacts, READMEs all get published.
 - **No error class hierarchy** — removed in 1.1.0 (was dead code), but extensions throw raw strings or use Pi's error handling. Consider typed errors for better diagnostics.
 - **Duplicated code in model-test.ts** — inline ReAct parser fallback (~50 lines) duplicates `react-fallback.ts`. Also has Ollama-specific + provider-generic variants of nearly every test function (reasoning, tool usage, connectivity), leading to significant duplication.
-- **`CHANGELOG.md` references `sanitizeForReport()` and HTML sanitization** — this function lives in `shared/format.ts`. The changelog was corrected to reference the correct file.
+- **`status.ts` git branch detection** uses `execSync("git rev-parse --abbrev-ref HEAD")` — a raw shell call, inconsistent with the fetch() migration pattern used elsewhere.
 
 ---
 
