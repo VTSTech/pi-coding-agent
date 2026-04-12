@@ -1,17 +1,19 @@
-// .build-npm/status/status.temp.ts
 import os from "node:os";
-import { execSync as gitExecSync } from "node:child_process";
+import * as fs from "node:fs";
+import { exec } from "node:child_process";
 import { getOllamaBaseUrl, fetchModelContextLength, readModelsJson } from "@vtstech/pi-shared/ollama";
 import { fmtBytes, fmtDur } from "@vtstech/pi-shared/format";
+const STATUS_UPDATE_INTERVAL_MS = 5e3;
+const TOOL_TIMER_INTERVAL_MS = 1e3;
 function status_temp_default(pi) {
   let lastResponseTime = null;
   let agentStartTime = null;
   let updateInterval = null;
+  let toolTimerInterval = null;
   let currentCtx = null;
   let ctxUi = null;
   let prevCpuInfo = getCpuSnapshot();
   let lastPayload = null;
-  let tuiRef = null;
   let gitBranchCache = "";
   let cpuUsage = 0;
   let memUsed = 0;
@@ -65,8 +67,9 @@ function status_temp_default(pi) {
     return { used, total };
   }
   function getSwap() {
+    if (process.platform !== "linux") return null;
     try {
-      const out = gitExecSync("cat /proc/meminfo", { encoding: "utf-8", timeout: 3e3 });
+      const out = fs.readFileSync("/proc/meminfo", "utf-8");
       const swapTotal2 = Number(out.match(/SwapTotal:\s+(\d+)/)?.[1]) * 1024;
       const swapFree = Number(out.match(/SwapFree:\s+(\d+)/)?.[1]) * 1024;
       if (swapTotal2 > 0) return { used: swapTotal2 - swapFree, total: swapTotal2 };
@@ -159,25 +162,41 @@ function status_temp_default(pi) {
     if (n >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
     return String(n);
   }
-  function getPwd() {
-    const cwd = process.cwd();
-    if (cwd.startsWith(os.homedir())) return "~" + cwd.slice(os.homedir().length);
-    return cwd;
-  }
-  function getGitBranch() {
-    if (gitBranchCache) return gitBranchCache;
-    try {
-      const branch = gitExecSync("git rev-parse --abbrev-ref HEAD 2>/dev/null", {
-        encoding: "utf-8",
-        timeout: 3e3
-      }).trim();
-      if (branch) gitBranchCache = branch;
-    } catch {
+  function flushStatus() {
+    if (!ctxUi) return;
+    ctxUi.setStatus("status-cpu", isLocalProvider ? `CPU ${cpuUsage.toFixed(0)}%` : void 0);
+    ctxUi.setStatus("status-ram", isLocalProvider ? `RAM ${fmtBytes(memUsed)}/${fmtBytes(memTotal)}` : void 0);
+    ctxUi.setStatus("status-swap", isLocalProvider && hasSwap && swapUsed > 0 ? `Swap ${fmtBytes(swapUsed)}/${fmtBytes(swapTotal)}` : void 0);
+    ctxUi.setStatus("status-loaded", ollamaLoaded ? `load:${ollamaLoaded}` : void 0);
+    ctxUi.setStatus("status-native-ctx", isLocalProvider && footerNativeCtx ? `M:${footerNativeCtx}` : void 0);
+    ctxUi.setStatus("status-ctx", footerCtxPct ? `S:${footerCtxPct}` : void 0);
+    ctxUi.setStatus("status-thinking", footerThinking && footerThinking !== "off" ? footerThinking : void 0);
+    if (lastUpstream > 0 || lastDownstream > 0) {
+      ctxUi.setStatus("status-tokens", `${fmtTk(lastUpstream)} in / ${fmtTk(lastDownstream)} out`);
+    } else {
+      ctxUi.setStatus("status-tokens", void 0);
     }
-    return gitBranchCache;
-  }
-  function incrementBlockedCount() {
-    blockedCount++;
+    ctxUi.setStatus("status-resp", lastResponseTime !== null ? `Resp ${fmtDur(lastResponseTime)}` : void 0);
+    if (lastPayload) {
+      const params = extractParams(lastPayload);
+      ctxUi.setStatus("status-params", params.length > 0 ? params.join(" ") : void 0);
+    } else {
+      ctxUi.setStatus("status-params", void 0);
+    }
+    const now = Date.now();
+    if (securityFlashTool && now < securityFlashUntil) {
+      ctxUi.setStatus("status-sec", `SEC:${blockedCount} (blocked: ${securityFlashTool})`);
+    } else if (blockedCount > 0) {
+      ctxUi.setStatus("status-sec", `SEC:${blockedCount}`);
+    } else {
+      ctxUi.setStatus("status-sec", void 0);
+    }
+    if (activeTool && activeToolStart > 0) {
+      const elapsed = performance.now() - activeToolStart;
+      ctxUi.setStatus("status-tool", `> ${activeTool}: ${fmtDur(elapsed)}`);
+    } else {
+      ctxUi.setStatus("status-tool", void 0);
+    }
   }
   function updateMetrics() {
     cpuUsage = getCpuUsage();
@@ -210,107 +229,46 @@ function status_temp_default(pi) {
         getNativeModelCtx(modelId);
       }
     }
+    flushStatus();
+  }
+  function startToolTimer() {
+    if (toolTimerInterval) return;
+    toolTimerInterval = setInterval(flushStatus, TOOL_TIMER_INTERVAL_MS);
+  }
+  function stopToolTimer() {
+    if (toolTimerInterval) {
+      clearInterval(toolTimerInterval);
+      toolTimerInterval = null;
+    }
   }
   pi.on("session_start", async (_event, ctx) => {
     currentCtx = ctx;
     ctxUi = ctx.ui;
     prevCpuInfo = getCpuSnapshot();
     updateMetrics();
-    ctx.ui.setFooter((tui, theme, footerData) => {
-      tuiRef = tui;
-      const dim = (s) => theme?.fg?.("dim", s) ?? s;
-      const red = (s) => theme?.fg?.("error", s) ?? s;
-      const yellow = (s) => theme?.fg?.("yellow", s) ?? s;
-      const sep = dim(" \xB7 ");
-      const truncateLine = (line, maxW) => {
-        const ellipsis = dim("...");
-        const visible = line.replace(/\x1b\[[0-9;]*m/g, "");
-        if (visible.length > maxW) {
-          let vis = 0, cut = 0;
-          for (let i = 0; i < line.length && vis < maxW - 3; i++) {
-            if (line[i] === "\x1B") {
-              while (i < line.length && line[i] !== "m") i++;
-            } else {
-              vis++;
-            }
-            cut = i + 1;
-          }
-          return line.slice(0, cut) + ellipsis;
-        }
-        return line;
-      };
-      return {
-        render(width) {
-          const lines = [];
-          let branch = "";
-          try {
-            branch = footerData?.getGitBranch?.() || "";
-          } catch {
-          }
-          if (!branch) branch = getGitBranch();
-          const line1Parts = [];
-          if (footerModel) line1Parts.push(`conf:${footerModel}`);
-          line1Parts.push(getPwd());
-          if (footerThinking && footerThinking !== "off") line1Parts.push(dim(footerThinking));
-          if (isLocalProvider) {
-            line1Parts.push(dim(`CPU ${cpuUsage.toFixed(0)}%`));
-          }
-          let line1 = truncateLine(line1Parts.join(sep), width);
-          lines.push(line1);
-          const line2Parts = [];
-          if (ollamaLoaded) line2Parts.push(`load:${ollamaLoaded}`);
-          if (footerNativeCtx) line2Parts.push(`M:${footerNativeCtx}`);
-          if (footerCtxPct) line2Parts.push(`S:${footerCtxPct}`);
-          if (isLocalProvider) {
-            line2Parts.push(`RAM ${fmtBytes(memUsed)}/${fmtBytes(memTotal)}`);
-            if (hasSwap && swapUsed > 0) {
-              line2Parts.push(`Swap ${fmtBytes(swapUsed)}/${fmtBytes(swapTotal)}`);
-            }
-          }
-          if (lastUpstream > 0 || lastDownstream > 0) {
-            line2Parts.push(dim(`\u2191${fmtTk(lastUpstream)} \u2193${fmtTk(lastDownstream)}`));
-          }
-          if (lastResponseTime !== null) line2Parts.push(`Resp ${fmtDur(lastResponseTime)}`);
-          if (lastPayload) {
-            const params = extractParams(lastPayload);
-            if (params.length > 0) line2Parts.push(...params.map((p) => dim(p)));
-          }
-          const now = Date.now();
-          if (securityFlashTool && now < securityFlashUntil) {
-            line2Parts.push(red(`BLOCKED:${securityFlashTool}`));
-          }
-          if (blockedCount > 0) {
-            line2Parts.push(red(`SEC:${blockedCount}`));
-          }
-          let line2 = truncateLine(line2Parts.join(sep), width);
-          if (line2) lines.push(line2);
-          if (activeTool && activeToolStart > 0) {
-            const elapsed = performance.now() - activeToolStart;
-            lines.push(`${yellow("\u23F3")} ${activeTool}: ${fmtDur(elapsed)}`);
-          }
-          return lines;
-        },
-        invalidate() {
-        },
-        dispose() {
-        }
-      };
-    });
     if (updateInterval) clearInterval(updateInterval);
-    updateInterval = setInterval(() => {
-      updateMetrics();
-      if (tuiRef) tuiRef.requestRender();
-    }, 3e3);
+    updateInterval = setInterval(updateMetrics, STATUS_UPDATE_INTERVAL_MS);
   });
-  pi.on("session_shutdown", async () => {
-    if (updateInterval) clearInterval(updateInterval);
-    updateInterval = null;
-    tuiRef = null;
-    if (ctxUi) {
-      ctxUi.setFooter(void 0);
-      ctxUi = null;
-    }
+  pi.on("session_shutdown", async (_event, ctx) => {
+    if (updateInterval) { clearInterval(updateInterval); updateInterval = null; }
+    if (toolTimerInterval) { clearInterval(toolTimerInterval); toolTimerInterval = null; }
+    ctxUi = null;
     currentCtx = null;
+    const ui = ctx?.ui;
+    if (ui) {
+      ui.setStatus("status-cpu", void 0);
+      ui.setStatus("status-ram", void 0);
+      ui.setStatus("status-swap", void 0);
+      ui.setStatus("status-loaded", void 0);
+      ui.setStatus("status-native-ctx", void 0);
+      ui.setStatus("status-ctx", void 0);
+      ui.setStatus("status-thinking", void 0);
+      ui.setStatus("status-tokens", void 0);
+      ui.setStatus("status-resp", void 0);
+      ui.setStatus("status-params", void 0);
+      ui.setStatus("status-sec", void 0);
+      ui.setStatus("status-tool", void 0);
+    }
     securityFlashTool = "";
     securityFlashUntil = 0;
     activeTool = "";
@@ -318,21 +276,22 @@ function status_temp_default(pi) {
     blockedCount = 0;
     lastUpstream = 0;
     lastDownstream = 0;
+    lastResponseTime = null;
+    lastPayload = null;
+    gitBranchCache = "";
   });
   pi.on("before_provider_request", (event) => {
     lastPayload = event.payload;
   });
   function captureUsage(event) {
     if (event?.message?.role !== "assistant") return;
-    const usage = event?.message?.usage ?? // normalised Pi usage
-    event?.usage ?? // alternative path
-    null;
+    const usage = event?.message?.usage ?? event?.usage ?? null;
     if (!usage) return;
     const inp = usage.input ?? usage.promptTokens ?? usage.prompt_tokens;
     const out = usage.output ?? usage.completionTokens ?? usage.completion_tokens;
     if (inp != null) lastUpstream = inp;
     if (out != null) lastDownstream = out;
-    if (tuiRef) tuiRef.requestRender();
+    flushStatus();
   }
   pi.on("message_end", captureUsage);
   pi.on("turn_end", captureUsage);
@@ -348,8 +307,8 @@ function status_temp_default(pi) {
     }
     activeTool = "";
     activeToolStart = 0;
+    stopToolTimer();
     updateMetrics();
-    if (tuiRef) tuiRef.requestRender();
   });
   pi.on("tool_call", (event) => {
     if (!event) return;
@@ -357,20 +316,21 @@ function status_temp_default(pi) {
     if (isBlocked) {
       securityFlashTool = event.tool ?? event.name ?? "unknown";
       securityFlashUntil = Date.now() + 3e3;
-      incrementBlockedCount();
-      if (tuiRef) tuiRef.requestRender();
+      blockedCount++;
+      flushStatus();
     }
   });
   pi.on("tool_execution_start", (event) => {
     if (!event) return;
     activeTool = event.tool ?? event.name ?? "tool";
     activeToolStart = performance.now();
-    if (tuiRef) tuiRef.requestRender();
+    startToolTimer();
   });
   pi.on("tool_execution_end", () => {
     activeTool = "";
     activeToolStart = 0;
-    if (tuiRef) tuiRef.requestRender();
+    stopToolTimer();
+    flushStatus();
   });
 }
 export {
