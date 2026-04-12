@@ -83,6 +83,107 @@ function mergeModels(
   });
 }
 
+// ── Shared sync result type ───────────────────────────────────────────────
+
+interface SyncResult {
+  ollamaBaseUrl: string;
+  newModels: PiModelEntry[];
+  added: PiModelEntry[];
+  removed: string[];
+  error?: string;
+}
+
+// ── Core sync logic ─────────────────────────────────────────────────────────
+
+/**
+ * Perform the full Ollama sync pipeline:
+ *  1. Read models.json
+ *  2. Get provider config
+ *  3. Resolve URL
+ *  4. Fetch Ollama models
+ *  5. Sort by size
+ *  6. Fetch context lengths batched
+ *  7. Build model entries
+ *  8. Diff against old entries
+ *  9. Merge with existing
+ * 10. Write to models.json
+ *
+ * Returns a structured SyncResult for the caller to format as needed.
+ */
+async function performSync(overrideUrl?: string): Promise<SyncResult> {
+  const existing = readModelsJson();
+  const config = getProviderConfig(existing);
+
+  // URL priority: CLI arg > models.json baseUrl > env var / localhost
+  const ollamaBaseUrl = overrideUrl
+    ? overrideUrl.replace(/\/v1$/, "").replace(/\/+$/, "")
+    : config.baseUrl?.replace(/\/v1$/, "") ?? getOllamaBaseUrl();
+
+  try {
+    const models = await fetchOllamaModels(ollamaBaseUrl);
+
+    if (models.length === 0) {
+      return {
+        ollamaBaseUrl,
+        newModels: [],
+        added: [],
+        removed: [],
+        error: "No models found in Ollama",
+      };
+    }
+
+    // Sort by size ascending
+    const sorted = [...models].sort((a, b) => a.size - b.size);
+
+    // Fetch context lengths in batches (3 concurrent to avoid overwhelming tunnels)
+    const contextMap = await fetchContextLengthsBatched(
+      ollamaBaseUrl,
+      sorted.map((m) => m.name)
+    );
+
+    // Build model entries with metadata
+    const newModels = sorted.map((m) =>
+      buildModelEntry(m, contextMap.get(m.name))
+    );
+
+    // Diff against old entries
+    const oldIds = new Set(
+      existing.providers["ollama"]?.models?.map((m) => m.id) ?? []
+    );
+    const added = newModels.filter((m) => !oldIds.has(m.id));
+    const removed = [...oldIds].filter((id) => !newModels.some((m) => m.id === id));
+
+    // Merge preserving extra user fields
+    const mergedModels = mergeModels(
+      newModels,
+      existing.providers["ollama"]?.models ?? []
+    );
+
+    // Write back — use the actual URL we synced from
+    existing.providers["ollama"] = {
+      ...config,
+      baseUrl: ollamaBaseUrl + "/v1",
+      models: mergedModels,
+    };
+    writeModelsJson(existing);
+
+    return {
+      ollamaBaseUrl,
+      newModels,
+      added,
+      removed,
+    };
+  } catch (err: any) {
+    return {
+      ollamaBaseUrl,
+      newModels: [],
+      added: [],
+      removed: [],
+      error: err.message,
+    };
+  }
+}
+
 // ── Extension ─────────────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
@@ -102,57 +203,15 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.setStatus("ollama-sync", "Fetching models from Ollama...");
 
       try {
-        const existing = readModelsJson();
-        const config = getProviderConfig(existing);
+        const result = await performSync(overrideUrl);
 
-        // URL priority: CLI arg > models.json baseUrl > env var / localhost
-        const ollamaBaseUrl = overrideUrl
-          ? overrideUrl.replace(/\/v1$/, "").replace(/\/+$/, "")
-          : config.baseUrl?.replace(/\/v1$/, "") ?? getOllamaBaseUrl();
-
-        const models = await fetchOllamaModels(ollamaBaseUrl);
-
-        if (models.length === 0) {
-          ctx.ui.notify("No models found in Ollama", "info");
+        if (result.error) {
+          ctx.ui.notify(result.error, result.newModels.length === 0 ? "info" : "error");
           ctx.ui.setStatus("ollama-sync", undefined);
           return;
         }
 
-        // Sort by size ascending
-        const sorted = [...models].sort((a, b) => a.size - b.size);
-
-        // Fetch context lengths in batches (3 concurrent to avoid overwhelming tunnels)
-        ctx.ui.setStatus("ollama-sync", "Fetching model details...");
-        const contextMap = await fetchContextLengthsBatched(
-          ollamaBaseUrl,
-          sorted.map((m) => m.name)
-        );
-
-        // Build model entries with metadata
-        const newModels = sorted.map((m) =>
-          buildModelEntry(m, contextMap.get(m.name))
-        );
-
-        // Diff against old entries
-        const oldIds = new Set(
-          existing.providers["ollama"]?.models?.map((m) => m.id) ?? []
-        );
-        const added = newModels.filter((m) => !oldIds.has(m.id));
-        const removed = [...oldIds].filter((id) => !newModels.some((m) => m.id === id));
-
-        // Merge preserving extra user fields
-        const mergedModels = mergeModels(
-          newModels,
-          existing.providers["ollama"]?.models ?? []
-        );
-
-        // Write back — use the actual URL we synced from
-        existing.providers["ollama"] = {
-          ...config,
-          baseUrl: ollamaBaseUrl + "/v1",
-          models: mergedModels,
-        };
-        writeModelsJson(existing);
+        const { ollamaBaseUrl, newModels, added, removed } = result;
 
         // ── Build enhanced report ─────────────────────────────────────────
         const lines: string[] = [""];
@@ -230,64 +289,38 @@ export default function (pi: ExtensionAPI) {
     } as any,
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       const overrideUrl = (params as any)?.url as string | undefined;
-      const existing = readModelsJson();
-      const config = getProviderConfig(existing);
-      const ollamaBaseUrl = overrideUrl
-        ? overrideUrl.replace(/\/v1$/, "").replace(/\/+$/, "")
-        : config.baseUrl?.replace(/\/v1$/, "") ?? getOllamaBaseUrl();
 
-      try {
-        const models = await fetchOllamaModels(ollamaBaseUrl);
-        const sorted = [...models].sort((a, b) => a.size - b.size);
+      const result = await performSync(overrideUrl);
 
-        // Fetch context lengths in batches
-        const contextMap = await fetchContextLengthsBatched(
-          ollamaBaseUrl,
-          sorted.map((m) => m.name)
-        );
-
-        const newModels = sorted.map((m) =>
-          buildModelEntry(m, contextMap.get(m.name))
-        );
-
-        const mergedModels = mergeModels(
-          newModels,
-          existing.providers["ollama"]?.models ?? []
-        );
-
-        existing.providers["ollama"] = {
-          ...config,
-          baseUrl: ollamaBaseUrl + "/v1",
-          models: mergedModels,
-        };
-        writeModelsJson(existing);
-
-        // Build tool result with per-model metadata
-        const modelDetails = newModels
-          .map(
-            (m) => {
-              const ctxStr = m.contextLength ?? "?";
-              const sizeStr = m.estimatedSize ? `GPU: ~${bytesHuman(m.estimatedSize.gpu)}, CPU: ~${bytesHuman(m.estimatedSize.cpu)}` : "?";
-              return `  • ${m.id} (${m.parameterSize}, ${m.quantizationLevel}, ctx: ${ctxStr}, ${sizeStr})`;
-            }
-          )
-          .join("\n");
-
+      if (result.error) {
         return {
-          content: [
-            {
-              type: "text",
-              text: `${BRANDING}\n\nSynced ${newModels.length} models from ${ollamaBaseUrl} to ${MODELS_FILE}. Run /reload to pick up changes.\n\n${modelDetails}`,
-            },
-          ],
-          details: { models: newModels },
-        };
-      } catch (err: any) {
-        return {
-          content: [{ type: "text", text: `Error: ${err.message}` }],
+          content: [{ type: "text", text: `Error: ${result.error}` }],
           details: {},
         };
       }
+
+      const { ollamaBaseUrl, newModels } = result;
+
+      // Build tool result with per-model metadata
+      const modelDetails = newModels
+        .map(
+          (m) => {
+            const ctxStr = m.contextLength ?? "?";
+            const sizeStr = m.estimatedSize ? `GPU: ~${bytesHuman(m.estimatedSize.gpu)}, CPU: ~${bytesHuman(m.estimatedSize.cpu)}` : "?";
+            return `  • ${m.id} (${m.parameterSize}, ${m.quantizationLevel}, ctx: ${ctxStr}, ${sizeStr})`;
+          }
+        )
+        .join("\n");
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `${BRANDING}\n\nSynced ${newModels.length} models from ${ollamaBaseUrl} to ${MODELS_FILE}. Run /reload to pick up changes.\n\n${modelDetails}`,
+          },
+        ],
+        details: { models: newModels },
+      };
     },
   });
 }

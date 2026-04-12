@@ -1,7 +1,4 @@
 import type { ExtensionAPI, AgentToolResult } from "@mariozechner/pi-coding-agent";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 
 // ── Shared imports ───────────────────────────────────────────────────────
 import {
@@ -10,121 +7,30 @@ import {
 } from "../shared/format";
 import { getOllamaBaseUrl, MODELS_JSON_PATH, detectModelFamily, readModelsJson, writeModelsJson, BUILTIN_PROVIDERS, fetchModelContextLength, EXTENSION_VERSION, detectProvider, type ProviderInfo } from "../shared/ollama";
 import type { ToolSupportLevel } from "../shared/types";
-
-// ── Configuration Constants ─────────────────────────────────────────────
-
-/**
- * Configuration constants for model testing.
- * Centralized to make tuning and maintenance easier.
- *
- * @property DEFAULT_TIMEOUT_MS - Default timeout for Ollama API calls (~16.7 min)
- * @property CONNECT_TIMEOUT_S - Connection timeout for fetch (seconds)
- * @property MAX_RETRIES - Number of retry attempts for transient failures
- * @property RETRY_DELAY_MS - Delay between retry attempts (milliseconds)
- * @property NUM_PREDICT - Default max tokens for model responses
- * @property TEMPERATURE - Default sampling temperature
- * @property MIN_THINKING_LENGTH - Minimum characters to consider thinking tokens valid
- * @property TOOL_TEST_TIMEOUT_MS - Timeout for tool usage tests
- * @property TOOL_SUPPORT_TIMEOUT_MS - Timeout for tool support detection
- * @property TAGS_TIMEOUT_MS - Timeout for /api/tags requests
- */
-const CONFIG = {
-  // General API settings
-  DEFAULT_TIMEOUT_MS: 999999,        // ~16.7 minutes — effectively unlimited for slow models
-  CONNECT_TIMEOUT_S: 60,             // 60 seconds to establish connection
-  MAX_RETRIES: 1,                    // Single retry for transient failures
-  RETRY_DELAY_MS: 10000,              // 10 seconds between retries
-
-  // Model generation settings
-  NUM_PREDICT: 1024,                 // Max tokens in response
-  TEMPERATURE: 0.1,                  // Low temperature for more deterministic output
-
-  // Test-specific settings
-  MIN_THINKING_LENGTH: 10,           // Minimum chars to consider thinking tokens valid
-  TOOL_TEST_TIMEOUT_MS: 999999,       // Effectively unlimited for slow tool usage tests
-  TOOL_SUPPORT_TIMEOUT_MS: 999999,   // Effectively unlimited for tool support detection
-
-  // Metadata retrieval
-  TAGS_TIMEOUT_MS: 15000,            // 15 seconds for /api/tags
-  MODEL_INFO_TIMEOUT_MS: 30000,      // 30 seconds for model info lookup
-
-  // Provider API settings
-  PROVIDER_TIMEOUT_MS: 999999,       // Effectively unlimited for cloud provider API calls
-  PROVIDER_TOOL_TIMEOUT_MS: 120000,   // 120 seconds for tool usage tests on providers
-
-  // Rate limiting
-  TEST_DELAY_MS: 10000,              // 10 seconds between tests to avoid rate limiting
-} as const;
-
-// ── Tool support cache ──────────────────────────────────────────────────
-
-const TOOL_SUPPORT_CACHE_DIR = path.join(os.homedir(), ".pi", "agent", "cache");
-const TOOL_SUPPORT_CACHE_PATH = path.join(TOOL_SUPPORT_CACHE_DIR, "tool_support.json");
-
-interface ToolSupportCacheRecord {
-  support: ToolSupportLevel;
-  testedAt: string;
-  family: string;
-}
-
-interface ToolSupportCache {
-  [modelName: string]: ToolSupportCacheRecord;
-}
-
-/** In-memory cache to avoid redundant disk reads for tool support lookups. */
-let _toolSupportCacheInMemory: ToolSupportCache | null = null;
-
-/**
- * Read the tool support cache from disk.
- * Returns an empty object if the file doesn't exist or is invalid.
- */
-function readToolSupportCache(): ToolSupportCache {
-  try {
-    if (fs.existsSync(TOOL_SUPPORT_CACHE_PATH)) {
-      const raw = fs.readFileSync(TOOL_SUPPORT_CACHE_PATH, "utf-8");
-      return JSON.parse(raw) as ToolSupportCache;
-    }
-  } catch { /* ignore parse errors */ }
-  return {};
-}
-
-/**
- * Write the tool support cache to disk.
- */
-function writeToolSupportCache(cache: ToolSupportCache): void {
-  if (!fs.existsSync(TOOL_SUPPORT_CACHE_DIR)) {
-    fs.mkdirSync(TOOL_SUPPORT_CACHE_DIR, { recursive: true });
-  }
-  fs.writeFileSync(TOOL_SUPPORT_CACHE_PATH, JSON.stringify(cache, null, 2) + "\n", "utf-8");
-}
-
-/**
- * Look up a model's cached tool support level.
- * Returns null if not cached.
- */
-function getCachedToolSupport(model: string): ToolSupportCacheRecord | null {
-  const cache = _toolSupportCacheInMemory || readToolSupportCache();
-  if (!_toolSupportCacheInMemory) _toolSupportCacheInMemory = cache;
-  const entry = cache[model];
-  if (!entry) return null;
-  // Validate the entry has required fields and a valid support level
-  if (!entry.support || !["native", "react", "none"].includes(entry.support)) return null;
-  return entry;
-}
-
-/**
- * Cache a model's tool support level.
- */
-function cacheToolSupport(model: string, support: ToolSupportLevel, family: string): void {
-  const cache = _toolSupportCacheInMemory || readToolSupportCache();
-  cache[model] = {
-    support,
-    testedAt: new Date().toISOString(),
-    family,
-  };
-  _toolSupportCacheInMemory = cache; // keep in-memory cache in sync
-  writeToolSupportCache(cache);
-}
+import {
+  ALL_DIALECT_PATTERNS,
+  parseReactWithPatterns,
+} from "../shared/react-parser";
+import {
+  CONFIG,
+  WEATHER_TOOL_DEFINITION,
+  scoreReasoning,
+  scoreNativeToolCall,
+  scoreTextToolCall,
+  parseTextToolCall,
+  readToolSupportCache,
+  writeToolSupportCache,
+  getCachedToolSupport,
+  cacheToolSupport,
+  type ChatFn,
+  type ReasoningTestResult,
+  type ToolUsageTestResult,
+  type InstructionFollowingTestResult,
+  testToolUsageUnified,
+  testReasoningUnified,
+  testInstructionFollowingUnified,
+  TOOL_SUPPORT_CACHE_PATH,
+} from "../shared/model-test-utils";
 
 /**
  * Model testing extension for Pi Coding Agent.
@@ -162,63 +68,95 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
-  // ── Shared scoring helpers (deduplicated) ────────────────────────────
+  // ── ChatFn wrappers ──────────────────────────────────────────────────
 
-  /** Score a reasoning response based on correctness and reasoning patterns. */
-  function scoreReasoning(msg: string): { score: string; pass: boolean } {
-    const allNumbers = msg.match(/\b(\d+)\b/g) || [];
-    const answer = allNumbers.length > 0 ? allNumbers[allNumbers.length - 1] : "?";
-    const isCorrect = answer === "8";
-
-    const reasoningPatterns = ["because", "therefore", "since", "step", "subtract", "minus",
-      "each day", "each night", "slides", "climbs", "night", "reaches", "finally", "last day"];
-    const hasReasoningWords = reasoningPatterns.some(w => msg.toLowerCase().includes(w));
-    const hasNumberedSteps = /^\s*\d+\.\s/m.test(msg);
-    const hasReasoning = hasReasoningWords || hasNumberedSteps;
-
-    if (isCorrect && hasReasoning) return { score: "STRONG", pass: true };
-    if (isCorrect) return { score: "MODERATE", pass: true };
-    if (hasReasoning) return { score: "WEAK", pass: false };
-    return { score: "FAIL", pass: false };
+  /**
+   * Wrap ollamaChat into the ChatFn interface.
+   * Does NOT support tools (for reasoning, instruction following tests).
+   */
+  function makeOllamaChatFn(): ChatFn {
+    return async (model, messages, _options) => {
+      const result = await ollamaChat(model, messages);
+      return {
+        content: result.response?.message?.content || "",
+        elapsedMs: result.elapsedMs,
+        raw: result.response,
+      };
+    };
   }
 
-  /** Score a native tool call response. */
-  function scoreNativeToolCall(fnName: string, args: Record<string, unknown>): { score: string; pass: boolean } {
-    const hasCorrectTool = fnName === "get_weather";
-    const hasLocation = typeof args.location === "string" && (args.location as string).toLowerCase().includes("paris");
-    const unitValid = args.unit === undefined ||
-      (typeof args.unit === "string" && ["celsius", "fahrenheit"].includes((args.unit as string).toLowerCase()));
+  /**
+   * Wrap Ollama /api/chat into the ChatFn interface WITH tool support.
+   * Does a raw fetch so tools are at the top level of the request body
+   * (Ollama API requires this, unlike providerChat which handles it).
+   */
+  function makeOllamaToolChatFn(): ChatFn {
+    return async (model, messages, options) => {
+      const tools = (options?.tools as any[] | undefined) || undefined;
+      const body: any = {
+        model,
+        messages,
+        stream: false,
+        options: { num_predict: CONFIG.NUM_PREDICT, temperature: CONFIG.TEMPERATURE },
+      };
+      if (tools && tools.length > 0) {
+        body.tools = tools;
+      }
 
-    if (hasCorrectTool && hasLocation && unitValid) return { score: "STRONG", pass: true };
-    if (hasCorrectTool && hasLocation) return { score: "MODERATE", pass: true };
-    return { score: "WEAK", pass: false };
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), CONFIG.TOOL_TEST_TIMEOUT_MS);
+      const start = Date.now();
+      try {
+        const res = await fetch(`${ollamaBase()}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+        const elapsedMs = Date.now() - start;
+        clearTimeout(timeoutId);
+
+        if (!res.ok) {
+          const errorText = await res.text().catch(() => "unknown error");
+          throw new Error(`Ollama API returned ${res.status}: ${truncate(errorText, 200)}`);
+        }
+
+        const text = await res.text();
+        if (!text.trim()) throw new Error("Empty response from Ollama");
+        const parsed = JSON.parse(text);
+        const toolCalls = parsed?.message?.tool_calls;
+        const content = parsed?.message?.content || "";
+        return {
+          content,
+          toolCalls: toolCalls && toolCalls.length > 0 ? toolCalls : undefined,
+          elapsedMs,
+          raw: parsed,
+        };
+      } catch (e: any) {
+        clearTimeout(timeoutId);
+        throw e;
+      }
+    };
   }
 
-  /** Score a text-based tool call parsed from model content. */
-  function scoreTextToolCall(fnName: string, args: Record<string, unknown>): { score: string; pass: boolean } {
-    const isWeatherTool = fnName === "get_weather";
-    const hasLocation = typeof args.location === "string" && (args.location as string).toLowerCase().includes("paris");
-
-    if (isWeatherTool && hasLocation) return { score: "STRONG", pass: true };
-    if (isWeatherTool) return { score: "MODERATE", pass: true };
-    return { score: "WEAK", pass: false };
-  }
-
-  /** Parse tool call JSON from model text content. Returns null if no valid tool call found. */
-  function parseTextToolCall(content: string): { fnName: string; args: Record<string, unknown> } | null {
-    const firstBrace = content.indexOf('{');
-    if (firstBrace === -1) return null;
-    const lastBrace = content.lastIndexOf('}');
-    if (lastBrace <= firstBrace) return null;
-
-    const jsonCandidate = content.slice(firstBrace, lastBrace + 1);
-    let textToolParsed: any = null;
-    try { textToolParsed = JSON.parse(jsonCandidate); } catch { return null; }
-
-    if (!textToolParsed || typeof textToolParsed.name !== "string") return null;
-    const rawArgs = textToolParsed.arguments || { ...textToolParsed };
-    const { name: _, ...fnArgs } = rawArgs;
-    return { fnName: textToolParsed.name, args: fnArgs };
+  /**
+   * Wrap providerChat into the ChatFn interface.
+   * Supports tools natively.
+   */
+  function makeProviderChatFn(providerInfo: ProviderInfo): ChatFn {
+    return async (model, messages, options) => {
+      const result = await providerChat(providerInfo, model, messages, {
+        maxTokens: CONFIG.NUM_PREDICT,
+        tools: (options?.tools as any[] | undefined),
+        timeoutMs: CONFIG.PROVIDER_TOOL_TIMEOUT_MS,
+      });
+      return {
+        content: result.content,
+        toolCalls: result.toolCalls,
+        elapsedMs: result.elapsedMs,
+        raw: undefined,
+      };
+    };
   }
 
   /**
@@ -435,10 +373,11 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
-  // ── test: reasoning ──────────────────────────────────────────────────
+  // ── test: reasoning (Ollama) ────────────────────────────────────────
 
   /**
    * Test if a model can reason through a logic puzzle.
+   * Ollama-specific: handles thinking models that need think:true fallback.
    * Returns { pass, reasoning, answer, elapsedMs }
    */
   async function testReasoning(model: string): Promise<{
@@ -507,43 +446,19 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
+  // ── test: reasoning (provider) ──────────────────────────────────────
+
   /**
-   * Provider-aware reasoning test using the generic chat function.
+   * Provider-aware reasoning test. Delegates to the unified testReasoningUnified.
    */
   async function testReasoningProvider(
     providerInfo: ProviderInfo,
     model: string,
-  ): Promise<{
-    pass: boolean;
-    score: string;
-    reasoning: string;
-    answer: string;
-    elapsedMs: number;
-  }> {
-    const prompt = `A snail climbs 3 feet up a wall each day, but slides back 2 feet each night. The wall is 10 feet tall. How many days does it take the snail to reach the top? Think step by step and give the final answer on its own line like: ANSWER: <number>`;
-
-    try {
-      const result = await providerChat(providerInfo, model, [
-        { role: "user", content: prompt },
-      ]);
-
-      const msg = result.content.trim();
-      if (msg.length === 0) {
-        return { pass: false, score: "ERROR", reasoning: "Empty response from provider", answer: "?", elapsedMs: result.elapsedMs };
-      }
-
-      // Extract the answer and score using the shared scoring helper
-      const allNumbers = msg.match(/\b(\d+)\b/g) || [];
-      const answer = allNumbers.length > 0 ? allNumbers[allNumbers.length - 1] : "?";
-      const { score, pass } = scoreReasoning(msg);
-
-      return { pass, score, reasoning: msg, answer, elapsedMs: result.elapsedMs };
-    } catch (e: any) {
-      return { pass: false, score: "ERROR", reasoning: e.message, answer: "?", elapsedMs: 0 };
-    }
+  ): Promise<ReasoningTestResult> {
+    return testReasoningUnified(makeProviderChatFn(providerInfo), model);
   }
 
-  // ── test: thinking ───────────────────────────────────────────────────
+  // ── test: thinking (Ollama-only) ────────────────────────────────────
 
   /**
    * Test if a model supports thinking/reasoning tokens (extended thinking).
@@ -588,231 +503,26 @@ export default function (pi: ExtensionAPI) {
 
   /**
    * Test if a model can generate proper tool calls via Ollama's tool API.
+   * Delegates to the unified testToolUsageUnified via makeOllamaToolChatFn.
    */
-  async function testToolUsage(model: string): Promise<{
-    pass: boolean;
-    score: string;
-    hasToolCalls: boolean;
-    toolCall: string;
-    response: string;
-    elapsedMs: number;
-  }> {
-    const tools = [
-      {
-        type: "function",
-        function: {
-          name: "get_weather",
-          description: "Get the current weather for a location",
-          parameters: {
-            type: "object",
-            properties: {
-              location: { type: "string", description: "City name" },
-              unit: { type: "string", enum: ["celsius", "fahrenheit"] },
-            },
-            required: ["location"],
-          },
-        },
-      },
-    ];
-
-    const body: any = {
-      model,
-      messages: [
-        { role: "system", content: "You are a helpful assistant. Use the available tools when needed." },
-        { role: "user", content: "What's the weather like in Paris right now?" },
-      ],
-      tools,
-      stream: false,
-      options: { num_predict: CONFIG.NUM_PREDICT, temperature: CONFIG.TEMPERATURE },
-    };
-
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), CONFIG.TOOL_TEST_TIMEOUT_MS);
-      const start = Date.now();
-      const res = await fetch(`${ollamaBase()}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-      const elapsedMs = Date.now() - start;
-      clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        const errorText = await res.text().catch(() => "unknown error");
-        return { pass: false, score: "ERROR", hasToolCalls: false, toolCall: `fetch error: ${res.status}`, response: "", elapsedMs };
-      }
-
-      const text = await res.text();
-      if (!text.trim()) throw new Error("Empty response from Ollama");
-      const parsed = JSON.parse(text);
-      const toolCalls = parsed?.message?.tool_calls;
-      const content = parsed?.message?.content || "";
-
-      if (toolCalls && toolCalls.length > 0) {
-        const call = toolCalls[0];
-        const fn = call.function || {};
-        // Parse tool arguments safely
-        let args: Record<string, unknown> = {};
-        try {
-          args = typeof fn.arguments === "string" ? JSON.parse(fn.arguments) : (fn.arguments || {});
-        } catch {
-          return {
-            pass: true,
-            score: "WEAK",
-            hasToolCalls: true,
-            toolCall: `malformed args: ${String(fn.arguments)}`,
-            response: content,
-            elapsedMs,
-          };
-        }
-        const { score, pass } = scoreNativeToolCall(fn.name || "", args);
-
-        return {
-          pass,
-          score,
-          hasToolCalls: true,
-          toolCall: `${fn.name}(${JSON.stringify(args)})`,
-          response: content,
-          elapsedMs,
-        };
-      }
-
-      // Model answered in text — check if it contains valid tool call JSON
-      const textParsed = parseTextToolCall(content);
-      if (textParsed) {
-        const { score, pass } = scoreTextToolCall(textParsed.fnName, textParsed.args);
-
-        return {
-          pass,
-          score,
-          hasToolCalls: true,
-          toolCall: `${textParsed.fnName}(${JSON.stringify(textParsed.args)})`,
-          response: content,
-          elapsedMs,
-        };
-      }
-
-      // Genuinely no tool call detected
-      return {
-        pass: false,
-        score: "FAIL",
-        hasToolCalls: false,
-        toolCall: "none",
-        response: content,
-        elapsedMs,
-      };
-    } catch (e: any) {
-      return { pass: false, score: "ERROR", hasToolCalls: false, toolCall: `error: ${e.message}`, response: "", elapsedMs: 0 };
-    }
+  async function testToolUsage(model: string): Promise<ToolUsageTestResult> {
+    return testToolUsageUnified(makeOllamaToolChatFn(), model);
   }
 
   // ── test: tool usage (Provider) ──────────────────────────────────────
 
   /**
    * Test if a cloud provider model can generate proper tool calls.
-   * Uses the OpenAI function calling format.
+   * Delegates to the unified testToolUsageUnified via makeProviderChatFn.
    */
   async function testToolUsageProvider(
     providerInfo: ProviderInfo,
     model: string,
-  ): Promise<{
-    pass: boolean;
-    score: string;
-    hasToolCalls: boolean;
-    toolCall: string;
-    response: string;
-    elapsedMs: number;
-  }> {
-    const tools = [
-      {
-        type: "function",
-        function: {
-          name: "get_weather",
-          description: "Get the current weather for a location",
-          parameters: {
-            type: "object",
-            properties: {
-              location: { type: "string", description: "City name" },
-              unit: { type: "string", enum: ["celsius", "fahrenheit"] },
-            },
-            required: ["location"],
-          },
-        },
-      },
-    ];
-
-    try {
-      const result = await providerChat(providerInfo, model, [
-        { role: "system", content: "You are a helpful assistant. Use the available tools when needed." },
-        { role: "user", content: "What's the weather like in Paris right now?" },
-      ], {
-        maxTokens: CONFIG.NUM_PREDICT,
-        tools,
-        timeoutMs: CONFIG.PROVIDER_TOOL_TIMEOUT_MS,
-      });
-
-      const content = result.content;
-      const toolCalls = result.toolCalls;
-
-      if (toolCalls && toolCalls.length > 0) {
-        const call = toolCalls[0];
-        const fn = call.function || {};
-        let args: Record<string, unknown> = {};
-        try {
-          args = typeof fn.arguments === "string" ? JSON.parse(fn.arguments) : (fn.arguments || {});
-        } catch {
-          return {
-            pass: true,
-            score: "WEAK",
-            hasToolCalls: true,
-            toolCall: `malformed args: ${String(fn.arguments)}`,
-            response: content,
-            elapsedMs: result.elapsedMs,
-          };
-        }
-        const { score, pass } = scoreNativeToolCall(fn.name || "", args);
-
-        return {
-          pass,
-          score,
-          hasToolCalls: true,
-          toolCall: `${fn.name}(${JSON.stringify(args)})`,
-          response: content,
-          elapsedMs: result.elapsedMs,
-        };
-      }
-
-      // Model answered in text — check if it contains valid tool call JSON
-      const textParsed = parseTextToolCall(content);
-      if (textParsed) {
-        const { score, pass } = scoreTextToolCall(textParsed.fnName, textParsed.args);
-
-        return {
-          pass,
-          score,
-          hasToolCalls: true,
-          toolCall: `${textParsed.fnName}(${JSON.stringify(textParsed.args)})`,
-          response: content,
-          elapsedMs: result.elapsedMs,
-        };
-      }
-
-      return {
-        pass: false,
-        score: "FAIL",
-        hasToolCalls: false,
-        toolCall: "none",
-        response: content,
-        elapsedMs: result.elapsedMs,
-      };
-    } catch (e: any) {
-      return { pass: false, score: "ERROR", hasToolCalls: false, toolCall: `error: ${e.message}`, response: "", elapsedMs: 0 };
-    }
+  ): Promise<ToolUsageTestResult> {
+    return testToolUsageUnified(makeProviderChatFn(providerInfo), model);
   }
 
-  // ── test: ReAct parsing ────────────────────────────────────────────
+  // ── test: ReAct parsing (Ollama-only) ──────────────────────────────
 
   /**
    * Test whether a model can produce parseable ReAct-format tool calls
@@ -920,55 +630,30 @@ export default function (pi: ExtensionAPI) {
           }
         }
       } else {
-        // Fallback: local inline multi-dialect patterns (same as react-fallback.ts)
-        const dialectDefs = [
-          { name: "react", action: "Action:", input: "Action Input:" },
-          { name: "function", action: "Function:", input: "Function Input:" },
-          { name: "tool", action: "Tool:", input: "Tool Input:" },
-          { name: "call", action: "Call:", input: "Input:" },
-        ];
-        for (const dd of dialectDefs) {
-          const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          const aT = esc(dd.action);
-          const iT = esc(dd.input);
-          // Try primary (separate lines) then same-line then parenthetical
-          // IMPORTANT: (?= must be closed — the `$` alternative goes OUTSIDE (?:)
-          const primaryRe = new RegExp(`${aT}\\s*[\\x60"']?(\\w+)[\\x60"']?\\s*\\n?\\s*${iT}\\s*([\\s\\S]*?)(?=\\n\\s*(?:Observation:|Thought:|Final Answer:|${dd.action})|$)`, "is");
-          const sameRe = new RegExp(`${aT}\\s*[\\x60"']?(\\w+)[\\x60"']?\\s+${iT}\\s*([\\s\\S]*?)(?=\\n\\s*(?:Observation:|Thought:|Final Answer:|${dd.action})|$)`, "is");
-          const parenRe = new RegExp(`${aT}\\s*(\\w+)\\s*\\(([^)]*)\\)`, "i");
-          let m = primaryRe.exec(content) || sameRe.exec(content);
-          let isParen = false;
-          if (!m) { m = parenRe.exec(content); isParen = true; }
-          if (m) {
-            const toolName = m[1].trim().replace(/[`"']/g, "");
-            const rawArgs = m[2].trim().replace(/^```\w*\s*/gm, "").replace(/```\s*$/gm, "").trim();
-            let argsStr = "";
-            if (isParen && rawArgs && !rawArgs.startsWith("{")) {
-              const pairs = rawArgs.match(/(\w+)\s*:\s*("[^"]*"|'[^']*'|\S+)/g);
-              if (pairs) {
-                const obj: Record<string, string> = {};
-                for (const p of pairs) {
-                  const ci = p.indexOf(":");
-                  let v = p.slice(ci + 1).trim();
-                  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
-                  obj[p.slice(0, ci).trim()] = v;
+        // Fallback: use shared react-parser module directly
+        for (const dp of ALL_DIALECT_PATTERNS) {
+          const result = parseReactWithPatterns(content, dp, true);
+          if (result) {
+            let argsStr: string;
+            const rawArgs = result.args ? JSON.stringify(result.args) : "";
+            if (rawArgs && rawArgs !== "{}") {
+              argsStr = rawArgs;
+            } else if (result.raw) {
+              const jsonStart = result.raw.indexOf("{");
+              if (jsonStart !== -1) {
+                let depth = 0, jsonEnd = -1;
+                for (let i = jsonStart; i < result.raw.length; i++) {
+                  if (result.raw[i] === "{") depth++;
+                  else if (result.raw[i] === "}") { depth--; if (depth === 0) { jsonEnd = i; break; } }
                 }
-                argsStr = JSON.stringify(obj);
-              } else { argsStr = rawArgs; }
+                argsStr = jsonEnd !== -1 ? result.raw.slice(jsonStart, jsonEnd + 1) : "";
+              } else {
+                argsStr = "";
+              }
             } else {
-              const js = rawArgs.indexOf("{");
-              if (js !== -1) {
-                let d = 0, je = -1;
-                for (let i = js; i < rawArgs.length; i++) { if (rawArgs[i]==="{") d++; else if (rawArgs[i]==="}") { d--; if (d===0) { je=i; break; } } }
-                argsStr = je !== -1 ? rawArgs.slice(js, je+1) : rawArgs;
-              } else { argsStr = rawArgs; }
+              argsStr = "";
             }
-            // Extract thought from any dialect
-            let thought = "";
-            const thoughtRe = /Thought:\s*(.*?)(?=Action:|Function:|Tool:|Call:|Final Answer:|$)/is;
-            const tm = thoughtRe.exec(content);
-            if (tm) thought = tm[1].trim();
-            parsedResult = { name: toolName, args: argsStr, thought, dialect: dd.name };
+            parsedResult = { name: result.name, args: argsStr, thought: result.thought || "", dialect: result.dialect };
             break;
           }
         }
@@ -1035,187 +720,30 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
-  // ── test: instruction following ──────────────────────────────────────
+  // ── test: instruction following (Ollama) ────────────────────────────
 
   /**
    * Test basic instruction following (format compliance, role awareness).
+   * Delegates to the unified testInstructionFollowingUnified via makeOllamaChatFn.
    */
-  async function testInstructionFollowing(model: string): Promise<{
-    pass: boolean;
-    score: string;
-    output: string;
-    elapsedMs: number;
-  }> {
-    const prompt = `You must respond with ONLY a valid JSON object. No markdown, no explanation, no backticks, no extra text.
-
-The JSON object must have exactly these 4 keys:
-- "name" (string): your model name
-- "can_count" (boolean): true
-- "sum" (number): the result of 15 + 27
-- "language" (string): the language you are responding in`;
-
-    try {
-      const { response, elapsedMs } = await ollamaChat(model, [
-        { role: "user", content: prompt },
-      ], { num_predict: CONFIG.NUM_PREDICT });
-
-      const msg = (response?.message?.content || "").trim();
-
-      // Try to parse as JSON (with repair for truncated output)
-      let parsed: any = null;
-      let repairNote = "";
-      try {
-        // Strip markdown fences if present
-        const cleaned = msg.replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
-        parsed = JSON.parse(cleaned);
-      } catch {
-        // Attempt JSON repair — use stack-based brace/bracket matching
-        // to handle nested structures (common when model output is truncated by num_predict limit)
-        const cleaned = msg.replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
-        // Count unclosed braces/brackets using a stack for proper nesting
-        let braceDepth = 0, bracketDepth = 0;
-        let inString = false, escapeNext = false;
-        for (let i = 0; i < cleaned.length; i++) {
-          const c = cleaned[i];
-          if (escapeNext) { escapeNext = false; continue; }
-          if (c === '\\') { if (inString) escapeNext = true; continue; }
-          if (c === '"') { inString = !inString; continue; }
-          if (inString) continue;
-          if (c === '{') braceDepth++;
-          else if (c === '}') braceDepth = Math.max(0, braceDepth - 1);
-          else if (c === '[') bracketDepth++;
-          else if (c === ']') bracketDepth = Math.max(0, bracketDepth - 1);
-        }
-        if (braceDepth > 0 || bracketDepth > 0) {
-          const repaired = cleaned
-            + "}".repeat(braceDepth)
-            + "]".repeat(bracketDepth);
-          try {
-            parsed = JSON.parse(repaired);
-            repairNote = " (repaired truncated JSON)";
-          } catch { /* repair failed too */ }
-        }
-      }
-
-      if (!parsed) {
-        return { pass: false, score: "FAIL", output: sanitizeForReport(msg), elapsedMs };
-      }
-
-      const hasKeys = parsed.name && parsed.can_count !== undefined && parsed.sum !== undefined && parsed.language;
-      const correctSum = parsed.sum === 42;
-      const hasCorrectCount = parsed.can_count === true;
-
-      let score: string;
-      if (hasKeys && correctSum && hasCorrectCount) {
-        score = "STRONG";
-      } else if (hasKeys && (correctSum || hasCorrectCount)) {
-        score = "MODERATE";
-      } else if (parsed.sum !== undefined || parsed.name) {
-        score = "WEAK";
-      } else {
-        score = "FAIL";
-      }
-
-      return {
-        pass: hasKeys,
-        score,
-        output: JSON.stringify(parsed) + repairNote,
-        elapsedMs,
-      };
-    } catch (e: any) {
-      return { pass: false, score: "ERROR", output: e.message, elapsedMs: 0 };
-    }
+  async function testInstructionFollowing(model: string): Promise<InstructionFollowingTestResult> {
+    return testInstructionFollowingUnified(makeOllamaChatFn(), model);
   }
+
+  // ── test: instruction following (Provider) ──────────────────────────
 
   /**
    * Provider-aware instruction following test.
+   * Delegates to the unified testInstructionFollowingUnified via makeProviderChatFn.
    */
   async function testInstructionFollowingProvider(
     providerInfo: ProviderInfo,
     model: string,
-  ): Promise<{
-    pass: boolean;
-    score: string;
-    output: string;
-    elapsedMs: number;
-  }> {
-    const prompt = `You must respond with ONLY a valid JSON object. No markdown, no explanation, no backticks, no extra text.
-
-The JSON object must have exactly these 4 keys:
-- "name" (string): your model name
-- "can_count" (boolean): true
-- "sum" (number): the result of 15 + 27
-- "language" (string): the language you are responding in`;
-
-    try {
-      const result = await providerChat(providerInfo, model, [
-        { role: "user", content: prompt },
-      ]);
-      const msg = result.content.trim();
-
-      // Try to parse as JSON (with repair for truncated output)
-      let parsed: any = null;
-      let repairNote = "";
-      try {
-        const cleaned = msg.replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
-        parsed = JSON.parse(cleaned);
-      } catch {
-        const cleaned = msg.replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
-        let braceDepth = 0, bracketDepth = 0;
-        let inString = false, escapeNext = false;
-        for (let i = 0; i < cleaned.length; i++) {
-          const c = cleaned[i];
-          if (escapeNext) { escapeNext = false; continue; }
-          if (c === '\\') { if (inString) escapeNext = true; continue; }
-          if (c === '"') { inString = !inString; continue; }
-          if (inString) continue;
-          if (c === '{') braceDepth++;
-          else if (c === '}') braceDepth = Math.max(0, braceDepth - 1);
-          else if (c === '[') bracketDepth++;
-          else if (c === ']') bracketDepth = Math.max(0, bracketDepth - 1);
-        }
-        if (braceDepth > 0 || bracketDepth > 0) {
-          const repaired = cleaned
-            + "}".repeat(braceDepth)
-            + "]".repeat(bracketDepth);
-          try {
-            parsed = JSON.parse(repaired);
-            repairNote = " (repaired truncated JSON)";
-          } catch { /* repair failed too */ }
-        }
-      }
-
-      if (!parsed) {
-        return { pass: false, score: "FAIL", output: sanitizeForReport(msg), elapsedMs: result.elapsedMs };
-      }
-
-      const hasKeys = parsed.name && parsed.can_count !== undefined && parsed.sum !== undefined && parsed.language;
-      const correctSum = parsed.sum === 42;
-      const hasCorrectCount = parsed.can_count === true;
-
-      let score: string;
-      if (hasKeys && correctSum && hasCorrectCount) {
-        score = "STRONG";
-      } else if (hasKeys && (correctSum || hasCorrectCount)) {
-        score = "MODERATE";
-      } else if (parsed.sum !== undefined || parsed.name) {
-        score = "WEAK";
-      } else {
-        score = "FAIL";
-      }
-
-      return {
-        pass: hasKeys,
-        score,
-        output: JSON.stringify(parsed) + repairNote,
-        elapsedMs: result.elapsedMs,
-      };
-    } catch (e: any) {
-      return { pass: false, score: "ERROR", output: e.message, elapsedMs: 0 };
-    }
+  ): Promise<InstructionFollowingTestResult> {
+    return testInstructionFollowingUnified(makeProviderChatFn(providerInfo), model);
   }
 
-  // ── test: tool support detection ─────────────────────────────────────
+  // ── test: tool support detection (Ollama-only) ──────────────────────
 
   /**
    * Detect what level of tool support a model provides.
@@ -1250,23 +778,7 @@ The JSON object must have exactly these 4 keys:
     }
 
     // 2. Probe the model with a tool-calling prompt
-    const tools = [
-      {
-        type: "function",
-        function: {
-          name: "get_weather",
-          description: "Get the current weather for a location",
-          parameters: {
-            type: "object",
-            properties: {
-              location: { type: "string", description: "City name" },
-              unit: { type: "string", enum: ["celsius", "fahrenheit"] },
-            },
-            required: ["location"],
-          },
-        },
-      },
-    ];
+    const tools = [WEATHER_TOOL_DEFINITION];
 
     const body: any = {
       model,

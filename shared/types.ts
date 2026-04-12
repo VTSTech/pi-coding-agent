@@ -73,3 +73,64 @@ export interface ToolSupportCacheEntry {
   family: string;
   model: string;
 }
+
+/**
+ * Response from Ollama /api/chat endpoint.
+ */
+export interface OllamaChatResponse {
+  model: string;
+  message: {
+    role: string;
+    content: string;
+    thinking?: string;
+    tool_calls?: Array<{
+      function: {
+        name: string;
+        arguments: string | Record<string, unknown>;
+      };
+    }>;
+  };
+  done: boolean;
+  total_duration?: number;
+  eval_count?: number;
+}
+
+/**
+ * Tool call event from Pi's extension API.
+ */
+export interface PiToolCallEvent {
+  tool?: string;
+  name?: string;
+  toolCallId?: string;
+  blocked?: boolean;
+  input?: Record<string, unknown>;
+  result?: { blocked?: boolean };
+  error?: string;
+}
+
+/**
+ * Tool result event from Pi's extension API.
+ */
+export interface PiToolResultEvent {
+  toolCallId?: string;
+  isError?: boolean;
+}
+
+/**
+ * Minimal Pi extension context interface.
+ * Used by detectProvider() and other shared utilities.
+ */
+export interface PiExtensionContext {
+  model?: {
+    id?: string;
+    provider?: string;
+  };
+  provider?: {
+    baseUrl?: string;
+    url?: string;
+  };
+  getContextUsage?: () => {
+    tokens?: number;
+    contextWindow?: number;
+  };
+}

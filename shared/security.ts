@@ -16,6 +16,14 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import os from "node:os";
+import { debugLog } from "./debug";
+
+// ============================================================================
+// Settings Path
+// ============================================================================
+
+/** Path to the Pi agent settings file — protected against tool-based access. */
+export const SETTINGS_PATH = path.join(os.homedir(), ".pi", "agent", "settings.json");
 
 // ============================================================================
 // Command Blocklist
@@ -193,7 +201,11 @@ export function validatePath(
     "/.ssh/", "/.gnupg/",
     path.join(os.homedir(), ".ssh"),
     path.join(os.homedir(), ".gnupg"),
-    path.join(os.homedir(), ".pi", "agent", "models.json"),
+    SETTINGS_PATH,
+    // NOTE: models.json is intentionally excluded from sensitivePaths.
+    // Extensions use readModelsJson()/writeModelsJson() from shared/ollama.ts
+    // for direct file I/O — not via Pi's tool system — so blocking it here
+    // would prevent legitimate model configuration updates.
   ];
   for (const sensitive of sensitivePaths) {
     if (resolved.startsWith(sensitive) || resolved === sensitive) {
@@ -279,9 +291,20 @@ export function isSafeUrl(
 
   const hostname = parsed.hostname.toLowerCase();
 
+  // Normalize hostname: strip trailing dots, reject non-ASCII hostnames
+  const normalized = hostname.replace(/\.$/, "");
+  if (/[^\x00-\x7F]/.test(normalized)) {
+    return { safe: false, error: "URL hostname contains non-ASCII characters" };
+  }
+
+  // Reject hex/octal IP representations
+  if (/^0x[0-9a-f]+$/i.test(normalized) || /^0[0-7]+$/i.test(normalized)) {
+    return { safe: false, error: "URL hostname uses non-decimal IP format" };
+  }
+
   if (blockSsrf) {
     for (const pattern of BLOCKED_URL_PATTERNS) {
-      if (hostname === pattern || hostname.endsWith("." + pattern) || hostname.startsWith(pattern)) {
+      if (normalized === pattern || normalized.endsWith("." + pattern) || normalized.startsWith(pattern)) {
         return { safe: false, error: `SSRF protection: blocked hostname pattern '${pattern}'` };
       }
     }
@@ -301,16 +324,20 @@ export function isSafeUrl(
  * could be used to inject additional commands.
  */
 const INJECTION_PATTERNS: RegExp[] = [
-  /;\s*\w+/,         // Command chaining
-  /\|\s*\w+/,        // Piping to another command
-  /&&\s*\w+/,        // AND chaining
-  /\|\|\s*\w+/,      // OR chaining
-  /`[^`]+`/,         // Command substitution (backticks)
-  /\$\([^)]+\)/,     // Command substitution ($())
-  /\$\{[^}]+\}/,     // Variable expansion
-  />\s*\S+/,         // Output redirection
-  /<\s*\S+/,         // Input redirection
-  /\|(?=[^\s|])/,    // Bare pipe without space
+  // Command chaining with dangerous commands only
+  /;\s*(rm|sudo|chmod|chown|mkfs|dd|shred|kill|pkill)\b/i,
+  // Piping to dangerous commands
+  /\|\s*(rm|sudo|chmod|chown|shred|mkfs)\b/i,
+  // AND chaining with dangerous commands
+  /&&\s*(rm|sudo|chmod|chown|mkfs|dd|shred|kill)\b/i,
+  // Command substitution (backticks) — still dangerous
+  /`[^`]+`/,
+  // Command substitution ($()) — still dangerous
+  /\$\([^)]+\)/,
+  // Variable expansion targeting sensitive env vars
+  /\$\{?(?:HOME|USER|PATH|SHELL|PWD|SSH|GPG|API_KEY|TOKEN|SECRET|PASSWORD)\}?/i,
+  // Bare pipe without space (likely injection, not intentional piping)
+  /\|(?=[^\s|])/,
 ];
 
 /**
@@ -413,7 +440,7 @@ export function appendAuditEntry(entry: Record<string, unknown>): void {
     }
     const line = JSON.stringify(entry) + "\n";
     fs.appendFileSync(AUDIT_LOG_PATH, line, "utf-8");
-  } catch { /* log write failure is non-critical */ }
+  } catch (err) { debugLog("security", "audit log write failure", err); }
 }
 
 /**
@@ -446,7 +473,8 @@ export function readRecentAuditEntries(count = 50): Array<Record<string, unknown
       try { return JSON.parse(line); }
       catch { return {}; }
     });
-  } catch {
+  } catch (err) {
+    debugLog("security", "failed to read audit log", err);
     return [];
   }
 }

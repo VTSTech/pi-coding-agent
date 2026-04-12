@@ -266,11 +266,23 @@ export default function (pi: ExtensionAPI) {
       normalizedUrl = "http://" + normalizedUrl;
     }
 
+    // Validate the URL is well-formed
+    try { new URL(normalizedUrl); } catch {
+      ctx.ui.notify(`Invalid URL: "${url}"`, "error");
+      return;
+    }
+
     const config = readModelsJson();
     const provider = config.providers[providerName];
     if (!provider) {
       ctx.ui.notify(`Provider "${providerName}" not found in models.json`, "error");
       return;
+    }
+
+    // Append /v1 if provider uses an OpenAI-compatible API mode and URL lacks it
+    const apiMode = provider.api || "";
+    if (apiMode.includes("openai") && !normalizedUrl.endsWith("/v1")) {
+      normalizedUrl = normalizedUrl.replace(/\/+$/, "") + "/v1";
     }
 
     const oldUrl = provider.baseUrl || "(not set)";

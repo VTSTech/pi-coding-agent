@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "strictNullChecks": true,
+    "noImplicitAny": true,
+    "outDir": "./dist",
+    "rootDir": "."
+  },
+  "include": ["extensions/**/*.ts", "shared/**/*.ts"],
+  "exclude": ["node_modules", "npm-packages", "dist"]
+}

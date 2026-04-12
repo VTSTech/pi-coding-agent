@@ -8,6 +8,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import os from "node:os";
+import { debugLog } from "./debug";
+import type { PiExtensionContext } from "./types";
 
 // ============================================================================
 // Constants
@@ -188,7 +190,7 @@ export function getOllamaBaseUrl(): string {
         return result;
       }
     }
-  } catch { /* ignore parse errors */ }
+  } catch (err) { debugLog("ollama", "failed to parse models.json for base URL", err); }
   if (process.env.OLLAMA_HOST) {
     const result = `http://${process.env.OLLAMA_HOST.replace(/^https?:\/\//, "")}`;
     _ollamaBaseUrlCache = { data: result, ts: now };
@@ -228,7 +230,7 @@ export function readModelsJson(): PiModelsJson {
       _modelsJsonCache = { data, ts: now };
       return data;
     }
-  } catch { /* ignore */ }
+  } catch (err) { debugLog("ollama", "failed to read/parse models.json", err); }
   const empty = { providers: {} };
   _modelsJsonCache = { data: empty, ts: now };
   return empty;
@@ -237,8 +239,15 @@ export function readModelsJson(): PiModelsJson {
 /**
  * Write Pi's models.json configuration back to disk.
  *
- * Creates the configuration directory if it doesn't exist,
- * then writes the configuration as formatted JSON with a trailing newline.
+ * Uses an atomic write-then-rename pattern: the new content is first written
+ * to a `.tmp` sibling file, then renamed over the target. This ensures
+ * concurrent readers never see a partially-written file.
+ *
+ * NOTE: The write-then-rename pattern provides filesystem-level atomicity
+ * but does NOT protect against concurrent read-modify-write cycles (e.g.
+ * two processes both read the file, mutate in memory, then write back).
+ * If that becomes a concern in the future, file-based locking (e.g. `proper-lockfile`)
+ * should be added around the read-modify-write sequence.
  *
  * @param data - The configuration object to write
  *
@@ -257,7 +266,9 @@ export function writeModelsJson(data: PiModelsJson): void {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  fs.writeFileSync(MODELS_JSON_PATH, JSON.stringify(data, null, 2) + "\n", "utf-8");
+  const tmpPath = MODELS_JSON_PATH + ".tmp";
+  fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2) + "\n", "utf-8");
+  fs.renameSync(tmpPath, MODELS_JSON_PATH);
   // Invalidate cache so next read picks up the written data
   _modelsJsonCache = null;
   _ollamaBaseUrlCache = null;
@@ -530,7 +541,7 @@ export interface ProviderInfo {
  * @param ctx - Pi's extension context (from session_start event)
  * @returns Provider information including kind, name, API details, and key
  */
-export function detectProvider(ctx: any): ProviderInfo {
+export function detectProvider(ctx: PiExtensionContext): ProviderInfo {
   const model = ctx.model;
   if (!model) return { kind: "unknown", name: "none" };
 

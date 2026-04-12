@@ -4,7 +4,7 @@
  *   Line 1 (conf): model · pwd · thinking level · CPU% (if local Ollama)
  *   Line 2 (load): loaded model · ↑↓ tokens (from message_end/turn_end) · M: · S: · RAM (if local Ollama) · Resp · params · security
  *   Line 3: (active tool timing when agent is running)
- * Metrics update every 3 seconds. Restores default footer on session shutdown.
+ * Metrics update every 5 seconds. Restores default footer on session shutdown.
  * Includes audit/recovery status indicators from shared security layer.
  *
  * Written by VTSTech
@@ -12,13 +12,25 @@
  * Website: www.vts-tech.org
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import * as fs from "node:fs";
 import os from "node:os";
-import { execSync as gitExecSync } from "node:child_process";
+import { exec } from "node:child_process";
 
 // ── Shared imports (eliminates duplication) ────────────────────────────────
 import { getOllamaBaseUrl, fetchModelContextLength, readModelsJson } from "../shared/ollama";
 import { fmtBytes, fmtDur } from "../shared/format";
+import { debugLog } from "../shared/debug";
 // readRecentAuditEntries no longer imported — SEC counter is now session-scoped (in-memory)
+
+// ── Configuration ──────────────────────────────────────────────────────────
+
+/**
+ * Status bar update interval in milliseconds.
+ * Set to 5 seconds to balance responsiveness with reduced overhead on
+ * resource-constrained systems (the previous 3s interval caused unnecessary
+ * CPU wake-ups on low-end hardware). Easily configurable here if needed.
+ */
+const STATUS_UPDATE_INTERVAL_MS = 5000;
 
 export default function (pi: ExtensionAPI) {
   let lastResponseTime: number | null = null;
@@ -100,12 +112,16 @@ export default function (pi: ExtensionAPI) {
   }
 
   function getSwap(): { used: number; total: number } | null {
+    if (process.platform !== "linux") {
+      debugLog("status", "swap detection skipped: not a Linux platform");
+      return null;
+    }
     try {
-      const out = gitExecSync("cat /proc/meminfo", { encoding: "utf-8", timeout: 3000 });
+      const out = fs.readFileSync("/proc/meminfo", "utf-8");
       const swapTotal = Number(out.match(/SwapTotal:\s+(\d+)/)?.[1]) * 1024;
       const swapFree = Number(out.match(/SwapFree:\s+(\d+)/)?.[1]) * 1024;
       if (swapTotal > 0) return { used: swapTotal - swapFree, total: swapTotal };
-    } catch { /* ignore */ }
+    } catch (err) { debugLog("status", "failed to read /proc/meminfo", err); }
     return null;
   }
 
@@ -241,12 +257,15 @@ export default function (pi: ExtensionAPI) {
 
   function getGitBranch(): string {
     if (gitBranchCache) return gitBranchCache;
-    try {
-      const branch = gitExecSync("git rev-parse --abbrev-ref HEAD 2>/dev/null", {
-        encoding: "utf-8", timeout: 3000,
-      }).trim();
-      if (branch) gitBranchCache = branch;
-    } catch { /* not a git repo */ }
+    // Fire-and-forget async fetch — result available on next cycle via cache
+    exec("git rev-parse --abbrev-ref HEAD", { timeout: 3000 }, (err: Error | null, stdout: string) => {
+      if (!err) {
+        const branch = stdout.trim();
+        if (branch) gitBranchCache = branch;
+      } else {
+        debugLog("status", "git branch detection failed", err);
+      }
+    });
     return gitBranchCache;
   }
 
@@ -261,7 +280,7 @@ export default function (pi: ExtensionAPI) {
     blockedCount++;
   }
 
-  // ── metrics refresh (called every 3s) ───────────────────────────
+  // ── metrics refresh (called every STATUS_UPDATE_INTERVAL_MS) ──
 
   function updateMetrics() {
     cpuUsage = getCpuUsage();
@@ -413,7 +432,7 @@ export default function (pi: ExtensionAPI) {
     updateInterval = setInterval(() => {
       updateMetrics();
       if (tuiRef) tuiRef.requestRender();
-    }, 3000);
+    }, STATUS_UPDATE_INTERVAL_MS);
   });
 
   pi.on("session_shutdown", async () => {
