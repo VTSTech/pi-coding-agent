@@ -20,7 +20,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BUILD_DIR="$REPO_ROOT/.build-npm"
 
-VERSION="1.1.3-dev"
+VERSION="1.1.3"
 DRY_RUN=false
 DIST_TAG="latest"
 
