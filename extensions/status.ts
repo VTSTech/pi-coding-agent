@@ -15,7 +15,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import os from "node:os";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execSync } from "node:child_process";
+import { execSync as gitExecSync } from "node:child_process";
 
 // ── Shared imports (eliminates duplication) ────────────────────────────────
 import { getOllamaBaseUrl } from "../shared/ollama";
@@ -103,7 +103,7 @@ export default function (pi: ExtensionAPI) {
 
   function getSwap(): { used: number; total: number } | null {
     try {
-      const out = execSync("cat /proc/meminfo", { encoding: "utf-8", timeout: 3000 });
+      const out = gitExecSync("cat /proc/meminfo", { encoding: "utf-8", timeout: 3000 });
       const swapTotal = Number(out.match(/SwapTotal:\s+(\d+)/)?.[1]) * 1024;
       const swapFree = Number(out.match(/SwapFree:\s+(\d+)/)?.[1]) * 1024;
       if (swapTotal > 0) return { used: swapTotal - swapFree, total: swapTotal };
@@ -199,25 +199,39 @@ export default function (pi: ExtensionAPI) {
     return footerNativeCtx;
   }
 
+  /**
+   * Fetch the model currently loaded in Ollama VRAM via /api/ps.
+   * Uses native fetch() instead of execSync("curl ...") to avoid
+   * shell injection if the base URL contains metacharacters.
+   * Results are cached for OLLAMA_LOADED_INTERVAL (15s).
+   */
+  async function fetchOllamaLoadedModel(): Promise<string> {
+    try {
+      const ollamaBase = getOllamaBaseUrl();
+      const res = await fetch(`${ollamaBase}/api/ps`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) return "";
+      const data = (await res.json()) as { models?: Array<{ name?: string; model?: string }> };
+      const models = data?.models || [];
+      if (Array.isArray(models) && models.length > 0) {
+        return models[0].name || models[0].model || "";
+      }
+    } catch { /* ignore — network error, timeout, or parse failure */ }
+    return "";
+  }
+
   function getOllamaLoadedModel(): string {
     const now = Date.now();
     if (now - ollamaLoadedLastCheck < OLLAMA_LOADED_INTERVAL) return ollamaLoadedCache;
     ollamaLoadedLastCheck = now;
-    try {
-      const ollamaBase = getOllamaBaseUrl();
-      const out = execSync(`curl -s "${ollamaBase}/api/ps"`, { encoding: "utf-8", timeout: 5000 });
-      if (out.trim()) {
-        let data: any;
-        try { data = JSON.parse(out.trim()); } catch { /* malformed response */ }
-        const models = data?.models || [];
-        if (Array.isArray(models) && models.length > 0) {
-          ollamaLoadedCache = models[0].name || models[0].model || "unknown";
-          return ollamaLoadedCache;
-        }
-      }
-    } catch { /* ignore */ }
-    ollamaLoadedCache = "";
-    return "";
+    // Fire-and-forget async fetch — result available on next cycle via cache
+    fetchOllamaLoadedModel().then((loaded) => {
+      ollamaLoadedCache = loaded;
+    }).catch(() => {
+      ollamaLoadedCache = "";
+    });
+    return ollamaLoadedCache;
   }
 
   function extractParams(payload: Record<string, any>): string[] {
@@ -248,7 +262,7 @@ export default function (pi: ExtensionAPI) {
   function getGitBranch(): string {
     if (gitBranchCache) return gitBranchCache;
     try {
-      const branch = execSync("git rev-parse --abbrev-ref HEAD 2>/dev/null", {
+      const branch = gitExecSync("git rev-parse --abbrev-ref HEAD 2>/dev/null", {
         encoding: "utf-8", timeout: 3000,
       }).trim();
       if (branch) gitBranchCache = branch;

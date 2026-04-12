@@ -230,7 +230,7 @@ export default function (pi: ExtensionAPI) {
         lines.push(fail(`models.json parse error: ${e.message}`));
       }
     } else {
-      lines.push(fail(`models.json not found at ${modelsJsonPath}`));
+      lines.push(fail(`models.json not found at ${MODELS_JSON_PATH}`));
       lines.push(info("  → Run /ollama-sync to create it"));
     }
 
