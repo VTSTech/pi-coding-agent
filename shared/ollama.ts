@@ -391,11 +391,12 @@ export function isReasoningModel(name: string): boolean {
   return (
     lower.includes("deepseek-r1") ||
     lower.includes("qwq") ||
-    lower.includes("o1") ||
-    lower.includes("o3") ||
+    /\bo1\b/.test(lower) ||
+    /\bo3\b/.test(lower) ||
     lower.includes("qwen3") ||
     lower.includes("reasoning") ||
-    lower.includes("thinker")
+    lower.includes("thinker") ||
+    lower.includes("thinking")
   );
 }
 

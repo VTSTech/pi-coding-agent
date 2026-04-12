@@ -18,7 +18,7 @@ import type { ToolSupportLevel } from "../shared/types";
  * Centralized to make tuning and maintenance easier.
  *
  * @property DEFAULT_TIMEOUT_MS - Default timeout for Ollama API calls (~16.7 min)
- * @property CONNECT_TIMEOUT_S - Connection timeout for curl (seconds)
+ * @property CONNECT_TIMEOUT_S - Connection timeout for fetch (seconds)
  * @property MAX_RETRIES - Number of retry attempts for transient failures
  * @property RETRY_DELAY_MS - Delay between retry attempts (milliseconds)
  * @property NUM_PREDICT - Default max tokens for model responses
@@ -27,7 +27,6 @@ import type { ToolSupportLevel } from "../shared/types";
  * @property TOOL_TEST_TIMEOUT_MS - Timeout for tool usage tests
  * @property TOOL_SUPPORT_TIMEOUT_MS - Timeout for tool support detection
  * @property TAGS_TIMEOUT_MS - Timeout for /api/tags requests
- * @property TAGS_CONNECT_TIMEOUT_S - Connection timeout for /api/tags (seconds)
  */
 const CONFIG = {
   // General API settings
@@ -35,7 +34,6 @@ const CONFIG = {
   CONNECT_TIMEOUT_S: 60,             // 60 seconds to establish connection
   MAX_RETRIES: 1,                    // Single retry for transient failures
   RETRY_DELAY_MS: 10000,              // 10 seconds between retries
-  EXEC_BUFFER_MS: 8000,              // Extra buffer for exec timeout over curl timeout
 
   // Model generation settings
   NUM_PREDICT: 1024,                 // Max tokens in response
@@ -44,13 +42,10 @@ const CONFIG = {
   // Test-specific settings
   MIN_THINKING_LENGTH: 10,           // Minimum chars to consider thinking tokens valid
   TOOL_TEST_TIMEOUT_MS: 999999,       // Effectively unlimited for slow tool usage tests
-  TOOL_TEST_MAX_TIME_S: 999999,        // Max curl time for tool tests (effectively unlimited)
   TOOL_SUPPORT_TIMEOUT_MS: 999999,   // Effectively unlimited for tool support detection
-  TOOL_SUPPORT_MAX_TIME_S: 999999,      // Max curl time for tool support detection
 
   // Metadata retrieval
   TAGS_TIMEOUT_MS: 15000,            // 15 seconds for /api/tags
-  TAGS_CONNECT_TIMEOUT_S: 30,        // 30 seconds connection timeout for tags
   MODEL_INFO_TIMEOUT_MS: 30000,      // 30 seconds for model info lookup
 
   // Provider API settings
@@ -146,10 +141,15 @@ function cacheToolSupport(model: string, support: ToolSupportLevel, family: stri
  */
 export default function (pi: ExtensionAPI) {
 
-  // Ollama URL: models.json > OLLAMA_HOST env > localhost
-  const OLLAMA_BASE = getOllamaBaseUrl();
-
   // ── helpers ──────────────────────────────────────────────────────────
+
+  /**
+   * Get the current Ollama base URL.
+   * Re-reads on every call so /ollama-sync changes take effect immediately.
+   */
+  function ollamaBase(): string {
+    return getOllamaBaseUrl();
+  }
 
   /**
    * Sleep for the configured test delay to avoid rate limiting.
@@ -162,8 +162,68 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
+  // ── Shared scoring helpers (deduplicated) ────────────────────────────
+
+  /** Score a reasoning response based on correctness and reasoning patterns. */
+  function scoreReasoning(msg: string): { score: string; pass: boolean } {
+    const allNumbers = msg.match(/\b(\d+)\b/g) || [];
+    const answer = allNumbers.length > 0 ? allNumbers[allNumbers.length - 1] : "?";
+    const isCorrect = answer === "8";
+
+    const reasoningPatterns = ["because", "therefore", "since", "step", "subtract", "minus",
+      "each day", "each night", "slides", "climbs", "night", "reaches", "finally", "last day"];
+    const hasReasoningWords = reasoningPatterns.some(w => msg.toLowerCase().includes(w));
+    const hasNumberedSteps = /^\s*\d+\.\s/m.test(msg);
+    const hasReasoning = hasReasoningWords || hasNumberedSteps;
+
+    if (isCorrect && hasReasoning) return { score: "STRONG", pass: true };
+    if (isCorrect) return { score: "MODERATE", pass: true };
+    if (hasReasoning) return { score: "WEAK", pass: false };
+    return { score: "FAIL", pass: false };
+  }
+
+  /** Score a native tool call response. */
+  function scoreNativeToolCall(fnName: string, args: Record<string, unknown>): { score: string; pass: boolean } {
+    const hasCorrectTool = fnName === "get_weather";
+    const hasLocation = typeof args.location === "string" && (args.location as string).toLowerCase().includes("paris");
+    const unitValid = args.unit === undefined ||
+      (typeof args.unit === "string" && ["celsius", "fahrenheit"].includes((args.unit as string).toLowerCase()));
+
+    if (hasCorrectTool && hasLocation && unitValid) return { score: "STRONG", pass: true };
+    if (hasCorrectTool && hasLocation) return { score: "MODERATE", pass: true };
+    return { score: "WEAK", pass: false };
+  }
+
+  /** Score a text-based tool call parsed from model content. */
+  function scoreTextToolCall(fnName: string, args: Record<string, unknown>): { score: string; pass: boolean } {
+    const isWeatherTool = fnName === "get_weather";
+    const hasLocation = typeof args.location === "string" && (args.location as string).toLowerCase().includes("paris");
+
+    if (isWeatherTool && hasLocation) return { score: "STRONG", pass: true };
+    if (isWeatherTool) return { score: "MODERATE", pass: true };
+    return { score: "WEAK", pass: false };
+  }
+
+  /** Parse tool call JSON from model text content. Returns null if no valid tool call found. */
+  function parseTextToolCall(content: string): { fnName: string; args: Record<string, unknown> } | null {
+    const firstBrace = content.indexOf('{');
+    if (firstBrace === -1) return null;
+    const lastBrace = content.lastIndexOf('}');
+    if (lastBrace <= firstBrace) return null;
+
+    const jsonCandidate = content.slice(firstBrace, lastBrace + 1);
+    let textToolParsed: any = null;
+    try { textToolParsed = JSON.parse(jsonCandidate); } catch { return null; }
+
+    if (!textToolParsed || typeof textToolParsed.name !== "string") return null;
+    const rawArgs = textToolParsed.arguments || { ...textToolParsed };
+    const { name: _, ...fnArgs } = rawArgs;
+    return { fnName: textToolParsed.name, args: fnArgs };
+  }
+
   /**
    * Call Ollama /api/chat and return the parsed response.
+   * Uses native fetch() — no curl subprocess.
    */
   async function ollamaChat(
     model: string,
@@ -173,40 +233,55 @@ export default function (pi: ExtensionAPI) {
     retries = CONFIG.MAX_RETRIES
   ): Promise<{ response: any; elapsedMs: number }> {
     const body: any = { model, messages, stream: false, options: { num_predict: CONFIG.NUM_PREDICT, temperature: CONFIG.TEMPERATURE, ...options } };
+    const url = `${ollamaBase()}/api/chat`;
 
     for (let attempt = 0; attempt <= retries; attempt++) {
       const start = Date.now();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
       try {
-        const result = await pi.exec("curl", [
-          "-s", "--fail-with-body", "-X", "POST",
-          "--connect-timeout", String(CONFIG.CONNECT_TIMEOUT_S),
-          "--max-time", String(Math.ceil(timeoutMs / 1000)),
-          `${OLLAMA_BASE}/api/chat`,
-          "-H", "Content-Type: application/json",
-          "-d", JSON.stringify(body),
-        ], { timeout: timeoutMs + CONFIG.EXEC_BUFFER_MS });
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
         const elapsedMs = Date.now() - start;
 
-        if (result.code !== 0) {
-          const detail = result.stderr?.trim() || result.stdout?.trim() || "unknown error";
-          throw new Error(`curl exited ${result.code}: ${detail}`);
+        if (!res.ok) {
+          const errorText = await res.text().catch(() => "unknown error");
+          throw new Error(`Ollama API returned ${res.status}: ${truncate(errorText, 200)}`);
         }
-        if (!result.stdout.trim()) {
-          // Empty response — could be transient tunnel/timeout issue
+
+        const text = await res.text();
+        if (!text.trim()) {
           if (attempt < retries) {
             await new Promise(r => setTimeout(r, CONFIG.RETRY_DELAY_MS));
             continue;
           }
           throw new Error(`Empty response from Ollama after ${attempt + 1} attempt(s)`);
         }
-        const parsed = JSON.parse(result.stdout);
+        const parsed = JSON.parse(text);
         return { response: parsed, elapsedMs };
-      } catch (e: any) {
-        if (attempt < retries && (e.message.includes("Empty response") || e.message.includes("timed out") || e.message.includes("curl exited 22") || e.message.includes("curl exited 28") || e.message.includes("curl exited 35") || e.message.includes("curl exited 52"))) {
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (e instanceof Error && e.name === "AbortError") {
+          if (attempt < retries) {
+            await new Promise(r => setTimeout(r, CONFIG.RETRY_DELAY_MS));
+            continue;
+          }
+          throw new Error(`Ollama API timed out after ${msHuman(timeoutMs)}`);
+        }
+        if (attempt < retries && (
+          msg.includes("Empty response") || msg.includes("ECONNREFUSED") ||
+          msg.includes("ECONNRESET") || msg.includes("fetch failed")
+        )) {
           await new Promise(r => setTimeout(r, CONFIG.RETRY_DELAY_MS));
           continue;
         }
         throw e;
+      } finally {
+        clearTimeout(timeoutId);
       }
     }
     throw new Error("Unreachable");
@@ -417,36 +492,10 @@ export default function (pi: ExtensionAPI) {
         return { pass: false, score: "ERROR", reasoning: "Empty response from Ollama (no content or thinking tokens)", answer: "?", elapsedMs };
       }
 
-      // Extract the answer: use the last number in the model's response.
-      // The model's final number is its conclusion regardless of intermediate math.
+      // Extract the answer using the shared scoring helper
       const allNumbers = effectiveMsg.match(/\b(\d+)\b/g) || [];
       const answer = allNumbers.length > 0 ? allNumbers[allNumbers.length - 1] : "?";
-
-      const isCorrect = answer === "8";
-
-      // Check for reasoning patterns (step-by-step, because, therefore, etc.)
-      const reasoningPatterns = ["because", "therefore", "since", "step", "subtract", "minus",
-        "each day", "each night", "slides", "climbs", "night", "reaches", "finally", "last day"];
-      const hasReasoningWords = reasoningPatterns.some(w => effectiveMsg.toLowerCase().includes(w));
-      // Also detect numbered step patterns (e.g. "1. Find... 2. Subtract... 3. Therefore...")
-      const hasNumberedSteps = /^\s*\d+\.\s/m.test(effectiveMsg);
-      const hasReasoning = hasReasoningWords || hasNumberedSteps;
-
-      let score: string;
-      let pass: boolean;
-      if (isCorrect && hasReasoning) {
-        score = "STRONG";
-        pass = true;
-      } else if (isCorrect) {
-        score = "MODERATE";
-        pass = true;
-      } else if (hasReasoning) {
-        score = "WEAK";
-        pass = false;
-      } else {
-        score = "FAIL";
-        pass = false;
-      }
+      const { score, pass } = scoreReasoning(effectiveMsg);
 
       // Use effectiveMsg for display; note if it came from thinking tokens
       const displayMsg = msg.trim().length > 0
@@ -483,34 +532,10 @@ export default function (pi: ExtensionAPI) {
         return { pass: false, score: "ERROR", reasoning: "Empty response from provider", answer: "?", elapsedMs: result.elapsedMs };
       }
 
-      // Extract the answer: use the last number in the model's response.
+      // Extract the answer and score using the shared scoring helper
       const allNumbers = msg.match(/\b(\d+)\b/g) || [];
       const answer = allNumbers.length > 0 ? allNumbers[allNumbers.length - 1] : "?";
-
-      const isCorrect = answer === "8";
-
-      // Check for reasoning patterns
-      const reasoningPatterns = ["because", "therefore", "since", "step", "subtract", "minus",
-        "each day", "each night", "slides", "climbs", "night", "reaches", "finally", "last day"];
-      const hasReasoningWords = reasoningPatterns.some(w => msg.toLowerCase().includes(w));
-      const hasNumberedSteps = /^\s*\d+\.\s/m.test(msg);
-      const hasReasoning = hasReasoningWords || hasNumberedSteps;
-
-      let score: string;
-      let pass: boolean;
-      if (isCorrect && hasReasoning) {
-        score = "STRONG";
-        pass = true;
-      } else if (isCorrect) {
-        score = "MODERATE";
-        pass = true;
-      } else if (hasReasoning) {
-        score = "WEAK";
-        pass = false;
-      } else {
-        score = "FAIL";
-        pass = false;
-      }
+      const { score, pass } = scoreReasoning(msg);
 
       return { pass, score, reasoning: msg, answer, elapsedMs: result.elapsedMs };
     } catch (e: any) {
@@ -602,24 +627,26 @@ export default function (pi: ExtensionAPI) {
     };
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), CONFIG.TOOL_TEST_TIMEOUT_MS);
       const start = Date.now();
-      const result = await pi.exec("curl", [
-        "-s", "--fail-with-body", "-X", "POST",
-        "--connect-timeout", String(CONFIG.CONNECT_TIMEOUT_S),
-        "--max-time", String(CONFIG.TOOL_TEST_MAX_TIME_S),
-        `${OLLAMA_BASE}/api/chat`,
-        "-H", "Content-Type: application/json",
-        "-d", JSON.stringify(body),
-      ], { timeout: CONFIG.TOOL_TEST_TIMEOUT_MS });
+      const res = await fetch(`${ollamaBase()}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
       const elapsedMs = Date.now() - start;
+      clearTimeout(timeoutId);
 
-      if (result.code !== 0) {
-        const detail = result.stderr?.trim() || result.stdout?.trim() || "unknown error";
-        return { pass: false, score: "ERROR", hasToolCalls: false, toolCall: `curl error: ${result.code}: ${detail}`, response: "", elapsedMs };
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => "unknown error");
+        return { pass: false, score: "ERROR", hasToolCalls: false, toolCall: `fetch error: ${res.status}`, response: "", elapsedMs };
       }
 
-      if (!result.stdout.trim()) throw new Error("Empty response from Ollama");
-      const parsed = JSON.parse(result.stdout);
+      const text = await res.text();
+      if (!text.trim()) throw new Error("Empty response from Ollama");
+      const parsed = JSON.parse(text);
       const toolCalls = parsed?.message?.tool_calls;
       const content = parsed?.message?.content || "";
 
@@ -627,7 +654,7 @@ export default function (pi: ExtensionAPI) {
         const call = toolCalls[0];
         const fn = call.function || {};
         // Parse tool arguments safely
-        let args: any = {};
+        let args: Record<string, unknown> = {};
         try {
           args = typeof fn.arguments === "string" ? JSON.parse(fn.arguments) : (fn.arguments || {});
         } catch {
@@ -640,25 +667,7 @@ export default function (pi: ExtensionAPI) {
             elapsedMs,
           };
         }
-        const hasCorrectTool = fn.name === "get_weather";
-        const hasLocation = typeof args.location === "string" && args.location.toLowerCase().includes("paris");
-        // Validate optional args: unit must be one of the enum values if provided
-        const unitValid = args.unit === undefined ||
-          (typeof args.unit === "string" && ["celsius", "fahrenheit"].includes(args.unit.toLowerCase()));
-
-        let score: string;
-        if (hasCorrectTool && hasLocation && unitValid) {
-          score = "STRONG";
-        } else if (hasCorrectTool && hasLocation) {
-          score = "MODERATE";
-        } else if (hasCorrectTool) {
-          score = "WEAK";
-        } else {
-          score = "WEAK";
-        }
-
-        // WEAK = wrong tool or no location → not a meaningful pass
-        const pass = score !== "WEAK";
+        const { score, pass } = scoreNativeToolCall(fn.name || "", args);
 
         return {
           pass,
@@ -671,45 +680,15 @@ export default function (pi: ExtensionAPI) {
       }
 
       // Model answered in text — check if it contains valid tool call JSON
-      // Use greedy match so nested braces (e.g. {"arguments": {...}}) are captured fully
-      const firstBrace = content.indexOf('{');
-      let textToolParsed: any = null;
-      if (firstBrace !== -1) {
-        const lastBrace = content.lastIndexOf('}');
-        if (lastBrace > firstBrace) {
-          const jsonCandidate = content.slice(firstBrace, lastBrace + 1);
-          try {
-            textToolParsed = JSON.parse(jsonCandidate);
-          } catch { /* not valid JSON */ }
-        }
-      }
-
-      // Check if the parsed JSON looks like a valid tool call
-      if (textToolParsed && typeof textToolParsed.name === "string") {
-        const fnName = textToolParsed.name;
-        const rawArgs = textToolParsed.arguments || { ...textToolParsed };
-        // Remove 'name' from args so it doesn't appear as a parameter
-        const { name: _, ...fnArgs } = rawArgs;
-        const isWeatherTool = fnName === "get_weather";
-        const hasLocation = typeof fnArgs.location === "string" && fnArgs.location.toLowerCase().includes("paris");
-
-        let score: string;
-        if (isWeatherTool && hasLocation) {
-          score = "STRONG";
-        } else if (isWeatherTool) {
-          score = "MODERATE";
-        } else {
-          score = "WEAK";
-        }
-
-        // WEAK = wrong tool entirely → not a meaningful pass
-        const pass = score !== "WEAK";
+      const textParsed = parseTextToolCall(content);
+      if (textParsed) {
+        const { score, pass } = scoreTextToolCall(textParsed.fnName, textParsed.args);
 
         return {
           pass,
           score,
           hasToolCalls: true,
-          toolCall: `${fnName}(${JSON.stringify(fnArgs)})`,
+          toolCall: `${textParsed.fnName}(${JSON.stringify(textParsed.args)})`,
           response: content,
           elapsedMs,
         };
@@ -780,7 +759,7 @@ export default function (pi: ExtensionAPI) {
       if (toolCalls && toolCalls.length > 0) {
         const call = toolCalls[0];
         const fn = call.function || {};
-        let args: any = {};
+        let args: Record<string, unknown> = {};
         try {
           args = typeof fn.arguments === "string" ? JSON.parse(fn.arguments) : (fn.arguments || {});
         } catch {
@@ -793,25 +772,7 @@ export default function (pi: ExtensionAPI) {
             elapsedMs: result.elapsedMs,
           };
         }
-        const hasCorrectTool = fn.name === "get_weather";
-        const hasLocation = typeof args.location === "string" && args.location.toLowerCase().includes("paris");
-        // Validate optional args: unit must be one of the enum values if provided
-        const unitValid = args.unit === undefined ||
-          (typeof args.unit === "string" && ["celsius", "fahrenheit"].includes(args.unit.toLowerCase()));
-
-        let score: string;
-        if (hasCorrectTool && hasLocation && unitValid) {
-          score = "STRONG";
-        } else if (hasCorrectTool && hasLocation) {
-          score = "MODERATE";
-        } else if (hasCorrectTool) {
-          score = "WEAK";
-        } else {
-          score = "WEAK";
-        }
-
-        // WEAK = wrong tool or no location → not a meaningful pass
-        const pass = score !== "WEAK";
+        const { score, pass } = scoreNativeToolCall(fn.name || "", args);
 
         return {
           pass,
@@ -824,42 +785,15 @@ export default function (pi: ExtensionAPI) {
       }
 
       // Model answered in text — check if it contains valid tool call JSON
-      const firstBrace = content.indexOf('{');
-      let textToolParsed: any = null;
-      if (firstBrace !== -1) {
-        const lastBrace = content.lastIndexOf('}');
-        if (lastBrace > firstBrace) {
-          const jsonCandidate = content.slice(firstBrace, lastBrace + 1);
-          try {
-            textToolParsed = JSON.parse(jsonCandidate);
-          } catch { /* not valid JSON */ }
-        }
-      }
-
-      if (textToolParsed && typeof textToolParsed.name === "string") {
-        const fnName = textToolParsed.name;
-        const rawArgs = textToolParsed.arguments || { ...textToolParsed };
-        const { name: _, ...fnArgs } = rawArgs;
-        const isWeatherTool = fnName === "get_weather";
-        const hasLocation = typeof fnArgs.location === "string" && fnArgs.location.toLowerCase().includes("paris");
-
-        let score: string;
-        if (isWeatherTool && hasLocation) {
-          score = "STRONG";
-        } else if (isWeatherTool) {
-          score = "MODERATE";
-        } else {
-          score = "WEAK";
-        }
-
-        // WEAK = wrong tool entirely → not a meaningful pass
-        const pass = score !== "WEAK";
+      const textParsed = parseTextToolCall(content);
+      if (textParsed) {
+        const { score, pass } = scoreTextToolCall(textParsed.fnName, textParsed.args);
 
         return {
           pass,
           score,
           hasToolCalls: true,
-          toolCall: `${fnName}(${JSON.stringify(fnArgs)})`,
+          toolCall: `${textParsed.fnName}(${JSON.stringify(textParsed.args)})`,
           response: content,
           elapsedMs: result.elapsedMs,
         };
@@ -921,24 +855,26 @@ export default function (pi: ExtensionAPI) {
     };
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), CONFIG.TOOL_TEST_TIMEOUT_MS);
       const start = Date.now();
-      const result = await pi.exec("curl", [
-        "-s", "--fail-with-body", "-X", "POST",
-        "--connect-timeout", String(CONFIG.CONNECT_TIMEOUT_S),
-        "--max-time", String(CONFIG.TOOL_TEST_MAX_TIME_S),
-        `${OLLAMA_BASE}/api/chat`,
-        "-H", "Content-Type: application/json",
-        "-d", JSON.stringify(body),
-      ], { timeout: CONFIG.TOOL_TEST_TIMEOUT_MS });
+      const res = await fetch(`${ollamaBase()}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
       const elapsedMs = Date.now() - start;
+      clearTimeout(timeoutId);
 
-      if (result.code !== 0) {
-        const detail = result.stderr?.trim() || result.stdout?.trim() || "unknown error";
-        return { pass: false, score: "ERROR", toolCall: `curl error: ${result.code}: ${detail}`, thought: "", response: "", elapsedMs };
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => "unknown error");
+        return { pass: false, score: "ERROR", toolCall: `fetch error: ${res.status}`, thought: "", response: "", elapsedMs };
       }
 
-      if (!result.stdout.trim()) throw new Error("Empty response from Ollama");
-      const parsed = JSON.parse(result.stdout);
+      const text = await res.text();
+      if (!text.trim()) throw new Error("Empty response from Ollama");
+      const parsed = JSON.parse(text);
       const content = (parsed?.message?.content || "").trim();
 
       if (!content) {
@@ -1348,25 +1284,32 @@ The JSON object must have exactly these 4 keys:
 
     try {
       const start = Date.now();
-      const result = await pi.exec("curl", [
-        "-s", "--fail-with-body", "-X", "POST",
-        "--connect-timeout", "30",
-        "--max-time", "120",
-        `${OLLAMA_BASE}/api/chat`,
-        "-H", "Content-Type: application/json",
-        "-d", JSON.stringify(body),
-      ], { timeout: 130000 });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 130000);
+      const res = await fetch(`${ollamaBase()}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
       const elapsedMs = Date.now() - start;
+      clearTimeout(timeoutId);
 
-      if (result.code !== 0 || !result.stdout.trim()) {
-        // API error — treat as no support
-        const detail = result.stderr?.trim() || result.stdout?.trim() || "empty response";
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "unknown error");
         const level: ToolSupportLevel = "none";
         cacheToolSupport(model, level, family);
-        return { level, cached: false, evidence: `API error: ${truncate(detail, 100)}`, elapsedMs };
+        return { level, cached: false, evidence: `API error ${res.status}: ${truncate(detail, 100)}`, elapsedMs };
       }
 
-      const parsed = JSON.parse(result.stdout);
+      const text = await res.text();
+      if (!text.trim()) {
+        const level: ToolSupportLevel = "none";
+        cacheToolSupport(model, level, family);
+        return { level, cached: false, evidence: "empty response from Ollama", elapsedMs };
+      }
+
+      const parsed = JSON.parse(text);
       const toolCalls = parsed?.message?.tool_calls;
       const content = (parsed?.message?.content || "").trim();
 
@@ -1489,9 +1432,9 @@ The JSON object must have exactly these 4 keys:
   async function getOllamaModels(): Promise<string[]> {
     // Use the same Ollama base URL (could be remote) via /api/tags
     try {
-      const result = await pi.exec("curl", ["-s", "--connect-timeout", "10", `${OLLAMA_BASE}/api/tags`], { timeout: 15000 });
-      if (result.code !== 0 || !result.stdout.trim()) return [];
-      const data = JSON.parse(result.stdout);
+      const res = await fetch(`${ollamaBase()}/api/tags`, { signal: AbortSignal.timeout(15000) });
+      if (!res.ok) return [];
+      const data = await res.json();
       return (data.models || []).map((m: any) => m.name).filter(Boolean);
     } catch {
       return [];
@@ -1572,7 +1515,7 @@ The JSON object must have exactly these 4 keys:
     lines.push(info(`API: ${apiMode}`));
 
     // Fetch native max context from Ollama /api/show (same as ollama-sync)
-    const nativeContext = await fetchModelContextLength(OLLAMA_BASE, model);
+    const nativeContext = await fetchModelContextLength(ollamaBase(), model);
     if (nativeContext !== undefined) {
       const ctxStr = nativeContext >= 1000 ? `${(nativeContext / 1000).toFixed(1)}k` : String(nativeContext);
       lines.push(info(`Context: ${ctxStr} tokens (native max)`));
@@ -1585,9 +1528,9 @@ The JSON object must have exactly these 4 keys:
     let modelQuant = "unknown";
     let modelModified = "unknown";
     try {
-      const tagsResult = await pi.exec("curl", ["-s", `${OLLAMA_BASE}/api/tags`], { timeout: 10000 });
-      if (tagsResult.code === 0 && tagsResult.stdout.trim()) {
-        const tags = JSON.parse(tagsResult.stdout);
+      const tagsRes = await fetch(`${ollamaBase()}/api/tags`, { signal: AbortSignal.timeout(10000) });
+      if (tagsRes.ok) {
+        const tags = await tagsRes.json();
         const entry = (tags.models || []).find((m: any) => m.name === model);
         if (entry) {
           const details = entry.details || {};

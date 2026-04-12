@@ -14,6 +14,14 @@ import os from "node:os";
 // ============================================================================
 
 /**
+ * Extension package version. Single source of truth — read from root package.json
+ * and hardcoded here so extensions don't need to import JSON at runtime.
+ *
+ * IMPORTANT: When bumping the version, update this constant AND root package.json.
+ */
+export const EXTENSION_VERSION = "1.1.0";
+
+/**
  * Path to Pi's models.json configuration file.
  *
  * This file contains the provider configurations and model definitions
@@ -117,8 +125,18 @@ export interface PiModelEntry {
   modelFamily?: string;
   parameterSize?: string;
   quantizationLevel?: string;
+  contextLength?: number;
+  estimatedSize?: number;
   [key: string]: unknown;
 }
+
+// ============================================================================
+// In-Memory Cache (TTL-based)
+// ============================================================================
+
+let _modelsJsonCache: { data: PiModelsJson; ts: number } | null = null;
+let _ollamaBaseUrlCache: { data: string; ts: number } | null = null;
+const CACHE_TTL_MS = 2000; // 2-second TTL
 
 // ============================================================================
 // Ollama Base URL Resolution
@@ -156,6 +174,8 @@ export interface PiModelEntry {
  * ```
  */
 export function getOllamaBaseUrl(): string {
+  const now = Date.now();
+  if (_ollamaBaseUrlCache && now - _ollamaBaseUrlCache.ts < CACHE_TTL_MS) return _ollamaBaseUrlCache.data;
   try {
     if (fs.existsSync(MODELS_JSON_PATH)) {
       const raw = fs.readFileSync(MODELS_JSON_PATH, "utf-8");
@@ -163,14 +183,20 @@ export function getOllamaBaseUrl(): string {
       const baseUrl = config?.providers?.["ollama"]?.baseUrl;
       if (baseUrl) {
         // baseUrl is like "https://host/v1" or "http://localhost:11434/v1" — strip /v1
-        return baseUrl.replace(/\/v1\/?$/, "");
+        const result = baseUrl.replace(/\/v1\/?$/, "");
+        _ollamaBaseUrlCache = { data: result, ts: now };
+        return result;
       }
     }
   } catch { /* ignore parse errors */ }
   if (process.env.OLLAMA_HOST) {
-    return `http://${process.env.OLLAMA_HOST.replace(/^https?:\/\//, "")}`;
+    const result = `http://${process.env.OLLAMA_HOST.replace(/^https?:\/\//, "")}`;
+    _ollamaBaseUrlCache = { data: result, ts: now };
+    return result;
   }
-  return "http://localhost:11434";
+  const fallback = "http://localhost:11434";
+  _ollamaBaseUrlCache = { data: fallback, ts: now };
+  return fallback;
 }
 
 // ============================================================================
@@ -193,13 +219,19 @@ export function getOllamaBaseUrl(): string {
  * ```
  */
 export function readModelsJson(): PiModelsJson {
+  const now = Date.now();
+  if (_modelsJsonCache && now - _modelsJsonCache.ts < CACHE_TTL_MS) return _modelsJsonCache.data;
   try {
     if (fs.existsSync(MODELS_JSON_PATH)) {
       const raw = fs.readFileSync(MODELS_JSON_PATH, "utf-8");
-      return JSON.parse(raw) as PiModelsJson;
+      const data = JSON.parse(raw) as PiModelsJson;
+      _modelsJsonCache = { data, ts: now };
+      return data;
     }
   } catch { /* ignore */ }
-  return { providers: {} };
+  const empty = { providers: {} };
+  _modelsJsonCache = { data: empty, ts: now };
+  return empty;
 }
 
 /**
@@ -226,6 +258,9 @@ export function writeModelsJson(data: PiModelsJson): void {
     fs.mkdirSync(dir, { recursive: true });
   }
   fs.writeFileSync(MODELS_JSON_PATH, JSON.stringify(data, null, 2) + "\n", "utf-8");
+  // Invalidate cache so next read picks up the written data
+  _modelsJsonCache = null;
+  _ollamaBaseUrlCache = null;
 }
 
 // ============================================================================
@@ -260,6 +295,81 @@ export async function fetchOllamaModels(baseUrl: string): Promise<OllamaModel[]>
 }
 
 /**
+ * Fetch detailed model info from Ollama's /api/show endpoint.
+ *
+ * Returns the model's context window size (`num_ctx`), along with
+ * other details like the template and system prompt. Used by
+ * ollama-sync to enrich model entries with context length metadata.
+ *
+ * @param baseUrl - The Ollama base URL (without /v1 suffix)
+ * @param modelName - The model tag name (e.g., "qwen3:0.6b")
+ * @returns Context length in tokens, or undefined if unavailable
+ *
+ * @example
+ * ```typescript
+ * const ctx = await fetchModelContextLength("http://localhost:11434", "qwen3:0.6b");
+ * console.log(ctx); // 8192
+ * ```
+ */
+export async function fetchModelContextLength(
+  baseUrl: string,
+  modelName: string
+): Promise<number | undefined> {
+  try {
+    const res = await fetch(`${baseUrl}/api/show`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: modelName }),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!res.ok) return undefined;
+    const data = (await res.json()) as {
+      model_info?: Record<string, unknown>;
+      template?: string;
+    };
+    // Ollama uses architecture-specific keys like "qwen3.context_length"
+    for (const key of Object.keys(data?.model_info ?? {})) {
+      if (key.endsWith(".context_length")) {
+        const val = data.model_info[key];
+        if (typeof val === "number") return val;
+      }
+    }
+    // Fallback: generic "num_ctx" key
+    const numCtx = data?.model_info?.["num_ctx"];
+    if (typeof numCtx === "number") return numCtx;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Fetch context lengths for multiple models, processing them in small batches
+ * to avoid overwhelming the connection (especially over tunnels).
+ *
+ * @param baseUrl - The Ollama base URL (without /v1 suffix)
+ * @param modelNames - Array of model tag names
+ * @param batchSize - Number of concurrent requests (default: 3)
+ * @returns Map of model name to context length (undefined if unavailable)
+ */
+export async function fetchContextLengthsBatched(
+  baseUrl: string,
+  modelNames: string[],
+  batchSize = 3
+): Promise<Map<string, number | undefined>> {
+  const result = new Map<string, number | undefined>();
+  for (let i = 0; i < modelNames.length; i += batchSize) {
+    const batch = modelNames.slice(i, i + batchSize);
+    const results = await Promise.allSettled(
+      batch.map((name) => fetchModelContextLength(baseUrl, name))
+    );
+    results.forEach((r, idx) => {
+      result.set(batch[idx], r.status === "fulfilled" ? r.value : undefined);
+    });
+  }
+  return result;
+}
+
+/**
  * Check if an Ollama model name suggests reasoning capability.
  *
  * Examines the model name for patterns that indicate support for
@@ -281,12 +391,46 @@ export function isReasoningModel(name: string): boolean {
   return (
     lower.includes("deepseek-r1") ||
     lower.includes("qwq") ||
-    lower.includes("o1") ||
-    lower.includes("o3") ||
-    lower.includes("think") ||
-    lower.includes("reason")
+    /\bo1\b/.test(lower) ||
+    /\bo3\b/.test(lower) ||
+    lower.includes("qwen3") ||
+    lower.includes("reasoning") ||
+    lower.includes("thinker") ||
+    lower.includes("thinking")
   );
 }
+
+// ============================================================================
+// Built-in Provider Registry
+// ============================================================================
+
+/**
+ * Known built-in providers that Pi supports out of the box.
+ *
+ * Pi has two provider layers:
+ *   1. Built-in providers (openrouter, anthropic, google, etc.) configured by Pi internally
+ *   2. User-defined providers in models.json (e.g. ollama)
+ *
+ * The ExtensionAPI does not expose a getProviderConfig() method, so we maintain a
+ * lookup table for known built-in providers. Used by diag.ts, model-test.ts, and
+ * api.ts for provider detection and display.
+ *
+ * Each entry maps provider name to its API mode, base URL, and the env var
+ * that Pi reads for the API key.
+ */
+export const BUILTIN_PROVIDERS: Record<string, { api: string; baseUrl: string; envKey: string }> = {
+  openrouter:    { api: "openai-completions", baseUrl: "https://openrouter.ai/api/v1",      envKey: "OPENROUTER_API_KEY" },
+  anthropic:     { api: "anthropic-messages", baseUrl: "https://api.anthropic.com/v1",      envKey: "ANTHROPIC_API_KEY" },
+  google:        { api: "gemini",             baseUrl: "https://generativelanguage.googleapis.com", envKey: "GOOGLE_API_KEY" },
+  openai:        { api: "openai-completions", baseUrl: "https://api.openai.com/v1",         envKey: "OPENAI_API_KEY" },
+  groq:          { api: "openai-completions", baseUrl: "https://api.groq.com/v1",           envKey: "GROQ_API_KEY" },
+  deepseek:      { api: "openai-completions", baseUrl: "https://api.deepseek.com/v1",       envKey: "DEEPSEEK_API_KEY" },
+  mistral:       { api: "openai-completions", baseUrl: "https://api.mistral.ai/v1",         envKey: "MISTRAL_API_KEY" },
+  xai:           { api: "openai-completions", baseUrl: "https://api.x.ai/v1",               envKey: "XAI_API_KEY" },
+  together:      { api: "openai-completions", baseUrl: "https://api.together.xyz/v1",       envKey: "TOGETHER_API_KEY" },
+  fireworks:     { api: "openai-completions", baseUrl: "https://api.fireworks.ai/inference/v1", envKey: "FIREWORKS_API_KEY" },
+  cohere:        { api: "cohere-chat",        baseUrl: "https://api.cohere.com/v1",         envKey: "COHERE_API_KEY" },
+};
 
 // ============================================================================
 // Model Family Detection
@@ -346,4 +490,102 @@ export function detectModelFamily(modelName: string): string {
     if (name.includes(prefix)) return family;
   }
   return "unknown";
+}
+
+// ============================================================================
+// Provider Detection
+// ============================================================================
+
+/**
+ * Kind of provider: local Ollama, built-in cloud, or unknown.
+ */
+export type ProviderKind = "ollama" | "builtin" | "unknown";
+
+/**
+ * Information about the active provider, detected from Pi's context and models.json.
+ *
+ * @property kind - The provider kind (ollama, builtin, or unknown)
+ * @property name - Provider name (e.g. "ollama", "openrouter", "anthropic")
+ * @property apiMode - API mode (e.g. "openai-completions", "ollama")
+ * @property baseUrl - API base URL
+ * @property envKey - Environment variable for API key
+ * @property apiKey - Actual API key value (if available)
+ */
+export interface ProviderInfo {
+  kind: ProviderKind;
+  name: string;
+  apiMode?: string;
+  baseUrl?: string;
+  envKey?: string;
+  apiKey?: string;
+}
+
+/**
+ * Detect whether the current model is on an Ollama provider, a built-in
+ * provider, or an unknown provider. Uses 3-tier logic:
+ *   1. User-defined provider in models.json
+ *   2. Known built-in provider
+ *   3. Unknown provider
+ *
+ * @param ctx - Pi's extension context (from session_start event)
+ * @returns Provider information including kind, name, API details, and key
+ */
+export function detectProvider(ctx: any): ProviderInfo {
+  const model = ctx.model;
+  if (!model) return { kind: "unknown", name: "none" };
+
+  const providerName = model.provider || "";
+  if (!providerName) return { kind: "unknown", name: "none" };
+
+  // Tier 1: Check if provider is defined in models.json
+  const modelsJson = readModelsJson();
+  const userProviderCfg = (modelsJson.providers || {})[providerName];
+  if (userProviderCfg) {
+    const baseUrl = userProviderCfg.baseUrl || "";
+    const apiMode = userProviderCfg.api || "";
+    const apiKey = userProviderCfg.apiKey || "";
+
+    // Check if it's an Ollama provider (user-defined Ollama in models.json)
+    const isOllama = /ollama/i.test(providerName) ||
+      /localhost:\d+/.test(baseUrl) ||
+      /127\.0\.0\.1:\d+/.test(baseUrl) ||
+      /0\.0\.0\.0:\d+/.test(baseUrl) ||
+      /\/api\/chat/.test(baseUrl) ||
+      apiMode === "ollama";
+
+    if (isOllama) {
+      return { kind: "ollama", name: providerName, apiMode: "ollama", baseUrl, apiKey };
+    }
+
+    // User-defined non-Ollama provider (treat as Ollama-style if it has /api/chat)
+    if (/\/api\/chat/.test(baseUrl)) {
+      return { kind: "ollama", name: providerName, apiMode: "ollama", baseUrl, apiKey };
+    }
+
+    // User-defined provider with custom config — treat as built-in style
+    return {
+      kind: "builtin",
+      name: providerName,
+      apiMode: apiMode || userProviderCfg.api || "openai-completions",
+      baseUrl,
+      apiKey,
+    };
+  }
+
+  // Tier 2: Check built-in providers
+  const builtin = BUILTIN_PROVIDERS[providerName];
+  if (builtin) {
+    const apiKey = process.env[builtin.envKey] || "";
+    return {
+      kind: "builtin",
+      name: providerName,
+      apiMode: builtin.api,
+      baseUrl: builtin.baseUrl,
+      envKey: builtin.envKey,
+      apiKey,
+    };
+  }
+
+  // Tier 3: Unknown provider
+  return { kind: "unknown", name: providerName };
 }

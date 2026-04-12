@@ -202,17 +202,18 @@ main() {
       sync_to_pkg_dir
       ;;
     *)
-      echo "Usage: $0 [shared|api|diag|model-test|ollama-sync|react-fallback|security|status|all]"
+      echo "Usage: $0 [shared|api|diag|model-test|ollama-sync|openrouter-sync|react-fallback|security|status|all]"
       echo ""
-      echo "  all (default)     Build all packages"
-      echo "  shared            Build only @vtstech/pi-shared"
-      echo "  api               Build only @vtstech/pi-api"
-      echo "  diag              Build only @vtstech/pi-diag"
-      echo "  model-test        Build only @vtstech/pi-model-test"
-      echo "  ollama-sync       Build only @vtstech/pi-ollama-sync"
-      echo "  react-fallback    Build only @vtstech/pi-react-fallback"
-      echo "  security          Build only @vtstech/pi-security"
-      echo "  status            Build only @vtstech/pi-status"
+      echo "  all (default)      Build all packages"
+      echo "  shared             Build only @vtstech/pi-shared"
+      echo "  api                Build only @vtstech/pi-api"
+      echo "  diag               Build only @vtstech/pi-diag"
+      echo "  model-test         Build only @vtstech/pi-model-test"
+      echo "  ollama-sync        Build only @vtstech/pi-ollama-sync"
+      echo "  openrouter-sync    Build only @vtstech/pi-openrouter-sync"
+      echo "  react-fallback     Build only @vtstech/pi-react-fallback"
+      echo "  security           Build only @vtstech/pi-security"
+      echo "  status             Build only @vtstech/pi-status"
       exit 1
       ;;
   esac
