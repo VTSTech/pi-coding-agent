@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Pi Version](https://img.shields.io/badge/Pi-v0.66%2B-green.svg)](https://github.com/badlogic/pi-mono)
 [![Pi Package](https://img.shields.io/badge/Install-pi%20install%20git-blue.svg)](#installation)
-[![Version](https://img.shields.io/badge/Version-v1.0.9-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-v1.1.0-orange.svg)](CHANGELOG.md)
 
 <p>
   <a href="https://github.com/VTSTech"><strong>VTSTech</strong></a> •
@@ -46,7 +46,7 @@ pi update
 
 Pin to a specific tag:
 ```bash
-pi install git:github.com/VTSTech/pi-coding-agent@v1.0.9
+pi install git:github.com/VTSTech/pi-coding-agent@v1.1.0
 ```
 
 ### Individual npm packages
@@ -95,7 +95,7 @@ This repo is a standard Pi package. The `package.json` contains a `pi` manifest 
 ```json
 {
   "name": "@vtstech/pi-coding-agent-extensions",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "keywords": ["pi-package"],
   "pi": {
     "extensions": ["./extensions"],
@@ -229,7 +229,7 @@ Sample output (cloud provider):
 ```
  [model-test-report]
 
-   ⚡ Pi Model Benchmark v1.0.9
+   ⚡ Pi Model Benchmark v1.1.0
    Written by VTSTech
    GitHub: https://github.com/VTSTech
    Website: www.vts-tech.org
@@ -334,10 +334,11 @@ Supports all 10 Pi API modes:
 Automatically loaded — no commands needed. Protects against:
 
 - **65 blocked commands** — system modification, privilege escalation, network attacks, package management, process control, shell escapes
-- **SSRF protection** — 27 blocked hostname patterns (loopback, RFC1918 private ranges, cloud metadata endpoints)
+- **SSRF protection** — 28 blocked hostname patterns (loopback, RFC1918 private ranges, cloud metadata endpoints, IPv4-mapped IPv6 `::ffff:127.0.0.1`)
 - **Path validation** — prevents filesystem escape and access to critical system directories
 - **Shell injection detection** — regex patterns for command chaining, substitution, and redirection
-- **Audit logging** — JSON-lines audit log at `~/.pi/agent/audit.log`
+- **HTML sanitization** — strict pattern matching to prevent false positives on normal text containing angle brackets
+- **Audit logging** — JSON-lines audit log at `~/.pi/agent/audit.log` (path exported as `AUDIT_LOG_PATH` for cross-extension use)
 
 ### 🔄 ReAct Fallback (`react-fallback.ts`)
 
@@ -346,6 +347,7 @@ Automatically loaded — no commands needed. Protects against:
 Automatically loaded — no commands needed. When a model lacks native tool calling:
 
 - Parses `Thought:`, `Action:`, `Action Input:` patterns from model output
+- Multi-dialect support: classic ReAct (`Action:`), Function (`Function:`), Tool (`Tool:`), Call (`Call:`)
 - Multiple regex strategies including parenthetical style and loose matching
 - Bridges text-based tool calls into Pi's native tool execution pipeline
 
@@ -380,6 +382,7 @@ Automatically loaded — no commands needed. When a model lacks native tool call
 
 - Accepts full OpenRouter URLs (`https://openrouter.ai/model/name:free`) or bare IDs (`model/name:free`)
 - Multiple models in one command
+- Strips query parameters and fragments from URLs before extracting model name
 - Creates `openrouter` provider in models.json if missing (inherits baseUrl/api from built-in provider registry)
 - Appends models, never removes existing entries
 - Reorders providers so openrouter sits above ollama
@@ -409,7 +412,7 @@ CPU/RAM/Swap are only shown when using a local Ollama provider (not for cloud/re
 - **Swap** — used/total from `/proc/meminfo` (shown only when swap is active)
 - **Response time** — agent loop duration via `agent_start`/`agent_end` events
 - **Generation params** — temperature, top_p, top_k, max tokens, num_predict, context size captured via `before_provider_request` interception
-- **Security indicator** — 3s flash on blocked tools + persistent blocked count from audit log
+- **Security indicator** — 3s flash on blocked tools + session-scoped blocked count (resets on shutdown)
 - **Active tool timing** — live elapsed timer on line 3 for the currently running tool
 
 Restores the default footer on session shutdown. Automatically truncates to terminal width with ANSI-safe clipping.
