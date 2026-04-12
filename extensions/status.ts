@@ -325,9 +325,12 @@ export default function (pi: ExtensionAPI) {
     agentStartTime = performance.now();
     try {
       const prompt = ctx.getSystemPrompt();
+      const theme = ctx.ui.theme;
       const chr = prompt.length;
       const tok = prompt.split(/\s+/).filter(Boolean).length;
-      ctxUi?.setStatus("system-prompt", `Prompt: ${chr} chr ${tok} tok`);
+      const label = theme.fg("dim", "Prompt:");
+      const value = theme.fg("success", `${chr} chr ${tok} tok`);
+      ctxUi?.setStatus("system-prompt", `${label} ${value}`);
     } catch { /* getSystemPrompt not available */ }
   });
 
