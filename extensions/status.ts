@@ -51,6 +51,7 @@ export default function (pi: ExtensionAPI) {
   let nativeCtxModel = "";
   let isLocalProvider = true;
   let versionsText = "";
+  let cachedPromptText: string | null = null;
 
   // ── Security tracking ────────────────────────────────────────────────────
 
@@ -253,6 +254,14 @@ export default function (pi: ExtensionAPI) {
     } else {
       ctxUi.setStatus("status-tool", undefined);
     }
+
+    // System prompt size (cached from agent_start, must come before versions)
+    ctxUi.setStatus("system-prompt", cachedPromptText ?? undefined);
+
+    // Versions — always last slot
+    if (versionsText) {
+      ctxUi.setStatus("status-versions", dim(versionsText));
+    }
   }
 
   // ── metrics refresh (called every STATUS_UPDATE_INTERVAL_MS) ──
@@ -302,8 +311,6 @@ export default function (pi: ExtensionAPI) {
     if (!versionsText) {
       versionsText = `vts:${EXTENSION_VERSION}`;
     }
-    ctxUi?.setStatus("status-versions", ctxTheme?.fg?.("dim", versionsText) ?? versionsText);
-
     updateMetrics();
 
     // Main metrics loop (every 5s)
@@ -342,6 +349,7 @@ export default function (pi: ExtensionAPI) {
     lastResponseTime = null;
     lastPayload = null;
     versionsText = "";
+    cachedPromptText = null;
   });
 
   pi.on("before_provider_request", (event) => {
@@ -352,13 +360,11 @@ export default function (pi: ExtensionAPI) {
     agentStartTime = performance.now();
     try {
       const prompt = ctx.getSystemPrompt();
-      const theme = ctx.ui.theme;
       const chr = prompt.length;
       const tok = prompt.split(/\s+/).filter(Boolean).length;
-      const label = theme.fg("dim", "Prompt:");
-      const value = theme.fg("success", `${chr} chr ${tok} tok`);
-      ctxUi?.setStatus("system-prompt", `${label} ${value}`);
+      cachedPromptText = `${dim("Prompt:")} ${green(`${chr} chr ${tok} tok`)}`;
     } catch { /* getSystemPrompt not available */ }
+    flushStatus();
   });
 
   pi.on("agent_end", async () => {
