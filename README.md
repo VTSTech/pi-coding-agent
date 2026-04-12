@@ -390,32 +390,23 @@ Automatically loaded — no commands needed. When a model lacks native tool call
 
 ### 📊 System Monitor (`status.ts`)
 
-**Replaces the Pi footer with a 2-line status bar showing system metrics, model info, and generation params.**
+**Adds composable named status items to the framework footer using `ctx.ui.setStatus()`. Each metric gets its own slot so it coexists cleanly with other extensions' status items.**
 
-```
-qwen3.5:0.8b · ~/.pi/agent · medium · CPU 9%
-qwen3.5:0.8b · M:33k · S:9.0%/128k · RAM 2.2G/15.1G · Resp 5m24s · temp:0.0 · max:16384
-```
+CPU/RAM/Swap are only shown when using a local Ollama provider (not for cloud/remote). For cloud providers, system metrics are omitted. Model name, session tokens, and context usage are shown by the framework — not duplicated here.
 
-CPU/RAM/Swap are only shown when using a local Ollama provider (not for cloud/remote). For cloud providers, system metrics are omitted.
-
-**Line 1 (conf):**
-- **Active model** — the model Pi is currently using from agent context
-- **Working directory** — compact `~`-relative path
-- **Thinking level** — shown when active (off is hidden)
-- **CPU%** — per-core delta via `os.cpus()` (updates every 3s, local Ollama only)
-
-**Line 2 (load):**
-- **Loaded model** — Ollama model currently in memory via `/api/ps` (works with remote Ollama, cached 15s)
-- **Context info** — native model max context (`M:33k`) and session usage percentage/window (`S:9.0%/128k`)
+**Status slots (updated every 5s):**
+- **CPU%** — per-core delta via `os.cpus()` (local Ollama only)
 - **RAM** — used/total via `os.totalmem()` / `os.freemem()` (local Ollama only)
-- **Swap** — used/total from `/proc/meminfo` (shown only when swap is active)
+- **Swap** — used/total from `/proc/meminfo` (shown only when swap is active, local only)
+- **Native context** — `M:33k` from Ollama `/api/show` (local Ollama only, cached per-model)
+- **Thinking level** — shown when active (off is hidden)
 - **Response time** — agent loop duration via `agent_start`/`agent_end` events
 - **Generation params** — temperature, top_p, top_k, max tokens, num_predict, context size captured via `before_provider_request` interception
 - **Security indicator** — 3s flash on blocked tools + session-scoped blocked count (resets on shutdown)
-- **Active tool timing** — live elapsed timer on line 3 for the currently running tool
+- **Active tool timing** — live elapsed timer with a fast 1s update interval while a tool is running
+- **System prompt size** — `Prompt: 2840 chr 393 tok` displayed on agent start (green themed)
 
-Restores the default footer on session shutdown. Automatically truncates to terminal width with ANSI-safe clipping.
+All slots are cleared on session shutdown. Metrics that the framework already provides (model name, session tokens, context usage) are intentionally omitted to avoid duplication.
 
 ---
 
