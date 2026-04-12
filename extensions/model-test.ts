@@ -8,88 +8,8 @@ import {
   section, ok, fail, warn, info,
   msHuman, truncate, sanitizeForReport,
 } from "../shared/format";
-import { getOllamaBaseUrl, MODELS_JSON_PATH, detectModelFamily, readModelsJson, BUILTIN_PROVIDERS, fetchModelContextLength } from "../shared/ollama";
+import { getOllamaBaseUrl, MODELS_JSON_PATH, detectModelFamily, readModelsJson, BUILTIN_PROVIDERS, fetchModelContextLength, EXTENSION_VERSION, detectProvider } from "../shared/ollama";
 import type { ToolSupportLevel } from "../shared/types";
-
-// ── Provider Detection ──────────────────────────────────────────────────
-
-type ProviderKind = "ollama" | "builtin" | "unknown";
-
-interface ProviderInfo {
-  kind: ProviderKind;
-  name: string;            // provider name (e.g. "ollama", "openrouter", "anthropic")
-  apiMode?: string;        // API mode (e.g. "openai-completions", "ollama")
-  baseUrl?: string;        // API base URL
-  envKey?: string;         // Environment variable for API key
-  apiKey?: string;         // Actual API key value (if available)
-}
-
-/**
- * Detect whether the current model is on an Ollama provider, a built-in
- * provider, or an unknown provider. Uses the same 3-tier logic as diag.ts:
- *   1. User-defined provider in models.json
- *   2. Known built-in provider
- *   3. Unknown provider
- */
-function detectProvider(ctx: any): ProviderInfo {
-  const model = ctx.model;
-  if (!model) return { kind: "unknown", name: "none" };
-
-  const providerName = model.provider || "";
-  if (!providerName) return { kind: "unknown", name: "none" };
-
-  // Tier 1: Check if provider is defined in models.json
-  const modelsJson = readModelsJson();
-  const userProviderCfg = (modelsJson.providers || {})[providerName];
-  if (userProviderCfg) {
-    const baseUrl = userProviderCfg.baseUrl || "";
-    const apiMode = userProviderCfg.api || "";
-    const apiKey = userProviderCfg.apiKey || "";
-
-    // Check if it's an Ollama provider (user-defined Ollama in models.json)
-    const isOllama = /ollama/i.test(providerName) ||
-      /localhost:\d+/.test(baseUrl) ||
-      /127\.0\.0\.1:\d+/.test(baseUrl) ||
-      /0\.0\.0\.0:\d+/.test(baseUrl) ||
-      /\/api\/chat/.test(baseUrl) ||
-      apiMode === "ollama";
-
-    if (isOllama) {
-      return { kind: "ollama", name: providerName, apiMode: "ollama", baseUrl, apiKey };
-    }
-
-    // User-defined non-Ollama provider (treat as Ollama-style if it has /api/chat)
-    if (/\/api\/chat/.test(baseUrl)) {
-      return { kind: "ollama", name: providerName, apiMode: "ollama", baseUrl, apiKey };
-    }
-
-    // User-defined provider with custom config — treat as built-in style
-    return {
-      kind: "builtin",
-      name: providerName,
-      apiMode: apiMode || userProviderCfg.api || "openai-completions",
-      baseUrl,
-      apiKey,
-    };
-  }
-
-  // Tier 2: Check built-in providers
-  const builtin = BUILTIN_PROVIDERS[providerName];
-  if (builtin) {
-    const apiKey = process.env[builtin.envKey] || "";
-    return {
-      kind: "builtin",
-      name: providerName,
-      apiMode: builtin.api,
-      baseUrl: builtin.baseUrl,
-      envKey: builtin.envKey,
-      apiKey,
-    };
-  }
-
-  // Tier 3: Unknown provider
-  return { kind: "unknown", name: providerName };
-}
 
 // ── Configuration Constants ─────────────────────────────────────────────
 
@@ -97,7 +17,7 @@ function detectProvider(ctx: any): ProviderInfo {
  * Configuration constants for model testing.
  * Centralized to make tuning and maintenance easier.
  *
- * @property DEFAULT_TIMEOUT_MS - Default timeout for Ollama API calls (8.3 min)
+ * @property DEFAULT_TIMEOUT_MS - Default timeout for Ollama API calls (~16.7 min)
  * @property CONNECT_TIMEOUT_S - Connection timeout for curl (seconds)
  * @property MAX_RETRIES - Number of retry attempts for transient failures
  * @property RETRY_DELAY_MS - Delay between retry attempts (milliseconds)
@@ -156,6 +76,9 @@ interface ToolSupportCache {
   [modelName: string]: ToolSupportCacheRecord;
 }
 
+/** In-memory cache to avoid redundant disk reads for tool support lookups. */
+let _toolSupportCacheInMemory: ToolSupportCache | null = null;
+
 /**
  * Read the tool support cache from disk.
  * Returns an empty object if the file doesn't exist or is invalid.
@@ -185,7 +108,8 @@ function writeToolSupportCache(cache: ToolSupportCache): void {
  * Returns null if not cached.
  */
 function getCachedToolSupport(model: string): ToolSupportCacheRecord | null {
-  const cache = readToolSupportCache();
+  const cache = _toolSupportCacheInMemory || readToolSupportCache();
+  if (!_toolSupportCacheInMemory) _toolSupportCacheInMemory = cache;
   const entry = cache[model];
   if (!entry) return null;
   // Validate the entry has required fields and a valid support level
@@ -197,12 +121,13 @@ function getCachedToolSupport(model: string): ToolSupportCacheRecord | null {
  * Cache a model's tool support level.
  */
 function cacheToolSupport(model: string, support: ToolSupportLevel, family: string): void {
-  const cache = readToolSupportCache();
+  const cache = _toolSupportCacheInMemory || readToolSupportCache();
   cache[model] = {
     support,
     testedAt: new Date().toISOString(),
     family,
   };
+  _toolSupportCacheInMemory = cache; // keep in-memory cache in sync
   writeToolSupportCache(cache);
 }
 
@@ -394,7 +319,6 @@ export default function (pi: ExtensionAPI) {
       ], { maxTokens: 10, timeoutMs: 30000 });
       const elapsedMs = Date.now() - start;
 
-      const content = result.content.trim().toUpperCase();
       const reachable = true;
       const authValid = true; // If we got here, the key is valid
 
@@ -406,7 +330,6 @@ export default function (pi: ExtensionAPI) {
         elapsedMs,
       };
     } catch (e: any) {
-      const start = Date.now(); // approximate
       let reachable = false;
       let authValid = false;
 
@@ -1210,17 +1133,27 @@ The JSON object must have exactly these 4 keys:
         const cleaned = msg.replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
         parsed = JSON.parse(cleaned);
       } catch {
-        // Attempt JSON repair — add missing closing braces/brackets
-        // (common when model output is truncated by num_predict limit)
+        // Attempt JSON repair — use stack-based brace/bracket matching
+        // to handle nested structures (common when model output is truncated by num_predict limit)
         const cleaned = msg.replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
-        const openBraces = (cleaned.match(/\{/g) || []).length;
-        const closeBraces = (cleaned.match(/\}/g) || []).length;
-        const openBrackets = (cleaned.match(/\[/g) || []).length;
-        const closeBrackets = (cleaned.match(/\]/g) || []).length;
-        if (openBraces > closeBraces || openBrackets > closeBrackets) {
+        // Count unclosed braces/brackets using a stack for proper nesting
+        let braceDepth = 0, bracketDepth = 0;
+        let inString = false, escapeNext = false;
+        for (let i = 0; i < cleaned.length; i++) {
+          const c = cleaned[i];
+          if (escapeNext) { escapeNext = false; continue; }
+          if (c === '\\') { if (inString) escapeNext = true; continue; }
+          if (c === '"') { inString = !inString; continue; }
+          if (inString) continue;
+          if (c === '{') braceDepth++;
+          else if (c === '}') braceDepth = Math.max(0, braceDepth - 1);
+          else if (c === '[') bracketDepth++;
+          else if (c === ']') bracketDepth = Math.max(0, bracketDepth - 1);
+        }
+        if (braceDepth > 0 || bracketDepth > 0) {
           const repaired = cleaned
-            + "}".repeat(Math.max(0, openBraces - closeBraces))
-            + "]".repeat(Math.max(0, openBrackets - closeBrackets));
+            + "}".repeat(braceDepth)
+            + "]".repeat(bracketDepth);
           try {
             parsed = JSON.parse(repaired);
             repairNote = " (repaired truncated JSON)";
@@ -1292,14 +1225,23 @@ The JSON object must have exactly these 4 keys:
         parsed = JSON.parse(cleaned);
       } catch {
         const cleaned = msg.replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
-        const openBraces = (cleaned.match(/\{/g) || []).length;
-        const closeBraces = (cleaned.match(/\}/g) || []).length;
-        const openBrackets = (cleaned.match(/\[/g) || []).length;
-        const closeBrackets = (cleaned.match(/\]/g) || []).length;
-        if (openBraces > closeBraces || openBrackets > closeBrackets) {
+        let braceDepth = 0, bracketDepth = 0;
+        let inString = false, escapeNext = false;
+        for (let i = 0; i < cleaned.length; i++) {
+          const c = cleaned[i];
+          if (escapeNext) { escapeNext = false; continue; }
+          if (c === '\\') { if (inString) escapeNext = true; continue; }
+          if (c === '"') { inString = !inString; continue; }
+          if (inString) continue;
+          if (c === '{') braceDepth++;
+          else if (c === '}') braceDepth = Math.max(0, braceDepth - 1);
+          else if (c === '[') bracketDepth++;
+          else if (c === ']') bracketDepth = Math.max(0, bracketDepth - 1);
+        }
+        if (braceDepth > 0 || bracketDepth > 0) {
           const repaired = cleaned
-            + "}".repeat(Math.max(0, openBraces - closeBraces))
-            + "]".repeat(Math.max(0, openBrackets - closeBrackets));
+            + "}".repeat(braceDepth)
+            + "]".repeat(bracketDepth);
           try {
             parsed = JSON.parse(repaired);
             repairNote = " (repaired truncated JSON)";
@@ -1609,7 +1551,7 @@ The JSON object must have exactly these 4 keys:
   // ── run all tests on one model ───────────────────────────────────────
 
   const branding = [
-    `  ⚡ Pi Model Benchmark v1.0.9`,
+    `  ⚡ Pi Model Benchmark v${EXTENSION_VERSION}`,
     `  Written by VTSTech`,
     `  GitHub: https://github.com/VTSTech`,
     `  Website: www.vts-tech.org`,

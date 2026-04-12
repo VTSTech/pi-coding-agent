@@ -17,6 +17,7 @@ import os from "node:os";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { section, ok, fail, warn, info } from "../shared/format";
+import { EXTENSION_VERSION } from "../shared/ollama";
 
 // ============================================================================
 // JSON Sanitization (ported from AgentNova tool_parse._sanitize_model_json)
@@ -554,7 +555,7 @@ export default function (pi: ExtensionAPI) {
   let stats = { bridgeCalls: 0, fuzzyMatches: 0, argNormalizations: 0, parseFailures: 0 };
 
   const branding = [
-    `  ⚡ Pi ReAct Fallback Extension v1.0.9`,
+    `  ⚡ Pi ReAct Fallback Extension v${EXTENSION_VERSION}`,
     `  Written by VTSTech`,
     `  GitHub: https://github.com/VTSTech`,
     `  Website: www.vts-tech.org`,

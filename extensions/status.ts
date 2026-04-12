@@ -18,7 +18,7 @@ import * as path from "node:path";
 import { execSync as gitExecSync } from "node:child_process";
 
 // ── Shared imports (eliminates duplication) ────────────────────────────────
-import { getOllamaBaseUrl } from "../shared/ollama";
+import { getOllamaBaseUrl, fetchModelContextLength } from "../shared/ollama";
 import { fmtBytes, fmtDur } from "../shared/format";
 import { readRecentAuditEntries } from "../shared/security";
 
@@ -170,27 +170,9 @@ export default function (pi: ExtensionAPI) {
       nativeCtxPromise = (async () => {
         try {
           const ollamaBase = getOllamaBaseUrl();
-          const res = await fetch(`${ollamaBase}/api/show`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: modelId }),
-            signal: AbortSignal.timeout(5000),
-          });
-          if (!res.ok) return;
-          const data = (await res.json()) as { model_info?: Record<string, unknown> };
-          for (const key of Object.keys(data?.model_info ?? {})) {
-            if (key.endsWith(".context_length")) {
-              const val = data.model_info[key];
-              if (typeof val === "number") {
-                footerNativeCtx = val >= 1000 ? `${(val / 1000).toFixed(0)}k` : String(val);
-                return;
-              }
-            }
-          }
-          // Fallback: generic "num_ctx" key
-          const numCtx = data?.model_info?.["num_ctx"];
-          if (typeof numCtx === "number") {
-            footerNativeCtx = numCtx >= 1000 ? `${(numCtx / 1000).toFixed(0)}k` : String(numCtx);
+          const ctx = await fetchModelContextLength(ollamaBase, modelId);
+          if (ctx != null) {
+            footerNativeCtx = ctx >= 1000 ? `${(ctx / 1000).toFixed(0)}k` : String(ctx);
           }
         } catch { /* ignore — network error, timeout, or parse failure */ }
         finally { nativeCtxPromise = null; }
@@ -285,7 +267,7 @@ export default function (pi: ExtensionAPI) {
         if (
           entry.blocked === true ||
           entry.safe === false ||
-          entry.action === "block"
+          entry.action === "blocked"
         ) {
           blockedCount++;
         }

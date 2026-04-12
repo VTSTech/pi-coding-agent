@@ -15,14 +15,13 @@
  *   /api modes        — List all supported API modes
  *
  * Written by VTSTech — https://www.vts-tech.org
- * @version 1.0.9
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import os from "node:os";
 import { section, ok, fail, info, warn } from "../shared/format";
-import { readModelsJson, writeModelsJson, getOllamaBaseUrl, BUILTIN_PROVIDERS } from "../shared/ollama";
+import { readModelsJson, writeModelsJson, getOllamaBaseUrl, BUILTIN_PROVIDERS, EXTENSION_VERSION } from "../shared/ollama";
 
 // ============================================================================
 // Constants
@@ -124,7 +123,7 @@ function resolveProvider(
 
 export default function (pi: ExtensionAPI) {
   const branding = [
-    `  ⚡ Pi API Mode Switcher v1.0.9`,
+    `  ⚡ Pi API Mode Switcher v${EXTENSION_VERSION}`,
     `  Written by VTSTech`,
     `  GitHub: https://github.com/VTSTech`,
     `  Website: www.vts-tech.org`,

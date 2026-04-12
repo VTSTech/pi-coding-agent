@@ -14,6 +14,14 @@ import os from "node:os";
 // ============================================================================
 
 /**
+ * Extension package version. Single source of truth — read from root package.json
+ * and hardcoded here so extensions don't need to import JSON at runtime.
+ *
+ * IMPORTANT: When bumping the version, update this constant AND root package.json.
+ */
+export const EXTENSION_VERSION = "1.0.9";
+
+/**
  * Path to Pi's models.json configuration file.
  *
  * This file contains the provider configurations and model definitions
@@ -123,6 +131,14 @@ export interface PiModelEntry {
 }
 
 // ============================================================================
+// In-Memory Cache (TTL-based)
+// ============================================================================
+
+let _modelsJsonCache: { data: PiModelsJson; ts: number } | null = null;
+let _ollamaBaseUrlCache: { data: string; ts: number } | null = null;
+const CACHE_TTL_MS = 2000; // 2-second TTL
+
+// ============================================================================
 // Ollama Base URL Resolution
 // ============================================================================
 
@@ -158,6 +174,8 @@ export interface PiModelEntry {
  * ```
  */
 export function getOllamaBaseUrl(): string {
+  const now = Date.now();
+  if (_ollamaBaseUrlCache && now - _ollamaBaseUrlCache.ts < CACHE_TTL_MS) return _ollamaBaseUrlCache.data;
   try {
     if (fs.existsSync(MODELS_JSON_PATH)) {
       const raw = fs.readFileSync(MODELS_JSON_PATH, "utf-8");
@@ -165,14 +183,20 @@ export function getOllamaBaseUrl(): string {
       const baseUrl = config?.providers?.["ollama"]?.baseUrl;
       if (baseUrl) {
         // baseUrl is like "https://host/v1" or "http://localhost:11434/v1" — strip /v1
-        return baseUrl.replace(/\/v1\/?$/, "");
+        const result = baseUrl.replace(/\/v1\/?$/, "");
+        _ollamaBaseUrlCache = { data: result, ts: now };
+        return result;
       }
     }
   } catch { /* ignore parse errors */ }
   if (process.env.OLLAMA_HOST) {
-    return `http://${process.env.OLLAMA_HOST.replace(/^https?:\/\//, "")}`;
+    const result = `http://${process.env.OLLAMA_HOST.replace(/^https?:\/\//, "")}`;
+    _ollamaBaseUrlCache = { data: result, ts: now };
+    return result;
   }
-  return "http://localhost:11434";
+  const fallback = "http://localhost:11434";
+  _ollamaBaseUrlCache = { data: fallback, ts: now };
+  return fallback;
 }
 
 // ============================================================================
@@ -195,13 +219,19 @@ export function getOllamaBaseUrl(): string {
  * ```
  */
 export function readModelsJson(): PiModelsJson {
+  const now = Date.now();
+  if (_modelsJsonCache && now - _modelsJsonCache.ts < CACHE_TTL_MS) return _modelsJsonCache.data;
   try {
     if (fs.existsSync(MODELS_JSON_PATH)) {
       const raw = fs.readFileSync(MODELS_JSON_PATH, "utf-8");
-      return JSON.parse(raw) as PiModelsJson;
+      const data = JSON.parse(raw) as PiModelsJson;
+      _modelsJsonCache = { data, ts: now };
+      return data;
     }
   } catch { /* ignore */ }
-  return { providers: {} };
+  const empty = { providers: {} };
+  _modelsJsonCache = { data: empty, ts: now };
+  return empty;
 }
 
 /**
@@ -228,6 +258,9 @@ export function writeModelsJson(data: PiModelsJson): void {
     fs.mkdirSync(dir, { recursive: true });
   }
   fs.writeFileSync(MODELS_JSON_PATH, JSON.stringify(data, null, 2) + "\n", "utf-8");
+  // Invalidate cache so next read picks up the written data
+  _modelsJsonCache = null;
+  _ollamaBaseUrlCache = null;
 }
 
 // ============================================================================
@@ -361,8 +394,8 @@ export function isReasoningModel(name: string): boolean {
     lower.includes("o1") ||
     lower.includes("o3") ||
     lower.includes("qwen3") ||
-    lower.includes("think") ||
-    lower.includes("reason")
+    lower.includes("reasoning") ||
+    lower.includes("thinker")
   );
 }
 
@@ -456,4 +489,102 @@ export function detectModelFamily(modelName: string): string {
     if (name.includes(prefix)) return family;
   }
   return "unknown";
+}
+
+// ============================================================================
+// Provider Detection
+// ============================================================================
+
+/**
+ * Kind of provider: local Ollama, built-in cloud, or unknown.
+ */
+export type ProviderKind = "ollama" | "builtin" | "unknown";
+
+/**
+ * Information about the active provider, detected from Pi's context and models.json.
+ *
+ * @property kind - The provider kind (ollama, builtin, or unknown)
+ * @property name - Provider name (e.g. "ollama", "openrouter", "anthropic")
+ * @property apiMode - API mode (e.g. "openai-completions", "ollama")
+ * @property baseUrl - API base URL
+ * @property envKey - Environment variable for API key
+ * @property apiKey - Actual API key value (if available)
+ */
+export interface ProviderInfo {
+  kind: ProviderKind;
+  name: string;
+  apiMode?: string;
+  baseUrl?: string;
+  envKey?: string;
+  apiKey?: string;
+}
+
+/**
+ * Detect whether the current model is on an Ollama provider, a built-in
+ * provider, or an unknown provider. Uses 3-tier logic:
+ *   1. User-defined provider in models.json
+ *   2. Known built-in provider
+ *   3. Unknown provider
+ *
+ * @param ctx - Pi's extension context (from session_start event)
+ * @returns Provider information including kind, name, API details, and key
+ */
+export function detectProvider(ctx: any): ProviderInfo {
+  const model = ctx.model;
+  if (!model) return { kind: "unknown", name: "none" };
+
+  const providerName = model.provider || "";
+  if (!providerName) return { kind: "unknown", name: "none" };
+
+  // Tier 1: Check if provider is defined in models.json
+  const modelsJson = readModelsJson();
+  const userProviderCfg = (modelsJson.providers || {})[providerName];
+  if (userProviderCfg) {
+    const baseUrl = userProviderCfg.baseUrl || "";
+    const apiMode = userProviderCfg.api || "";
+    const apiKey = userProviderCfg.apiKey || "";
+
+    // Check if it's an Ollama provider (user-defined Ollama in models.json)
+    const isOllama = /ollama/i.test(providerName) ||
+      /localhost:\d+/.test(baseUrl) ||
+      /127\.0\.0\.1:\d+/.test(baseUrl) ||
+      /0\.0\.0\.0:\d+/.test(baseUrl) ||
+      /\/api\/chat/.test(baseUrl) ||
+      apiMode === "ollama";
+
+    if (isOllama) {
+      return { kind: "ollama", name: providerName, apiMode: "ollama", baseUrl, apiKey };
+    }
+
+    // User-defined non-Ollama provider (treat as Ollama-style if it has /api/chat)
+    if (/\/api\/chat/.test(baseUrl)) {
+      return { kind: "ollama", name: providerName, apiMode: "ollama", baseUrl, apiKey };
+    }
+
+    // User-defined provider with custom config — treat as built-in style
+    return {
+      kind: "builtin",
+      name: providerName,
+      apiMode: apiMode || userProviderCfg.api || "openai-completions",
+      baseUrl,
+      apiKey,
+    };
+  }
+
+  // Tier 2: Check built-in providers
+  const builtin = BUILTIN_PROVIDERS[providerName];
+  if (builtin) {
+    const apiKey = process.env[builtin.envKey] || "";
+    return {
+      kind: "builtin",
+      name: providerName,
+      apiMode: builtin.api,
+      baseUrl: builtin.baseUrl,
+      envKey: builtin.envKey,
+      apiKey,
+    };
+  }
+
+  // Tier 3: Unknown provider
+  return { kind: "unknown", name: providerName };
 }

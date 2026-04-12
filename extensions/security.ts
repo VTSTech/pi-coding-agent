@@ -30,6 +30,7 @@ import {
   BLOCKED_URL_PATTERNS,
 } from "../shared/security";
 import { section, ok, fail, warn, info, bytesHuman } from "../shared/format";
+import { EXTENSION_VERSION } from "../shared/ollama";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -52,7 +53,7 @@ export default function (pi: ExtensionAPI) {
   };
 
   const branding = [
-    `  ⚡ Pi Security Extension v1.0.9`,
+    `  ⚡ Pi Security Extension v${EXTENSION_VERSION}`,
     `  Written by VTSTech`,
     `  GitHub: https://github.com/VTSTech`,
     `  Website: www.vts-tech.org`,

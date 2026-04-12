@@ -9,13 +9,14 @@ import {
   writeModelsJson,
   isReasoningModel,
   getOllamaBaseUrl,
+  EXTENSION_VERSION,
 } from "../shared/ollama";
 import { section, ok, fail, warn, info, bytesHuman, estimateVram } from "../shared/format";
 
 // ── Branding ──────────────────────────────────────────────────────────────
 
 const BRANDING = [
-  `  ⚡ Pi Ollama Sync v1.0.9`,
+  `  ⚡ Pi Ollama Sync v${EXTENSION_VERSION}`,
   `  Written by VTSTech`,
   `  GitHub: https://github.com/VTSTech`,
   `  Website: www.vts-tech.org`,

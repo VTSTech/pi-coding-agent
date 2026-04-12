@@ -8,7 +8,7 @@ import {
   section, ok, fail, warn, info,
   bytesHuman, msHuman, pct, padRight,
 } from "../shared/format";
-import { MODELS_JSON_PATH, getOllamaBaseUrl, BUILTIN_PROVIDERS, readModelsJson } from "../shared/ollama";
+import { MODELS_JSON_PATH, getOllamaBaseUrl, BUILTIN_PROVIDERS, readModelsJson, EXTENSION_VERSION } from "../shared/ollama";
 import {
   BLOCKED_COMMANDS, BLOCKED_URL_PATTERNS,
   validatePath, isSafeUrl, sanitizeCommand, readRecentAuditEntries,
@@ -24,7 +24,7 @@ export default function (pi: ExtensionAPI) {
   // ── core diagnostic logic ────────────────────────────────────────────
 
   const branding = [
-    `  ⚡ Pi Diagnostics v1.0.9`,
+    `  ⚡ Pi Diagnostics v${EXTENSION_VERSION}`,
     `  Written by VTSTech`,
     `  GitHub: https://github.com/VTSTech`,
     `  Website: www.vts-tech.org`,
@@ -512,7 +512,10 @@ export default function (pi: ExtensionAPI) {
     promptGuidelines: [
       "When the user asks for a diagnostic, health check, or system test, call self_diagnostic.",
     ],
-    parameters: {} as any,
+    parameters: {
+      type: "object",
+      properties: {},
+    },
     execute: async (_toolCallId, _params, _signal, _onUpdate, ctx) => {
       try {
         const report = await runDiagnostics(ctx);
