@@ -16,7 +16,7 @@ import * as fs from "node:fs";
 import os from "node:os";
 
 // ── Shared imports ─────────────────────────────────────────────────────────
-import { getOllamaBaseUrl, fetchModelContextLength, readModelsJson } from "../shared/ollama";
+import { EXTENSION_VERSION, getOllamaBaseUrl, fetchModelContextLength, readModelsJson } from "../shared/ollama";
 import { fmtBytes, fmtDur } from "../shared/format";
 import { debugLog } from "../shared/debug";
 
@@ -49,6 +49,7 @@ export default function (pi: ExtensionAPI) {
   let footerNativeCtx = "";
   let nativeCtxModel = "";
   let isLocalProvider = true;
+  let versionsText = "";
 
   // ── Security tracking ────────────────────────────────────────────────────
 
@@ -289,6 +290,20 @@ export default function (pi: ExtensionAPI) {
     ctxUi = ctx.ui;
     ctxTheme = ctx.ui.theme;
     prevCpuInfo = getCpuSnapshot();
+
+    // Fetch Pi version once at session start
+    try {
+      const result = await pi.exec("pi", ["-v"], { timeout: 5000 });
+      if (result.code === 0) {
+        const piVer = result.stdout.trim();
+        versionsText = `pi:${piVer} vts:${EXTENSION_VERSION}`;
+      }
+    } catch { /* ignore */ }
+    if (!versionsText) {
+      versionsText = `vts:${EXTENSION_VERSION}`;
+    }
+    ctxUi?.setStatus("status-versions", ctxTheme?.fg?.("dim", versionsText) ?? versionsText);
+
     updateMetrics();
 
     // Main metrics loop (every 5s)
@@ -315,6 +330,7 @@ export default function (pi: ExtensionAPI) {
       ui.setStatus("system-prompt", undefined);
       ui.setStatus("status-sec", undefined);
       ui.setStatus("status-tool", undefined);
+      ui.setStatus("status-versions", undefined);
     }
 
     // Reset state
@@ -325,6 +341,7 @@ export default function (pi: ExtensionAPI) {
     blockedCount = 0;
     lastResponseTime = null;
     lastPayload = null;
+    versionsText = "";
   });
 
   pi.on("before_provider_request", (event) => {
