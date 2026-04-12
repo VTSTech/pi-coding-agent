@@ -48,6 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `getOllamaLoadedModel()` called `JSON.parse()` on raw curl output without a try/catch. Malformed or empty responses (e.g., Ollama mid-restart) would throw and crash the entire 3-second metrics cycle, freezing the status bar.
   - Wrapped in a dedicated try/catch so parse failures fall through to the empty-cache path gracefully.
 
+- **Token counts not displayed in footer for Ollama models** (`extensions/status.ts`)
+  - Token usage was captured correctly from Pi's normalized `message_end` event, but the footer only re-rendered on the 3-second interval — values could appear stale or be missed between cycles.
+  - Added `requestRender()` call inside `captureUsage()` so the footer updates immediately when token data arrives from any provider.
+
 ### Changed
 
 - **Diagnostics uses shared `readModelsJson()`** (`extensions/diag.ts`)
