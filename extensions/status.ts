@@ -339,7 +339,7 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.setFooter((tui: any, theme: any, footerData: any) => {
       tuiRef = tui;
       const dim = (s: string) => theme?.fg?.("dim", s) ?? s;
-      const red = (s: string) => theme?.fg?.("red", s) ?? s;
+      const red = (s: string) => theme?.fg?.("error", s) ?? s;
       const yellow = (s: string) => theme?.fg?.("yellow", s) ?? s;
       const sep = dim(" \u00b7 ");
 
