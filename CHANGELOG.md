@@ -78,6 +78,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Version `"1.0.9"` was hardcoded as a string literal in 10+ locations across every extension file. Changing the version required editing each file individually.
   - Replaced all hardcoded version strings with `EXTENSION_VERSION` exported from `shared/ollama.ts`. A single constant change now updates all extensions.
 
+- **Session-scoped SEC counter** (`extensions/status.ts`)
+  - The SEC (security) counter in the status bar previously read from the persistent audit log on every 3-second metrics cycle. This caused unnecessary filesystem I/O and mixed session-scoped display with persistent log data.
+  - Replaced with an in-memory counter that tracks blocked tool calls within the current session only. The counter resets to 0 on `session_shutdown`.
+  - Removed the `readRecentAuditEntries` import and unused `fs`/`path` imports from `status.ts`.
+
+- **Build scripts version bump** (`scripts/build-packages.sh`, `scripts/publish-packages.sh`)
+  - Both build and publish scripts were still hardcoded to version `1.0.9`, inconsistent with the root package version of `1.1.0`.
+  - Updated both scripts to reference `1.1.0`.
+
+- **`api.ts` conflicting completion handlers** (`extensions/api.ts`)
+  - Two separate `registerCompletion` handlers were registered for the `/api` command — the second silently overwrote the first, making the original handler unreachable dead code.
+  - Merged into a single handler that covers all sub-commands.
+
+- **`status.ts` raw filesystem reads** (`extensions/status.ts`)
+  - `status.ts` still had a raw `fs.readFileSync()` call for `models.json` despite the shared `readModelsJson()` utility existing with a 5-second TTL cache.
+  - Replaced with `readModelsJson()` to benefit from caching and reduce filesystem I/O.
+
+- **`model-test.ts` updateModelsJsonReasoning uses raw fs** (`extensions/model-test.ts`)
+  - `updateModelsJsonReasoning()` opened and parsed `models.json` with raw `fs.readFileSync` + `JSON.parse`, bypassing the shared utility that handles errors gracefully.
+  - Replaced with `readModelsJson()` and `writeModelsJson()` from `shared/ollama.ts`.
+
+- **`pct()` returns NaN% when total is 0** (`shared/format.ts`)
+  - `pct(0, 0)` divided by zero producing `NaN%`, which would render as a broken string in the status bar.
+  - Returns `"0.0%"` when total is 0, matching the expected display for zero usage.
+
+- **`fmtBytes(0)` returns "0K"** (`shared/format.ts`)
+  - `fmtBytes(0)` fell through to the kilobyte branch and returned `"0K"` instead of the more natural `"0B"`.
+  - Added an early return for `bytes === 0` to output `"0B"`.
+
+- **SSRF blocklist missing IPv4-mapped IPv6** (`shared/security.ts`)
+  - `::ffff:127.0.0.1` (IPv4-mapped IPv6 loopback) was not in the SSRF hostname blocklist. Some systems resolve loopback addresses in this form.
+  - Added `::ffff:127.0.0.1` to the blocked hostname patterns.
+
+- **`AUDIT_LOG_PATH` not exported** (`shared/security.ts`, `extensions/diag.ts`)
+  - `AUDIT_LOG_PATH` was defined in `security.ts` but not exported, forcing `diag.ts` to hardcode the path string independently.
+  - Exported `AUDIT_LOG_PATH` from `security.ts`; `diag.ts` now imports it.
+
+- **Stricter HTML detection in `sanitizeForReport()`** (`shared/security.ts`)
+  - The HTML sanitization regex could match normal text containing angle brackets followed by common letters (e.g., `"items< 5"`), producing false positives.
+  - Tightened the pattern to require a closing angle bracket or specific HTML tag characters to qualify as HTML.
+
+- **`react-fallback.ts` null assertion** (`extensions/react-fallback.ts`)
+  - A `!` non-null assertion on a potentially-undefined value bypassed the type checker without a runtime guard.
+  - Replaced with an explicit null check + early return.
+
+- **OpenRouter URL parsing strips query parameters** (`extensions/openrouter-sync.ts`)
+  - Parsing `https://openrouter.ai/model/name:free?ref=pi` would include `?ref=pi` in the extracted model ID, creating a broken entry in `models.json`.
+  - URL parsing now strips query parameters and fragments before extracting the model name.
+
+- **`ensureProviderOrder` for newly-created openrouter** (`extensions/openrouter-sync.ts`)
+  - When `openrouter-sync` created a new `openrouter` provider entry, `ensureProviderOrder()` didn't handle the case where the provider didn't yet exist in the providers list.
+  - Added handling for the newly-created provider case so it gets positioned correctly above `ollama`.
+
+- **Removed unused type imports** (`shared/types.ts`)
+  - `StepResultType` and `ErrorRecoveryState` were defined in `types.ts` but never imported or referenced anywhere in the codebase.
+  - Removed both to reduce dead code (~31 lines).
+
+- **`bytesHuman()` mutates its parameter** (`shared/format.ts`)
+  - `bytesHuman()` sorted an array in-place via `.sort()`, mutating the caller's array.
+  - Added `[...array]` spread to sort a copy instead.
+
+- **Explicit `ProviderInfo` type import** (`extensions/model-test.ts`)
+  - `ProviderInfo` was used as a type annotation but relied on implicit type resolution from `shared/ollama.ts` without an explicit import.
+  - Added a named import for clarity and IDE support.
+
 ---
 
 ## [1.0.9] - 04-11-2026 7:11:30PM
