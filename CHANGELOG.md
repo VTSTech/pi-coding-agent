@@ -11,6 +11,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **F32/TF32 formats not recognized in `bitsPerParamForQuant()`** (`shared/format.ts`)
+  - `F32` and `TF32` quantization levels fell through to the 5-bit conservative fallback instead of returning 32 bits, wildly underestimating memory for full-precision models (e.g., a 7B F32 model estimated at ~450MB instead of the correct ~3.1GB).
+  - Added `F32` and `TF32` as explicit matches returning 32 bits. Only `FP32` was handled previously.
+
+- **Redundant exact-equality checks in `bitsPerParamForQuant()`** (`shared/format.ts`)
+  - `q === "FP32"` was checked alongside `q.startsWith("FP32")` — the exact match is always true when the prefix match succeeds, making it dead code. Same for `F16` vs `F16.startsWith`.
+  - Removed the redundant `|| q === "FP32"` and `|| q === "F16"` conditions.
+
+- **CPU memory estimate wildly inaccurate on Colab** (`shared/format.ts`)
+  - `estimateVram()` used a flat 10% overhead multiplier calibrated for GPU VRAM, producing estimates 2-3× too low for CPU inference where KV cache dominates memory usage. On real Colab hardware, nemotron 4B Q4 was estimated at ~2.7GB but actually used ~6.3GB.
+  - Replaced with `estimateMemory()` returning dual `{ gpu, cpu }` estimates. GPU uses 10% overhead; CPU uses a context-aware formula `1.5 + (contextLength / 100_000)` calibrated against real Colab observations (nemotron 4B Q4 at 131k ctx → 2.82×, matching observed 2.8×). Without context length, falls back to flat 2.5×.
+
+- **Stale 1.1.1 version references in README.md** (`README.md`)
+  - Version badge, pin-to-tag example, package format version snippet, and sample output all still showed `1.1.1` after bumping to `1.1.2-dev`. Updated all four references.
+
+- **Incorrect TTL cache documentation** (`CHANGELOG.md`, `brief.md`)
+  - Changelog and brief both documented the `readModelsJson()`/`getOllamaBaseUrl()` cache as "5-second TTL" but the actual `CACHE_TTL_MS` constant is `2000` (2 seconds). Fixed in 4 locations across both files.
+
+- **Misleading `sanitizeForReport()` file reference in changelog** (`CHANGELOG.md`, `brief.md`)
+  - The 1.1.0 changelog entry referenced `sanitizeForReport()` as being in `shared/security.ts` but it lives in `shared/format.ts`. Corrected the file path and updated the brief.md note accordingly.
+
+- **Phantom `invalidateOllamaCache()` reference in changelog** (`CHANGELOG.md`)
+  - The 1.1.0 changelog stated cache could be "manually invalidated via `invalidateOllamaCache()`" but this function does not exist in the codebase. Cache is only invalidated by TTL expiry or by `writeModelsJson()`. Corrected the description.
+
+- **Redundant fallback in `detectProvider()`** (`shared/ollama.ts`)
+  - The user-defined provider path read `apiMode` from `userProviderCfg.api`, then fell back to `userProviderCfg.api || "openai-completions"` — accessing the same property twice with the same result. Removed the redundant fallback.
+
+### Changed
+
+- **`estimateVram()` → `estimateMemory()` with dual GPU/CPU output** (`shared/format.ts`)
+  - Function renamed to reflect that it now estimates memory for both inference targets. Returns `{ gpu: number; cpu: number }` instead of a single `number`. CPU estimate is context-aware (see Fixed section above).
+  - GPU estimate remains the same (base model size × 1.1).
+
+- **`PiModelEntry.estimatedSize` type updated** (`shared/ollama.ts`)
+  - Changed from `number` to `{ gpu: number; cpu: number }` to match the new `estimateMemory()` return type.
+
+- **Ollama sync report shows dual memory estimates** (`extensions/ollama-sync.ts`)
+  - Per-model display changed from `VRAM: ~281.2MB` to `GPU: ~281.2MB · CPU: ~467.3MB`. Both slash command and tool output updated.
+  - `buildModelEntry()` now passes `contextLength` to `estimateMemory()` for accurate CPU estimates.
+
+- **Documentation corrections** (`CHANGELOG.md`, `brief.md`, `README.md`)
+  - README.md: 4 stale version references updated to 1.1.2.
+  - CHANGELOG.md: `sanitizeForReport()` file path corrected; TTL cache from "5s" to "2s"; phantom `invalidateOllamaCache()` reference corrected.
+  - brief.md: TTL cache docs corrected (5s → 2s); `sanitizeForReport` note updated to reflect changelog fix.
+
+### Added
+
 - **Shared source drift between `shared/` and `npm-packages/shared/`** (`npm-packages/shared/`)
   - Four stale TypeScript source files (`format.ts`, `ollama.ts`, `security.ts`, `types.ts`) existed in `npm-packages/shared/` as manual copies that were never updated by the build pipeline. They had drifted significantly from the canonical `shared/*.ts` sources — missing `estimateVram()`, wrong `EXTENSION_VERSION`, phantom error classes, a stale barrel `package.json` with `"main": "index.js"` pointing to a nonexistent file, and stricter HTML detection that had since been tightened.
   - Deleted all four `.ts` files from `npm-packages/shared/`. The build pipeline (`build-packages.sh`) compiles from `shared/*.ts` and syncs compiled `.js` output to `npm-packages/` — the `.ts` copies served no purpose at build time and created a false impression of being the published source.
