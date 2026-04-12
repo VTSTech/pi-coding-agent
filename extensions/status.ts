@@ -475,23 +475,8 @@ export default function (pi: ExtensionAPI) {
    * Usage shape: { input, output, cacheRead, cacheWrite, totalTokens }
    */
   function captureUsage(event: any) {
-    // message_end fires for every message type — only assistant has usage
+    // message_end fires for every message type - only assistant has usage
     if (event?.message?.role !== "assistant") return;
-    // DEBUG: dump full event structure to diagnose missing Ollama token counts
-    try {
-      const fs = require("node:fs");
-      const path = require("node:path");
-      const debugPath = path.join(require("node:os").homedir(), ".pi/agent", "status-debug.log");
-      const dump = {
-        ts: new Date().toISOString(),
-        keys: Object.keys(event || {}),
-        messageKeys: Object.keys(event?.message || {}),
-        usage: event?.message?.usage ?? event?.usage ?? null,
-        rawMessage: JSON.stringify(event?.message ?? {}).slice(0, 2000),
-        rawEvent: JSON.stringify(event).slice(0, 3000),
-      };
-      fs.appendFileSync(debugPath, JSON.stringify(dump) + "\n");
-    } catch { /* ignore */ }
     const usage =
       event?.message?.usage ??    // normalised Pi usage
       event?.usage ??             // alternative path
@@ -501,6 +486,8 @@ export default function (pi: ExtensionAPI) {
     const out = usage.output ?? usage.completionTokens ?? usage.completion_tokens;
     if (inp != null) lastUpstream = inp as number;
     if (out != null) lastDownstream = out as number;
+    // Render immediately so tokens appear in footer without waiting for the 3s cycle
+    if (tuiRef) tuiRef.requestRender();
   }
 
   pi.on("message_end", captureUsage);
