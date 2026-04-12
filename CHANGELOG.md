@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0] - 04-12-2026 12:03:10 AM
+
+### Fixed
+
+- **SEC counter always showing zero** (`extensions/status.ts`)
+  - `refreshBlockedCount()` checked for `entry.action === "block"` but the security audit log writes `"blocked"`. The case mismatch meant the blocked-count in the status bar never incremented.
+  - Corrected the comparison string so the SEC indicator now accurately reflects the number of blocked tool calls from the audit log.
+
+- **Runtime crash — undefined `modelsJsonPath` in diag.ts** (`extensions/diag.ts`)
+  - Referenced a local variable `modelsJsonPath` that didn't exist — should have been the `MODELS_JSON_PATH` constant. This would crash the diagnostic report generation at runtime.
+  - Corrected to use the constant defined at the top of the file.
+
+- **Shell injection via interpolated curl command** (`extensions/status.ts`)
+  - `getOllamaLoadedModel()` used `execSync(\`curl -s "${ollamaBase}/api/ps"\`)` with string interpolation — the base URL from `models.json` or `OLLAMA_HOST` could contain shell metacharacters.
+  - Replaced with native `fetch()` + `AbortSignal.timeout(5000)`. The `execSync` import was renamed to `gitExecSync` to clarify it's only used for git commands (trusted input).
+
+- **Theme crash — unknown color "red"** (`extensions/status.ts`)
+  - `theme.fg("red", ...)` is not a valid Pi TUI color name. The Matrix theme (and other themes) define `"error"` for red tones but not `"red"` itself. This path was never exercised until the SEC counter fix caused `red()` to actually be called.
+  - Changed to `theme.fg("error", ...)` which resolves to `#ff3333` in the Matrix theme and the default red in standard themes.
+
+- **`self_diagnostic` tool had no parameter schema** (`extensions/diag.ts`)
+  - The tool registration used `parameters: {} as any`, which bypasses the type checker but produces an invalid JSON Schema that confuses API clients and tool enumeration.
+  - Replaced with a proper `{ type: "object", properties: {} }` schema, consistent with every other tool in the project.
+
+- **Dead code — unused variables in model-test.ts** (`extensions/model-test.ts`)
+  - Removed `hasPong` variable (assigned but never read in `testConnectivity()`).
+  - Removed `usedThinkingFallback` variable (assigned but never read in test functions).
+  - Removed `content` variable in `testConnectivity()` that captured the ping response body but was never used.
+  - Fixed shadowed `start` variable — a `const start = performance.now()` in the catch block of `testConnectivity()` shadowed the outer scope's `start` used for timing.
+
+- **Misleading CONFIG comments** (`extensions/model-test.ts`)
+  - Eight JSDoc-style `@type {number}` annotations on `CONFIG` constants described the wrong variables (e.g., the comment for `PROVIDER_TIMEOUT_MS` described `CHAT_TIMEOUT_MS`). Updated all eight to accurately describe their respective constants.
+
+- **Stale/truncated type definitions** (`shared/types.ts`)
+  - Removed `ApiMode = "openre"` (truncated string, not a valid API mode).
+  - Removed `BackendType` interface (defined but never imported or referenced anywhere in the codebase).
+  - Removed five unused error classes (~110 lines): `OllamaConnectionError`, `ModelTimeoutError`, `EmptyResponseError`, `SecurityBlockError`, `ToolParseError` — defined with full constructor chains but never thrown or caught anywhere.
+
+- **`isReasoningModel()` false positives** (`shared/ollama.ts`)
+  - The check `lower.includes("think")` matched model names like "nethinker" or "thinkpad" that aren't reasoning models.
+  - Narrowed to match only `"reasoning"`, `"thinker"`, `"thinking"` (with word-boundary logic) and the existing full-name matches.
+
+- **JSON brace repair didn't handle nesting** (`extensions/model-test.ts`)
+  - The repair function counted opening and closing braces globally, which fails when models emit nested JSON objects (e.g., `{"outer": {"inner": "val"}}`). Missing a brace in a nested context would produce invalid JSON that still passed the repair check.
+  - Replaced with a stack-based nesting-aware parser that tracks brace depth and appends the correct closing braces at the right nesting level.
+
+- **Stale npm package versions** (`npm-packages/*/package.json`)
+  - All 9 npm package manifests were stuck at `1.0.3` while the root `package.json` was at `1.0.9`. Updated all to `1.0.9` and aligned the `@vtstech/pi-shared` dependency version.
+
+### Changed
+
+- **Deduplicated `detectProvider()` into shared module** (`shared/ollama.ts`, `extensions/model-test.ts`, `extensions/diag.ts`)
+  - `detectProvider()` and the `ProviderInfo` interface were duplicated verbatim across `model-test.ts` and `diag.ts`.
+  - Moved to `shared/ollama.ts` as the single canonical source. Both extensions now import from the shared module.
+
+- **Deduplicated `fetchModelContextLength()` into shared module** (`shared/ollama.ts`, `extensions/status.ts`)
+  - `status.ts` contained a 20-line inline copy of the same Ollama `/api/show` context-length fetcher that already existed in `shared/ollama.ts`.
+  - Replaced with a shared import, cutting redundant code and ensuring the logic stays in sync.
+
+- **Tool support cache now avoids full JSON re-read on every lookup** (`extensions/model-test.ts`)
+  - `getToolSupportFromCache()` read and parsed the entire `tool_support.json` file on every call. During a model test run this could happen dozens of times for the same model.
+  - Added an in-memory cache that reads the file once per test session, with a `clearToolSupportCache()` function called between test runs.
+
+- **TTL-based in-memory cache for Ollama helpers** (`shared/ollama.ts`)
+  - `readModelsJson()` and `getOllamaBaseUrl()` hit the filesystem on every call. Multiple extensions call these repeatedly within the same 3-second metrics cycle.
+  - Added a 5-second TTL in-memory cache for both functions. The cache is invalidated automatically on expiry or manually via `invalidateOllamaCache()`.
+
+- **Centralized version string** (all extensions)
+  - Version `"1.0.9"` was hardcoded as a string literal in 10+ locations across every extension file. Changing the version required editing each file individually.
+  - Replaced all hardcoded version strings with `EXTENSION_VERSION` exported from `shared/ollama.ts`. A single constant change now updates all extensions.
+
+---
+
 ## [1.0.9] - 04-11-2026 7:11:30PM
 
 ### Added
