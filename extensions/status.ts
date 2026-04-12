@@ -302,6 +302,7 @@ export default function (pi: ExtensionAPI) {
       ui.setStatus("status-thinking", undefined);
       ui.setStatus("status-resp", undefined);
       ui.setStatus("status-params", undefined);
+      ui.setStatus("system-prompt", undefined);
       ui.setStatus("status-sec", undefined);
       ui.setStatus("status-tool", undefined);
     }
@@ -320,8 +321,14 @@ export default function (pi: ExtensionAPI) {
     lastPayload = event.payload as Record<string, any>;
   });
 
-  pi.on("agent_start", async () => {
+  pi.on("agent_start", async (_event, ctx) => {
     agentStartTime = performance.now();
+    try {
+      const prompt = ctx.getSystemPrompt();
+      const chr = prompt.length;
+      const tok = prompt.split(/\s+/).filter(Boolean).length;
+      ctxUi?.setStatus("system-prompt", `Prompt: ${chr} chr ${tok} tok`);
+    } catch { /* getSystemPrompt not available */ }
   });
 
   pi.on("agent_end", async () => {
