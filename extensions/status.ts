@@ -304,13 +304,8 @@ export default function (pi: ExtensionAPI) {
     // Fetch Pi version once at session start
     try {
       const out = execSync("pi -v 2>&1", { encoding: "utf-8", timeout: 5000 }).trim();
-      if (out) {
-        versionsText = `pi:${out} vts:${EXTENSION_VERSION}`;
-      }
+      if (out) versionsText = `pi:${out}`;
     } catch { /* ignore */ }
-    if (!versionsText) {
-      versionsText = `vts:${EXTENSION_VERSION}`;
-    }
     updateMetrics();
 
     // Main metrics loop (every 5s)
