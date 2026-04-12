@@ -7,9 +7,14 @@
 # output into npm-packages/<name>/ ready for `npm publish`.
 #
 # Usage:
-#   ./scripts/build-packages.sh          # build all
+#   ./scripts/build-packages.sh          # build all + pack tarballs
 #   ./scripts/build-packages.sh shared   # build only shared
 #   ./scripts/build-packages.sh api      # build only api extension
+#
+# Output:
+#   .build-npm/   — compiled packages (what gets published)
+#   npm-packages/ — synced copies for review
+#   dist/         — .tgz tarballs for offline testing (npm install ./dist/<pkg>.tgz)
 #
 # Requires: Node.js, npm (for esbuild — must be in devDependencies)
 # ---------------------------------------------------------------------------
@@ -22,7 +27,7 @@ SHARED_SRC="$REPO_ROOT/shared"
 EXT_SRC="$REPO_ROOT/extensions"
 BUILD_DIR="$REPO_ROOT/.build-npm"
 
-VERSION="1.1.1"
+VERSION="1.1.2-dev"
 
 # Colors
 GREEN='\033[0;32m'
@@ -192,6 +197,34 @@ sync_to_pkg_dir() {
   log "✅ Synced to npm-packages/"
 }
 
+# ── Pack tarballs for offline testing ─────────────────────────────────────
+pack_tarballs() {
+  log "Packing tarballs for offline testing..."
+
+  local dist_dir="$REPO_ROOT/dist"
+  mkdir -p "$dist_dir"
+  rm -f "$dist_dir"/*.tgz 2>/dev/null || true
+
+  for pkg_dir in "$BUILD_DIR"/*/; do
+    local pkg_name
+    pkg_name="$(basename "$pkg_dir")"
+    local tgz_name
+
+    # Run npm pack inside the package dir so the tarball lands there
+    tgz_name="$(cd "$pkg_dir" && npm pack --quiet 2>/dev/null || true)"
+
+    if [ -n "$tgz_name" ] && [ -f "$pkg_dir/$tgz_name" ]; then
+      mv "$pkg_dir/$tgz_name" "$dist_dir/"
+      info "  $tgz_name"
+    fi
+  done
+
+  local count
+  count="$(find "$dist_dir" -name '*.tgz' -type f | wc -l)"
+  log "✅ $count tarball(s) packed → $dist_dir/"
+  info "  Install locally: npm install $dist_dir/<pkg>.tgz"
+}
+
 # ── Main ──────────────────────────────────────────────────────────────────
 main() {
   local target="${1:-all}"
@@ -214,6 +247,8 @@ main() {
       build_all_extensions
       echo ""
       sync_to_pkg_dir
+      echo ""
+      pack_tarballs
       ;;
     api|diag|model-test|ollama-sync|openrouter-sync|react-fallback|security|status)
       build_shared
@@ -221,6 +256,8 @@ main() {
       build_extension "$target"
       echo ""
       sync_to_pkg_dir
+      echo ""
+      pack_tarballs
       ;;
     *)
       echo "Usage: $0 [shared|api|diag|model-test|ollama-sync|openrouter-sync|react-fallback|security|status|all]"

@@ -19,7 +19,7 @@ import os from "node:os";
  *
  * IMPORTANT: When bumping the version, update this constant AND root package.json.
  */
-export const EXTENSION_VERSION = "1.1.1";
+export const EXTENSION_VERSION = "1.1.2-dev";
 
 /**
  * Path to Pi's models.json configuration file.
