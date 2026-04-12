@@ -294,7 +294,7 @@ export default function (pi: ExtensionAPI) {
 
     // Fetch Pi version once at session start
     try {
-      const out = execSync("pi -v", { encoding: "utf-8", timeout: 5000 }).trim();
+      const out = execSync("pi -v 2>&1", { encoding: "utf-8", timeout: 5000 }).trim();
       if (out) {
         versionsText = `pi:${out} vts:${EXTENSION_VERSION}`;
       }
