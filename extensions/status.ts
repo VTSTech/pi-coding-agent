@@ -14,7 +14,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import * as fs from "node:fs";
 import os from "node:os";
-import { exec } from "node:child_process";
 
 // ── Shared imports ─────────────────────────────────────────────────────────
 import { getOllamaBaseUrl, fetchModelContextLength, readModelsJson } from "../shared/ollama";
@@ -38,8 +37,6 @@ export default function (pi: ExtensionAPI) {
   let ctxUi: any = null;
   let prevCpuInfo = getCpuSnapshot();
   let lastPayload: Record<string, any> | null = null;
-  let gitBranchCache = "";
-
   // Cached metrics
   let cpuUsage = 0;
   let memUsed = 0;
@@ -47,17 +44,11 @@ export default function (pi: ExtensionAPI) {
   let swapUsed = 0;
   let swapTotal = 0;
   let hasSwap = false;
-  let ollamaLoaded = "";
   let footerModel = "";
   let footerThinking = "";
-  let footerCtxPct = "";
   let footerNativeCtx = "";
   let nativeCtxModel = "";
   let isLocalProvider = true;
-
-  // ── Upstream / downstream token tracking (per LLM call) ──
-  let lastUpstream = 0;
-  let lastDownstream = 0;
 
   // ── Security tracking ────────────────────────────────────────────────────
 
@@ -122,10 +113,6 @@ export default function (pi: ExtensionAPI) {
     return null;
   }
 
-  let ollamaLoadedCache = "";
-  let ollamaLoadedLastCheck = 0;
-  const OLLAMA_LOADED_INTERVAL = 15000;
-
   /**
    * Detect whether the active provider is local (localhost/127.0.0.1/0.0.0.0)
    * or remote/cloud. CPU/RAM/Swap metrics are only meaningful for local.
@@ -177,38 +164,6 @@ export default function (pi: ExtensionAPI) {
     return footerNativeCtx;
   }
 
-  /**
-   * Fetch the model currently loaded in Ollama VRAM via /api/ps.
-   * Results are cached for OLLAMA_LOADED_INTERVAL (15s).
-   */
-  async function fetchOllamaLoadedModel(): Promise<string> {
-    try {
-      const ollamaBase = getOllamaBaseUrl();
-      const res = await fetch(`${ollamaBase}/api/ps`, {
-        signal: AbortSignal.timeout(5000),
-      });
-      if (!res.ok) return "";
-      const data = (await res.json()) as { models?: Array<{ name?: string; model?: string }> };
-      const models = data?.models || [];
-      if (Array.isArray(models) && models.length > 0) {
-        return models[0].name || models[0].model || "";
-      }
-    } catch { /* ignore */ }
-    return "";
-  }
-
-  function getOllamaLoadedModel(): string {
-    const now = Date.now();
-    if (now - ollamaLoadedLastCheck < OLLAMA_LOADED_INTERVAL) return ollamaLoadedCache;
-    ollamaLoadedLastCheck = now;
-    fetchOllamaLoadedModel().then((loaded) => {
-      ollamaLoadedCache = loaded;
-    }).catch(() => {
-      ollamaLoadedCache = "";
-    });
-    return ollamaLoadedCache;
-  }
-
   function extractParams(payload: Record<string, any>): string[] {
     const params: string[] = [];
     if (payload.temperature !== undefined) params.push(`temp:${payload.temperature}`);
@@ -220,12 +175,6 @@ export default function (pi: ExtensionAPI) {
     if (payload.num_ctx !== undefined) params.push(`ctx:${payload.num_ctx}`);
     if (payload.reasoning_effort !== undefined) params.push(`think:${payload.reasoning_effort}`);
     return params;
-  }
-
-  /** Format token count: 1234 -> "1.2k", 456 -> "456". */
-  function fmtTk(n: number): string {
-    if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-    return String(n);
   }
 
   // ── flushStatus: push all cached state into named setStatus slots ──
@@ -252,28 +201,15 @@ export default function (pi: ExtensionAPI) {
         : undefined,
     );
 
-    // Ollama loaded model
-    ctxUi.setStatus("status-loaded", ollamaLoaded ? `load:${ollamaLoaded}` : undefined);
-
     // Native model context length (local only)
     ctxUi.setStatus("status-native-ctx",
       (isLocalProvider && footerNativeCtx) ? `M:${footerNativeCtx}` : undefined,
     );
 
-    // Session context usage
-    ctxUi.setStatus("status-ctx", footerCtxPct ? `S:${footerCtxPct}` : undefined);
-
     // Thinking level
     ctxUi.setStatus("status-thinking",
       (footerThinking && footerThinking !== "off") ? footerThinking : undefined,
     );
-
-    // Token counts (upstream/downstream)
-    if (lastUpstream > 0 || lastDownstream > 0) {
-      ctxUi.setStatus("status-tokens", `${fmtTk(lastUpstream)} in / ${fmtTk(lastDownstream)} out`);
-    } else {
-      ctxUi.setStatus("status-tokens", undefined);
-    }
 
     // Response time
     ctxUi.setStatus("status-resp",
@@ -322,21 +258,12 @@ export default function (pi: ExtensionAPI) {
     } else {
       hasSwap = false;
     }
-    ollamaLoaded = getOllamaLoadedModel();
-
     const modelsJson = readModelsJson();
     isLocalProvider = modelsJson ? detectLocalProvider(modelsJson) : false;
 
     if (currentCtx) {
       footerModel = currentCtx.model?.id || "";
       footerThinking = pi.getThinkingLevel?.() ?? "";
-      const usage = currentCtx.getContextUsage?.();
-      if (usage && usage.contextWindow > 0) {
-        const pctVal = ((usage.tokens / usage.contextWindow) * 100).toFixed(1);
-        footerCtxPct = `${pctVal}%/${(usage.contextWindow / 1000).toFixed(0)}k`;
-      } else {
-        footerCtxPct = "";
-      }
       const modelId = currentCtx.model?.id || "";
       if (modelId && isLocalProvider) {
         getNativeModelCtx(modelId);
@@ -371,11 +298,8 @@ export default function (pi: ExtensionAPI) {
       ui.setStatus("status-cpu", undefined);
       ui.setStatus("status-ram", undefined);
       ui.setStatus("status-swap", undefined);
-      ui.setStatus("status-loaded", undefined);
       ui.setStatus("status-native-ctx", undefined);
-      ui.setStatus("status-ctx", undefined);
       ui.setStatus("status-thinking", undefined);
-      ui.setStatus("status-tokens", undefined);
       ui.setStatus("status-resp", undefined);
       ui.setStatus("status-params", undefined);
       ui.setStatus("status-sec", undefined);
@@ -388,42 +312,16 @@ export default function (pi: ExtensionAPI) {
     activeTool = "";
     activeToolStart = 0;
     blockedCount = 0;
-    lastUpstream = 0;
-    lastDownstream = 0;
     lastResponseTime = null;
     lastPayload = null;
-    gitBranchCache = "";
   });
 
   pi.on("before_provider_request", (event) => {
     lastPayload = event.payload as Record<string, any>;
   });
 
-  /**
-   * Capture per-LLM-call token usage from message_end / turn_end events.
-   */
-  function captureUsage(event: any) {
-    if (event?.message?.role !== "assistant") return;
-    const usage =
-      event?.message?.usage ??
-      event?.usage ??
-      null;
-    if (!usage) return;
-    const inp = usage.input ?? usage.promptTokens ?? usage.prompt_tokens;
-    const out = usage.output ?? usage.completionTokens ?? usage.completion_tokens;
-    if (inp != null) lastUpstream = inp as number;
-    if (out != null) lastDownstream = out as number;
-    // Flush tokens immediately so they appear without waiting for the 5s cycle
-    flushStatus();
-  }
-
-  pi.on("message_end", captureUsage);
-  pi.on("turn_end", captureUsage);
-
   pi.on("agent_start", async () => {
     agentStartTime = performance.now();
-    lastUpstream = 0;
-    lastDownstream = 0;
   });
 
   pi.on("agent_end", async () => {
