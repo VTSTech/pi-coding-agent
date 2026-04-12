@@ -45,7 +45,7 @@ function getProviderConfig(existing: PiModelsJson) {
  * (parameter_size, quantization_level) and detecting model family.
  */
 function buildModelEntry(m: { name: string; details: { parameter_size: string; quantization_level: string; family: string; families?: string[] }; size: number }, contextLength?: number): PiModelEntry {
-  const estimatedSize = estimateMemory(m.details.parameter_size, m.details.quantization_level);
+  const estimatedSize = estimateMemory(m.details.parameter_size, m.details.quantization_level, contextLength);
   return {
     id: m.name,
     reasoning: isReasoningModel(m.name),
