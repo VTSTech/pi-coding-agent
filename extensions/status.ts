@@ -1,11 +1,11 @@
 /**
  * System Monitor — Pi Coding Agent Extension
- * Replaces the default footer with a unified 2-line status bar:
- *   Line 1 (conf): model · pwd · thinking level · CPU% (if local Ollama)
- *   Line 2 (load): loaded model · ↑↓ tokens (from message_end/turn_end) · M: · S: · RAM (if local Ollama) · Resp · params · security
- *   Line 3: (active tool timing when agent is running)
- * Metrics update every 5 seconds. Restores default footer on session shutdown.
- * Includes audit/recovery status indicators from shared security layer.
+ * Adds named status items to the framework footer using ctx.ui.setStatus().
+ * Each piece of info (CPU, RAM, tokens, security, etc.) gets its own named slot
+ * so it composes cleanly with other extensions' status items.
+ *
+ * Metrics update every 5 seconds. All status slots are cleared on session_shutdown.
+ * Active tool timing uses a fast 1s sub-interval while a tool is running.
  *
  * Written by VTSTech
  * GitHub: https://github.com/VTSTech
@@ -16,31 +16,28 @@ import * as fs from "node:fs";
 import os from "node:os";
 import { exec } from "node:child_process";
 
-// ── Shared imports (eliminates duplication) ────────────────────────────────
+// ── Shared imports ─────────────────────────────────────────────────────────
 import { getOllamaBaseUrl, fetchModelContextLength, readModelsJson } from "../shared/ollama";
 import { fmtBytes, fmtDur } from "../shared/format";
 import { debugLog } from "../shared/debug";
-// readRecentAuditEntries no longer imported — SEC counter is now session-scoped (in-memory)
 
 // ── Configuration ──────────────────────────────────────────────────────────
 
-/**
- * Status bar update interval in milliseconds.
- * Set to 5 seconds to balance responsiveness with reduced overhead on
- * resource-constrained systems (the previous 3s interval caused unnecessary
- * CPU wake-ups on low-end hardware). Easily configurable here if needed.
- */
+/** Main metrics update interval (milliseconds). */
 const STATUS_UPDATE_INTERVAL_MS = 5000;
+
+/** Fast update interval while a tool is actively running (for live timer). */
+const TOOL_TIMER_INTERVAL_MS = 1000;
 
 export default function (pi: ExtensionAPI) {
   let lastResponseTime: number | null = null;
   let agentStartTime: number | null = null;
   let updateInterval: ReturnType<typeof setInterval> | null = null;
+  let toolTimerInterval: ReturnType<typeof setInterval> | null = null;
   let currentCtx: any = null;
   let ctxUi: any = null;
   let prevCpuInfo = getCpuSnapshot();
   let lastPayload: Record<string, any> | null = null;
-  let tuiRef: any = null;
   let gitBranchCache = "";
 
   // Cached metrics
@@ -62,19 +59,19 @@ export default function (pi: ExtensionAPI) {
   let lastUpstream = 0;
   let lastDownstream = 0;
 
-  // ── Audit / recovery tracking ────────────────────────────────────────────
+  // ── Security tracking ────────────────────────────────────────────────────
 
   /** Name of the most recently blocked tool (for the flash indicator). */
   let securityFlashTool = "";
   /** Timestamp until which the block flash is visible (3 s window). */
   let securityFlashUntil = 0;
 
-  /** Currently executing tool name (shown while agent is running). */
+  /** Currently executing tool name. */
   let activeTool = "";
   /** Timestamp when the active tool started executing. */
   let activeToolStart = 0;
 
-  /** Session-scoped count of blocked operations (in-memory only, resets on session_shutdown). */
+  /** Session-scoped count of blocked operations. */
   let blockedCount = 0;
 
   // ── helpers ──────────────────────────────────────────────────────
@@ -132,23 +129,15 @@ export default function (pi: ExtensionAPI) {
   /**
    * Detect whether the active provider is local (localhost/127.0.0.1/0.0.0.0)
    * or remote/cloud. CPU/RAM/Swap metrics are only meaningful for local.
-   *
-   * Strategy:
-   *  1. Check the framework context for the active provider URL (covers built-in
-   *     providers like openrouter, openai, etc. that aren't in models.json).
-   *  2. Fall back to matching the active model against models.json providers
-   *     (for custom/user-defined providers).
    */
   function detectLocalProvider(modelsJson: Record<string, any>): boolean {
     const isLocalUrl = (url: string) =>
       url.includes("localhost") || url.includes("127.0.0.1") || url.includes("0.0.0.0");
 
     try {
-      // 1. Check the framework's active provider URL (covers built-in providers)
       const ctxUrl = currentCtx?.provider?.baseUrl || currentCtx?.provider?.url || "";
       if (ctxUrl) return isLocalUrl(ctxUrl);
 
-      // 2. Fall back to matching active model in models.json
       const modelId = footerModel || "";
       if (modelsJson && modelId) {
         for (const provider of Object.values(modelsJson.providers || {}) as any[]) {
@@ -159,7 +148,6 @@ export default function (pi: ExtensionAPI) {
         }
       }
     } catch { /* ignore */ }
-    // No provider URL found — assume cloud/remote
     return false;
   }
 
@@ -168,18 +156,12 @@ export default function (pi: ExtensionAPI) {
 
   /**
    * Fetch the native max context length for the active model from Ollama /api/show.
-   * Looks for architecture-specific keys like "qwen3.context_length".
-   * Returns a human-readable string like "32k" or "131072".
-   * Cached per-model to avoid redundant calls.
-   *
-   * Uses fire-and-forget fetch — the result populates footerNativeCtx and is
-   * available on the next metrics render cycle (3s). No shell invocation needed.
+   * Fire-and-forget — result available on next cycle via cache.
    */
   function getNativeModelCtx(modelId: string): string {
     if (!modelId) return "";
     if (modelId === nativeCtxModel && footerNativeCtx) return footerNativeCtx;
     nativeCtxModel = modelId;
-    // Fire-and-forget fetch (results available on next cycle via cache)
     if (!nativeCtxPromise) {
       nativeCtxPromise = (async () => {
         try {
@@ -188,7 +170,7 @@ export default function (pi: ExtensionAPI) {
           if (ctx != null) {
             footerNativeCtx = ctx >= 1000 ? `${(ctx / 1000).toFixed(0)}k` : String(ctx);
           }
-        } catch { /* ignore — network error, timeout, or parse failure */ }
+        } catch { /* ignore */ }
         finally { nativeCtxPromise = null; }
       })();
     }
@@ -197,8 +179,6 @@ export default function (pi: ExtensionAPI) {
 
   /**
    * Fetch the model currently loaded in Ollama VRAM via /api/ps.
-   * Uses native fetch() instead of execSync("curl ...") to avoid
-   * shell injection if the base URL contains metacharacters.
    * Results are cached for OLLAMA_LOADED_INTERVAL (15s).
    */
   async function fetchOllamaLoadedModel(): Promise<string> {
@@ -213,7 +193,7 @@ export default function (pi: ExtensionAPI) {
       if (Array.isArray(models) && models.length > 0) {
         return models[0].name || models[0].model || "";
       }
-    } catch { /* ignore — network error, timeout, or parse failure */ }
+    } catch { /* ignore */ }
     return "";
   }
 
@@ -221,7 +201,6 @@ export default function (pi: ExtensionAPI) {
     const now = Date.now();
     if (now - ollamaLoadedLastCheck < OLLAMA_LOADED_INTERVAL) return ollamaLoadedCache;
     ollamaLoadedLastCheck = now;
-    // Fire-and-forget async fetch — result available on next cycle via cache
     fetchOllamaLoadedModel().then((loaded) => {
       ollamaLoadedCache = loaded;
     }).catch(() => {
@@ -243,41 +222,89 @@ export default function (pi: ExtensionAPI) {
     return params;
   }
 
-  /** Format token count: 1234 → "1.2k", 456 → "456". */
+  /** Format token count: 1234 -> "1.2k", 456 -> "456". */
   function fmtTk(n: number): string {
     if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
     return String(n);
   }
 
-  function getPwd(): string {
-    const cwd = process.cwd();
-    if (cwd.startsWith(os.homedir())) return "~" + cwd.slice(os.homedir().length);
-    return cwd;
-  }
-
-  function getGitBranch(): string {
-    if (gitBranchCache) return gitBranchCache;
-    // Fire-and-forget async fetch — result available on next cycle via cache
-    exec("git rev-parse --abbrev-ref HEAD", { timeout: 3000 }, (err: Error | null, stdout: string) => {
-      if (!err) {
-        const branch = stdout.trim();
-        if (branch) gitBranchCache = branch;
-      } else {
-        debugLog("status", "git branch detection failed", err);
-      }
-    });
-    return gitBranchCache;
-  }
-
-  // ── Audit log helpers ─────────────────────────────────────────────
+  // ── flushStatus: push all cached state into named setStatus slots ──
 
   /**
-   * Increment the session-scoped blocked counter.
-   * Unlike the old audit-log approach, this tracks only events in the
-   * current session, so the counter resets to 0 on session_shutdown.
+   * Write all current metrics into named status slots.
+   * Each call to ctx.ui.setStatus() creates or updates a composable slot
+   * that coexists with other extensions' status items.
+   * Setting a slot to undefined removes it from the footer.
    */
-  function incrementBlockedCount(): void {
-    blockedCount++;
+  function flushStatus() {
+    if (!ctxUi) return;
+
+    // CPU (local only)
+    ctxUi.setStatus("status-cpu", isLocalProvider ? `CPU ${cpuUsage.toFixed(0)}%` : undefined);
+
+    // RAM (local only)
+    ctxUi.setStatus("status-ram", isLocalProvider ? `RAM ${fmtBytes(memUsed)}/${fmtBytes(memTotal)}` : undefined);
+
+    // Swap (local only, only when swap is in use)
+    ctxUi.setStatus("status-swap",
+      (isLocalProvider && hasSwap && swapUsed > 0)
+        ? `Swap ${fmtBytes(swapUsed)}/${fmtBytes(swapTotal)}`
+        : undefined,
+    );
+
+    // Ollama loaded model
+    ctxUi.setStatus("status-loaded", ollamaLoaded ? `load:${ollamaLoaded}` : undefined);
+
+    // Native model context length (local only)
+    ctxUi.setStatus("status-native-ctx",
+      (isLocalProvider && footerNativeCtx) ? `M:${footerNativeCtx}` : undefined,
+    );
+
+    // Session context usage
+    ctxUi.setStatus("status-ctx", footerCtxPct ? `S:${footerCtxPct}` : undefined);
+
+    // Thinking level
+    ctxUi.setStatus("status-thinking",
+      (footerThinking && footerThinking !== "off") ? footerThinking : undefined,
+    );
+
+    // Token counts (upstream/downstream)
+    if (lastUpstream > 0 || lastDownstream > 0) {
+      ctxUi.setStatus("status-tokens", `${fmtTk(lastUpstream)} in / ${fmtTk(lastDownstream)} out`);
+    } else {
+      ctxUi.setStatus("status-tokens", undefined);
+    }
+
+    // Response time
+    ctxUi.setStatus("status-resp",
+      lastResponseTime !== null ? `Resp ${fmtDur(lastResponseTime)}` : undefined,
+    );
+
+    // Active parameters from last payload
+    if (lastPayload) {
+      const params = extractParams(lastPayload);
+      ctxUi.setStatus("status-params", params.length > 0 ? params.join(" ") : undefined);
+    } else {
+      ctxUi.setStatus("status-params", undefined);
+    }
+
+    // Security: flash indicator (3s window) + persistent counter
+    const now = Date.now();
+    if (securityFlashTool && now < securityFlashUntil) {
+      ctxUi.setStatus("status-sec", `SEC:${blockedCount} (blocked: ${securityFlashTool})`);
+    } else if (blockedCount > 0) {
+      ctxUi.setStatus("status-sec", `SEC:${blockedCount}`);
+    } else {
+      ctxUi.setStatus("status-sec", undefined);
+    }
+
+    // Active tool timing (updated by a fast 1s interval while tool is running)
+    if (activeTool && activeToolStart > 0) {
+      const elapsed = performance.now() - activeToolStart;
+      ctxUi.setStatus("status-tool", `> ${activeTool}: ${fmtDur(elapsed)}`);
+    } else {
+      ctxUi.setStatus("status-tool", undefined);
+    }
   }
 
   // ── metrics refresh (called every STATUS_UPDATE_INTERVAL_MS) ──
@@ -297,11 +324,7 @@ export default function (pi: ExtensionAPI) {
     }
     ollamaLoaded = getOllamaLoadedModel();
 
-    // Read models.json once per cycle — uses shared utility with 2s TTL cache
     const modelsJson = readModelsJson();
-
-    // Detect local vs remote/cloud provider FIRST (uses pre-parsed modelsJson)
-    // Must run before getNativeModelCtx() which depends on isLocalProvider
     isLocalProvider = modelsJson ? detectLocalProvider(modelsJson) : false;
 
     if (currentCtx) {
@@ -314,14 +337,13 @@ export default function (pi: ExtensionAPI) {
       } else {
         footerCtxPct = "";
       }
-      // Fetch native model max context from Ollama /api/show (local only)
       const modelId = currentCtx.model?.id || "";
       if (modelId && isLocalProvider) {
         getNativeModelCtx(modelId);
       }
     }
 
-    // (blockedCount is now session-scoped — updated on tool_call events, not polled)
+    flushStatus();
   }
 
   // ── event handlers ──────────────────────────────────────────────
@@ -332,119 +354,35 @@ export default function (pi: ExtensionAPI) {
     prevCpuInfo = getCpuSnapshot();
     updateMetrics();
 
-    ctx.ui.setFooter((tui: any, theme: any, footerData: any) => {
-      tuiRef = tui;
-      const dim = (s: string) => theme?.fg?.("dim", s) ?? s;
-      const red = (s: string) => theme?.fg?.("error", s) ?? s;
-      const yellow = (s: string) => theme?.fg?.("yellow", s) ?? s;
-      const sep = dim(" \u00b7 ");
-
-      // ── Truncation helper (inside setFooter to access dim) ──
-      const truncateLine = (line: string, maxW: number): string => {
-        const ellipsis = dim("...");
-        const visible = line.replace(/\x1b\[[0-9;]*m/g, "");
-        if (visible.length > maxW) {
-          let vis = 0, cut = 0;
-          for (let i = 0; i < line.length && vis < maxW - 3; i++) {
-            if (line[i] === "\x1b") {
-              while (i < line.length && line[i] !== "m") i++;
-            } else {
-              vis++;
-            }
-            cut = i + 1;
-          }
-          return line.slice(0, cut) + ellipsis;
-        }
-        return line;
-      };
-
-      return {
-        render(width: number): string[] {
-          const lines: string[] = [];
-
-          // Git branch — try framework API first, fall back to git command
-          let branch = "";
-          try { branch = footerData?.getGitBranch?.() || ""; } catch { /* no api */ }
-          if (!branch) branch = getGitBranch();
-
-          // ── Line 1 (conf): model · pwd · thinking · CPU% (if local) ──
-          const line1Parts: string[] = [];
-          if (footerModel) line1Parts.push(`conf:${footerModel}`);
-          line1Parts.push(getPwd());
-          if (footerThinking && footerThinking !== "off") line1Parts.push(dim(footerThinking));
-          if (isLocalProvider) {
-            line1Parts.push(dim(`CPU ${cpuUsage.toFixed(0)}%`));
-          }
-          let line1 = truncateLine(line1Parts.join(sep), width);
-          lines.push(line1);
-
-          // ── Line 2 (load): loaded model · M: · S: · RAM (if local) · Resp · params · security ──
-          const line2Parts: string[] = [];
-          if (ollamaLoaded) line2Parts.push(`load:${ollamaLoaded}`);
-          if (footerNativeCtx) line2Parts.push(`M:${footerNativeCtx}`);
-          if (footerCtxPct) line2Parts.push(`S:${footerCtxPct}`);
-          if (isLocalProvider) {
-            line2Parts.push(`RAM ${fmtBytes(memUsed)}/${fmtBytes(memTotal)}`);
-            if (hasSwap && swapUsed > 0) {
-              line2Parts.push(`Swap ${fmtBytes(swapUsed)}/${fmtBytes(swapTotal)}`);
-            }
-          }
-          if (lastUpstream > 0 || lastDownstream > 0) {
-            line2Parts.push(dim(`\u2191${fmtTk(lastUpstream)} \u2193${fmtTk(lastDownstream)}`));
-          }
-          if (lastResponseTime !== null) line2Parts.push(`Resp ${fmtDur(lastResponseTime)}`);
-          if (lastPayload) {
-            const params = extractParams(lastPayload);
-            if (params.length > 0) line2Parts.push(...params.map(p => dim(p)));
-          }
-
-          // ── Security status indicator ──────────────────────────────
-          // Flash indicator: briefly highlight a blocked tool name
-          const now = Date.now();
-          if (securityFlashTool && now < securityFlashUntil) {
-            line2Parts.push(red(`BLOCKED:${securityFlashTool}`));
-          }
-
-          // Persistent SEC:N indicator (session-scoped — resets on session_shutdown)
-          if (blockedCount > 0) {
-            line2Parts.push(red(`SEC:${blockedCount}`));
-          }
-
-          let line2 = truncateLine(line2Parts.join(sep), width);
-          if (line2) lines.push(line2);
-
-          // ── Line 3: active tool timing ─────────────────────────────
-          if (activeTool && activeToolStart > 0) {
-            const elapsed = performance.now() - activeToolStart;
-            lines.push(`${yellow("\u23f3")} ${activeTool}: ${fmtDur(elapsed)}`);
-          }
-
-          return lines;
-        },
-
-        invalidate(): void {},
-
-        dispose(): void {},
-      };
-    });
-
+    // Main metrics loop (every 5s)
     if (updateInterval) clearInterval(updateInterval);
-    updateInterval = setInterval(() => {
-      updateMetrics();
-      if (tuiRef) tuiRef.requestRender();
-    }, STATUS_UPDATE_INTERVAL_MS);
+    updateInterval = setInterval(updateMetrics, STATUS_UPDATE_INTERVAL_MS);
   });
 
-  pi.on("session_shutdown", async () => {
-    if (updateInterval) clearInterval(updateInterval);
-    updateInterval = null;
-    tuiRef = null;
-    if (ctxUi) {
-      ctxUi.setFooter(undefined);
-      ctxUi = null;
-    }
+  pi.on("session_shutdown", async (_event, ctx) => {
+    if (updateInterval) { clearInterval(updateInterval); updateInterval = null; }
+    if (toolTimerInterval) { clearInterval(toolTimerInterval); toolTimerInterval = null; }
+    ctxUi = null;
     currentCtx = null;
-    // Reset audit/recovery state
+
+    // Clear all status slots so they don't linger
+    const ui = ctx?.ui;
+    if (ui) {
+      ui.setStatus("status-cpu", undefined);
+      ui.setStatus("status-ram", undefined);
+      ui.setStatus("status-swap", undefined);
+      ui.setStatus("status-loaded", undefined);
+      ui.setStatus("status-native-ctx", undefined);
+      ui.setStatus("status-ctx", undefined);
+      ui.setStatus("status-thinking", undefined);
+      ui.setStatus("status-tokens", undefined);
+      ui.setStatus("status-resp", undefined);
+      ui.setStatus("status-params", undefined);
+      ui.setStatus("status-sec", undefined);
+      ui.setStatus("status-tool", undefined);
+    }
+
+    // Reset state
     securityFlashTool = "";
     securityFlashUntil = 0;
     activeTool = "";
@@ -452,6 +390,9 @@ export default function (pi: ExtensionAPI) {
     blockedCount = 0;
     lastUpstream = 0;
     lastDownstream = 0;
+    lastResponseTime = null;
+    lastPayload = null;
+    gitBranchCache = "";
   });
 
   pi.on("before_provider_request", (event) => {
@@ -460,26 +401,20 @@ export default function (pi: ExtensionAPI) {
 
   /**
    * Capture per-LLM-call token usage from message_end / turn_end events.
-   * Pi fires message_end for ALL message types (user, assistant, toolResult).
-   * Only assistant messages carry token usage (input/output from the LLM).
-   * We also listen on turn_end as a fallback (same payload shape).
-   *
-   * Usage shape: { input, output, cacheRead, cacheWrite, totalTokens }
    */
   function captureUsage(event: any) {
-    // message_end fires for every message type - only assistant has usage
     if (event?.message?.role !== "assistant") return;
     const usage =
-      event?.message?.usage ??    // normalised Pi usage
-      event?.usage ??             // alternative path
+      event?.message?.usage ??
+      event?.usage ??
       null;
     if (!usage) return;
     const inp = usage.input ?? usage.promptTokens ?? usage.prompt_tokens;
     const out = usage.output ?? usage.completionTokens ?? usage.completion_tokens;
     if (inp != null) lastUpstream = inp as number;
     if (out != null) lastDownstream = out as number;
-    // Render immediately so tokens appear in footer without waiting for the 3s cycle
-    if (tuiRef) tuiRef.requestRender();
+    // Flush tokens immediately so they appear without waiting for the 5s cycle
+    flushStatus();
   }
 
   pi.on("message_end", captureUsage);
@@ -496,24 +431,37 @@ export default function (pi: ExtensionAPI) {
       lastResponseTime = performance.now() - agentStartTime;
       agentStartTime = null;
     }
-    // Clear active tool state when agent finishes
     activeTool = "";
     activeToolStart = 0;
+    stopToolTimer();
     updateMetrics();
-    if (tuiRef) tuiRef.requestRender();
   });
 
-  // ── Tool event handlers (audit / recovery) ────────────────────────
+  // ── Tool event handlers ──────────────────────────────────────────
+
+  /**
+   * Start a fast 1s update interval for live tool timing.
+   * Only active while a tool is running; stopped when the tool finishes.
+   */
+  function startToolTimer() {
+    if (toolTimerInterval) return; // already running
+    toolTimerInterval = setInterval(flushStatus, TOOL_TIMER_INTERVAL_MS);
+  }
+
+  /** Stop the fast tool timer interval. */
+  function stopToolTimer() {
+    if (toolTimerInterval) {
+      clearInterval(toolTimerInterval);
+      toolTimerInterval = null;
+    }
+  }
 
   /**
    * Track tool_call events for security blocking.
-   * When a tool is blocked by security, set a 3-second flash indicator
-   * on the footer so the operator can see what was intercepted.
    */
   pi.on("tool_call", (event: any) => {
     if (!event) return;
 
-    // Check if the tool call was blocked by security
     const isBlocked =
       event.blocked === true ||
       event.blocked === "true" ||
@@ -522,25 +470,21 @@ export default function (pi: ExtensionAPI) {
 
     if (isBlocked) {
       securityFlashTool = event.tool ?? event.name ?? "unknown";
-      securityFlashUntil = Date.now() + 3000; // flash for 3 seconds
-      // Immediately increment the session-scoped blocked counter
-      incrementBlockedCount();
-      if (tuiRef) tuiRef.requestRender();
+      securityFlashUntil = Date.now() + 3000;
+      blockedCount++;
+      flushStatus();
     }
   });
 
   /**
    * Track tool_execution_start events to show per-tool timing.
-   * While the agent is actively running, line 2 of the footer displays
-   * a live elapsed timer for the currently executing tool.
+   * Starts a fast 1s update interval so the timer is visible.
    */
   pi.on("tool_execution_start", (event: any) => {
     if (!event) return;
     activeTool = event.tool ?? event.name ?? "tool";
     activeToolStart = performance.now();
-    // Request more frequent renders while a tool is running (every 500ms)
-    // so the timer updates visibly. The regular 3s interval is too coarse.
-    if (tuiRef) tuiRef.requestRender();
+    startToolTimer();
   });
 
   /**
@@ -549,6 +493,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("tool_execution_end", () => {
     activeTool = "";
     activeToolStart = 0;
-    if (tuiRef) tuiRef.requestRender();
+    stopToolTimer();
+    flushStatus();
   });
 }
