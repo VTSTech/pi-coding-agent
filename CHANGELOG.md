@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.2] - 04-12-2026 1:40:11 PM
+
+### Fixed
+
+- **Shared source drift between `shared/` and `npm-packages/shared/`** (`npm-packages/shared/`)
+  - Four stale TypeScript source files (`format.ts`, `ollama.ts`, `security.ts`, `types.ts`) existed in `npm-packages/shared/` as manual copies that were never updated by the build pipeline. They had drifted significantly from the canonical `shared/*.ts` sources — missing `estimateVram()`, wrong `EXTENSION_VERSION`, phantom error classes, a stale barrel `package.json` with `"main": "index.js"` pointing to a nonexistent file, and stricter HTML detection that had since been tightened.
+  - Deleted all four `.ts` files from `npm-packages/shared/`. The build pipeline (`build-packages.sh`) compiles from `shared/*.ts` and syncs compiled `.js` output to `npm-packages/` — the `.ts` copies served no purpose at build time and created a false impression of being the published source.
+
+- **`sync_to_pkg_dir()` did not sync shared `package.json`** (`scripts/build-packages.sh`)
+  - The build script copied shared `.js` files and extension `package.json` files into `npm-packages/`, but skipped the shared `package.json`. This meant the version in `npm-packages/shared/package.json` stayed at the old value after a version bump, while extension packages correctly referenced the new version as a dependency.
+  - Added `cp "$BUILD_DIR/shared/package.json" "$NPM_PKG_DIR/shared/"` to the sync step so the shared version stays consistent with the rest of the build output.
+
+### Added
+
+- **Build preflight guard** (`scripts/build-packages.sh`)
+  - New `preflight()` function runs before every build with two checks:
+    1. **esbuild availability** — verifies `npx --no esbuild --version` succeeds, failing with a clear message if `npm install` hasn't been run.
+    2. **Drift detection** — scans `npm-packages/shared/` for `.ts` files and exits with code 1 if any are found, listing the offending files and explaining why they're a problem. This prevents the drift class of bugs from recurring silently.
+
+- **npm pack tarball output** (`scripts/build-packages.sh`)
+  - New `pack_tarballs()` step runs after `sync_to_pkg_dir()` for full and single-extension builds. Uses `npm pack` inside each `.build-npm/<name>/` directory to create installable `.tgz` tarballs, collected into `dist/`.
+  - Enables offline testing of individual packages without publishing to npm: `pi install npm:/path/to/dist/<pkg>.tgz`.
+  - Skipped for `./scripts/build-packages.sh shared` (shared alone has no extensions to pack).
+
+- **`dist/` to `.gitignore`** (`.gitignore`)
+  - Build-generated tarball directory excluded from version control.
+
+- **Pre-publish testing workflow documentation** (`scripts/build-packages.sh`)
+  - Comment block at the top of the build script outlining the full pre-publish flow: build, publish shared prerelease, install tarball, symlink for Pi discovery, test.
+
+### Changed
+
+- **esbuild pinned as devDependency** (`package.json`, `package-lock.json`)
+  - esbuild was not declared in `package.json`. The build scripts relied on `npx esbuild` resolving it implicitly from npm's cache, which picks whatever `latest` resolves to at invocation time — causing silent version drift and offline build failures.
+  - Added `"esbuild": "^0.28.0"` to `devDependencies` with a `package-lock.json` pinning esbuild to exactly `0.28.0`. Build now uses the declared dependency instead of an implicit download.
+
+- **Version bumped to 1.1.2-dev** (all version touchpoints)
+  - `shared/ollama.ts` (`EXTENSION_VERSION`), `scripts/build-packages.sh`, `scripts/publish-packages.sh`, and root `package.json` all updated to `1.1.2-dev`.
+  - GitHub now tracks one version ahead of the latest npm release (`1.1.1`). The `-dev` suffix is dropped in these four locations before publishing the next stable release.
+
+---
+
 ## [1.1.1] - 04-12-2026 11:42:17 AM
 
 ### Fixed
