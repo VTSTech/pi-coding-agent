@@ -1,6 +1,6 @@
 {
   "name": "@vtstech/pi-model-test",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Model benchmark/testing extension for Pi Coding Agent",
   "main": "model-test.js",
   "keywords": ["pi-extensions"],

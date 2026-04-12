@@ -1,6 +1,6 @@
 {
   "name": "@vtstech/pi-status",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "System monitor / status bar extension for Pi Coding Agent",
   "main": "status.js",
   "keywords": ["pi-extensions"],

@@ -1,6 +1,6 @@
 {
   "name": "@vtstech/pi-react-fallback",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "ReAct fallback extension for Pi Coding Agent",
   "main": "react-fallback.js",
   "keywords": ["pi-extensions"],
