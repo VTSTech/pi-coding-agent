@@ -392,21 +392,22 @@ Automatically loaded — no commands needed. When a model lacks native tool call
 
 **Adds composable named status items to the framework footer using `ctx.ui.setStatus()`. Each metric gets its own slot so it coexists cleanly with other extensions' status items.**
 
-CPU/RAM/Swap are only shown when using a local Ollama provider (not for cloud/remote). For cloud providers, system metrics are omitted. Model name, session tokens, and context usage are shown by the framework — not duplicated here.
+CPU/RAM/Swap are only shown when using a local Ollama provider (not for cloud/remote). For cloud providers, system metrics are omitted. Model name, session tokens, and context usage are shown by the framework — not duplicated here. All labels use dimmed coloring; all values use green highlighting.
 
-**Status slots (updated every 5s):**
+**Status slots (updated every 5s, 1s for active tool):**
+- **CtxMax** — native model context window from Ollama `/api/show` (local and remote Ollama, cached per-model)
+- **RespMax** — max response/completion tokens with k-notation (e.g., `16k`) captured via `before_provider_request` interception
+- **Resp** — agent loop duration via `agent_start`/`agent_end` events
 - **CPU%** — per-core delta via `os.cpus()` (local Ollama only)
 - **RAM** — used/total via `os.totalmem()` / `os.freemem()` (local Ollama only)
 - **Swap** — used/total from `/proc/meminfo` (shown only when swap is active, local only)
-- **Native context** — `M:33k` from Ollama `/api/show` (local Ollama only, cached per-model)
-- **Thinking level** — shown when active (off is hidden)
-- **Response time** — agent loop duration via `agent_start`/`agent_end` events
-- **Generation params** — temperature, top_p, top_k, max tokens, num_predict, context size captured via `before_provider_request` interception
-- **Security indicator** — 3s flash on blocked tools + session-scoped blocked count (resets on shutdown)
-- **Active tool timing** — live elapsed timer with a fast 1s update interval while a tool is running
-- **System prompt size** — `Prompt: 2840 chr 393 tok` displayed on agent start (green themed)
+- **Generation params** — temperature, top_p, top_k, num_predict, context size, reasoning_effort (dimmed)
+- **SEC** — 3s flash on blocked tools + session-scoped blocked count (resets on shutdown)
+- **Active tool** — live elapsed timer with `>` indicator while a tool is running
+- **Prompt** — system prompt size as `chars chr tokens tok` displayed on agent start
+- **Versions** — `pi:0.66.1 vts:1.1.4-dev` fetched once at `session_start` (dimmed)
 
-All slots are cleared on session shutdown. Metrics that the framework already provides (model name, session tokens, context usage) are intentionally omitted to avoid duplication.
+All slots are cleared on session shutdown. Metrics that the framework already provides (model name, session tokens, context usage, thinking level) are intentionally omitted to avoid duplication.
 
 ---
 

@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.1.4] - 04-13-2026 TBD
+## [1.1.4] - 04-12-2026 6:55:41 PM
 
 ### Fixed
 
@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Status bar labels renamed for clarity** (`extensions/status.ts`)
   - `M:33k` → `CtxMax:33k` (native model context window)
   - `max:16384` → `RespMax:16k` (max response/completion tokens)
+
+- **Pi and extension version displayed in status bar** (`extensions/status.ts`)
+  - Added `status-versions` slot showing `pi:{version} vts:{EXTENSION_VERSION}` (e.g., `pi:0.66.1 vts:1.1.4-dev`). Pi version fetched once at `session_start` via `execSync("pi -v 2>&1")` (Pi outputs to stderr, not stdout). Falls back to `vts:{version}` alone if Pi version is unavailable. Slot is dimmed to de-emphasize it alongside more prominent metric slots.
+  - Slot is cleared on `session_shutdown` along with all other status slots.
 
 ---
 
