@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.1] - 04-12-2026 11:42:17 AM
+
+### Fixed
+
+- **Shell injection via `pi.exec("curl")` in model-test.ts** (`extensions/model-test.ts`)
+  - All 5 curl subprocess calls (in `ollamaChat()`, `testToolUsage()`, `testToolUsageProvider()`, `testReActOutput()`, and `getOllamaModels()`) passed user-controlled data — model names, message content, and base URLs — through shell argument interpolation via `pi.exec("curl", [...])`. Any value containing shell metacharacters could inject arbitrary commands.
+  - Replaced all 5 call sites with native `fetch()` + `AbortController`. Error handling updated to use `AbortError` for timeouts, standard `fetch` error messages for connection failures, and `res.ok` / `res.status` for HTTP-level errors instead of curl exit codes.
+  - Removed curl-specific CONFIG constants: `EXEC_BUFFER_MS`, `TOOL_TEST_MAX_TIME_S`, `TOOL_SUPPORT_MAX_TIME_S`, `TAGS_CONNECT_TIMEOUT_S`. Removed stale JSDoc `@property` tags for the deleted constants.
+
+- **SSRF blocklist — incomplete 127.0.0.0/8 coverage** (`shared/security.ts`, `npm-packages/shared/security.ts`)
+  - The blocklist matched `127.0.0.1` as an exact string, allowing `127.0.0.2` through `127.255.255.255` to bypass the SSRF filter. The entire `127.0.0.0/8` range is reserved for loopback and should be blocked.
+  - Replaced the exact `"127.0.0.1"` match with `"127."` prefix match to cover the full loopback range.
+  - Added `::ffff:0.0.0.0` (IPv4-mapped IPv6 zero address) to the blocklist, complementing the `::ffff:127.0.0.1` entry added in 1.1.0.
+
+- **Symlink bypass in `validatePath()`** (`shared/security.ts`, `npm-packages/shared/security.ts`)
+  - `path.resolve()` normalizes `..` and absolute paths but does not follow symlinks. A crafted symlink such as `/tmp/evil → /etc/passwd` would pass validation because the resolved path `/tmp/evil` doesn't trigger any blocked-directory rules, but the actual file on disk is `/etc/passwd`.
+  - Added `fs.realpathSync()` after `path.resolve()` to dereference symlinks before performing directory-block and traversal checks. Wrapped in a try/catch so non-existent paths (e.g., files about to be created) still validate normally.
+
+- **`catch(e: any)` type safety in `isSafeUrl()`** (`shared/security.ts`, `npm-packages/shared/security.ts`)
+  - The URL parse catch block used `e: any` and accessed `e.message` without type checking, suppressing TypeScript errors but masking bugs if a non-Error value was thrown.
+  - Changed to `catch(e: unknown)` with `e instanceof Error` guard and `String(e)` fallback.
+
+### Changed
+
+- **Scoring logic deduplicated in model-test.ts** (`extensions/model-test.ts`)
+  - Four scoring functions — `scoreReasoning()`, `scoreNativeToolCall()`, `scoreTextToolCall()`, and `parseTextToolCall()` — were duplicated verbatim across `testReasoning()`, `testReasoningProvider()`, `testToolUsage()`, `testToolUsageProvider()`, and `testReActOutput()`. Over 120 lines of identical logic were scattered across 5 test functions.
+  - Extracted into 4 shared helper functions at module scope. All test functions now delegate to the shared versions, reducing the file by ~100 lines and ensuring scoring consistency.
+
+- **Dynamic Ollama base URL in model-test.ts** (`extensions/model-test.ts`)
+  - The Ollama base URL was resolved once at module load into `const OLLAMA_BASE = getOllamaBaseUrl()` and reused for the entire session. After running `/ollama-sync` to point Ollama at a different host or tunnel URL, model-test would continue using the stale URL until the agent was restarted.
+  - Replaced the static constant with `ollamaBase()` — a function wrapper that calls `getOllamaBaseUrl()` on every invocation, picking up config changes immediately without a restart.
+
+- **`args` typed as `Record<string, unknown>` instead of `any`** (`extensions/model-test.ts`)
+  - Tool call argument objects in `testToolUsage()` and `testToolUsageProvider()` were typed as `let args: any = {}`, bypassing the type checker on all subsequent property access.
+  - Changed to `let args: Record<string, unknown> = {}` for type-safe property access with explicit type narrowing where needed.
+
+- **Removed stale `shared/index.js` barrel files** (`shared/index.js`, `npm-packages/shared/index.js`)
+  - Two CJS/ESM hybrid barrel files existed as leftover build artifacts. They mixed `require()` calls with `export` statements, making them invalid in both module systems. No extension or import path referenced them, and the current build pipeline (`build-packages.sh`) does not generate them.
+  - Deleted both files to eliminate confusion about which entry point to use.
+
+- **Build script help text** (`scripts/build-packages.sh`)
+  - Added `openrouter-sync` to the usage/argument list output, which was missing from the package enumeration.
+
+- **npm package sources synced with shared modules** (`npm-packages/shared/`)
+  - `npm-packages/shared/ollama.ts` was behind the canonical `shared/ollama.ts` — missing the TTL-based `readModelsJson()`/`getOllamaBaseUrl()` cache, cache invalidation in `writeModelsJson()`, `fetchModelContextLength()`, `fetchContextLengthsBatched()`, `BUILTIN_PROVIDERS` registry, `ProviderInfo`/`detectProvider()`, `EXTENSION_VERSION`, and updated `isReasoningModel()` patterns.
+  - `npm-packages/shared/security.ts` was behind the canonical `shared/security.ts` — missing the `127.` blocklist fix, `::ffff:0.0.0.0` entry, symlink resolution in `validatePath()`, `catch(e: unknown)` fix, and exported `AUDIT_LOG_PATH`.
+  - Both files updated to mirror their `shared/` counterparts so npm-published packages include the latest security and feature fixes.
+
+---
+
 ## [1.1.0] - 04-12-2026 12:03:10 AM
 
 ### Fixed
