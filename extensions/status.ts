@@ -13,6 +13,7 @@
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import * as fs from "node:fs";
+import { execSync } from "node:child_process";
 import os from "node:os";
 
 // ── Shared imports ─────────────────────────────────────────────────────────
@@ -293,10 +294,9 @@ export default function (pi: ExtensionAPI) {
 
     // Fetch Pi version once at session start
     try {
-      const result = await pi.exec("pi", ["-v"], { timeout: 5000 });
-      if (result.code === 0) {
-        const piVer = result.stdout.trim();
-        versionsText = `pi:${piVer} vts:${EXTENSION_VERSION}`;
+      const out = execSync("pi -v", { encoding: "utf-8", timeout: 5000 }).trim();
+      if (out) {
+        versionsText = `pi:${out} vts:${EXTENSION_VERSION}`;
       }
     } catch { /* ignore */ }
     if (!versionsText) {
