@@ -1,8 +1,8 @@
 # @vtstech/pi-status
 
-System monitor / status bar extension for the [Pi Coding Agent](https://github.com/badlogic/pi-mono).
+System monitor extension for the [Pi Coding Agent](https://github.com/badlogic/pi-mono).
 
-Replaces the Pi footer with a unified status bar showing system metrics, model info, and generation params.
+Adds composable named status items to the framework footer using `ctx.ui.setStatus()`. Each metric gets its own named slot so it coexists cleanly with other extensions' status items.
 
 ## Install
 
@@ -12,35 +12,39 @@ pi install "npm:@vtstech/pi-status"
 
 ## How It Works
 
-Automatically loaded — no commands needed. Displays a 2-line status bar at the bottom of the Pi interface.
+Automatically loaded — no commands needed. Slots are rendered in the framework footer alongside framework items (model name, session tokens, context usage). All labels use dimmed coloring; all values use green highlighting.
 
-**Line 1 (conf):**
-```
-qwen3.5:0.8b · ~/.pi/agent · medium · CPU 9%
-```
+CPU/RAM/Swap are only shown when using a local Ollama provider (not for cloud/remote). For cloud providers, system metrics are omitted.
 
-**Line 2 (load):**
+**Example (local Ollama):**
 ```
-qwen3.5:0.8b · M:33k · S:9.0%/128k · RAM 2.2G/15.1G · Resp 5m24s · temp:0.0 · max:16384
+CtxMax:41k RespMax:16.4k Resp 2m3s CPU 12% RAM 2.2G/15.1G Prompt: 2840 chr 393 tok pi:0.66.1
 ```
 
-CPU/RAM/Swap are only shown when using a local Ollama provider (not for cloud/remote).
+**Example (cloud provider):**
+```
+CtxMax:128k RespMax:16.4k Resp 1m22s Prompt: 2840 chr 393 tok pi:0.66.1
+```
 
-## What's Displayed
+## Status Slots
 
-- **Working directory** — compact `~`-relative path
-- **Git branch** — current branch name (cached)
-- **Active model** — the model Pi is currently using
-- **Thinking level** — shown when active (off is hidden)
-- **Context usage** — percentage and window size (`5.6%/128k`)
-- **CPU%** — per-core delta (updates every 3s)
-- **RAM** — used/total
-- **Swap** — shown only when active
-- **Loaded model** — Ollama model in memory via `/api/ps` (cached 15s)
-- **Response time** — agent loop duration
-- **Generation params** — temperature, top_p, top_k, max tokens, num_predict, context size
-- **Security indicator** — 3s flash on blocked tools + persistent blocked count
-- **Active tool timing** — live elapsed timer for running tool
+Slots are updated every 5 seconds (1 second for active tool timing). Render order is deterministic — all slots are managed through `flushStatus()`.
+
+| Slot | Description | Condition |
+|------|-------------|-----------|
+| **CtxMax** | Native model context window from Ollama `/api/show` (k-notation) | Local or remote Ollama |
+| **RespMax** | Max response/completion tokens with k-notation (e.g., `16k`) | After first provider request |
+| **Resp** | Agent loop duration (e.g., `2m3s`) | After first agent cycle |
+| **CPU%** | Per-core CPU usage delta | Local Ollama only |
+| **RAM** | Used/total system memory | Local Ollama only |
+| **Swap** | Used/total swap space | Local only, when active |
+| **Generation params** | Temperature, top_p, top_k, num_predict, context size, reasoning_effort (dimmed) | After first provider request |
+| **SEC** | Session-scoped blocked tool count + 3s flash on block event | When blocks occur |
+| **Active tool** | Live elapsed timer with `>` indicator | While a tool is running |
+| **Prompt** | System prompt size as `chars chr tokens tok` | After first agent start |
+| **Pi version** | `pi:0.66.1` (dimmed, always last) | Always shown |
+
+All slots are cleared on `session_shutdown`. Metrics that the framework already provides (model name, session tokens, context usage, thinking level) are intentionally omitted to avoid duplication.
 
 ## Links
 
