@@ -21,7 +21,7 @@ import type { PiExtensionContext } from "./types";
  *
  * IMPORTANT: When bumping the version, update this constant AND root package.json.
  */
-export const EXTENSION_VERSION = "1.1.2";
+export const EXTENSION_VERSION = "1.1.3-dev";
 
 /**
  * Path to Pi's models.json configuration file.
