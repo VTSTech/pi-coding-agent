@@ -66,14 +66,6 @@ build_shared() {
     info "  $basename.ts → $basename.js"
   done
 
-  # Build the index.js re-export file
-  cat > "$TARGET/index.js" << 'INDEXEOF'
-module.exports.format = require("./format");
-module.exports.ollama = require("./ollama");
-module.exports.security = require("./security");
-module.exports.types = require("./types");
-INDEXEOF
-
   # Copy package.json to build dir
   cp "$NPM_PKG_DIR/shared/package.json" "$TARGET/package.json"
 

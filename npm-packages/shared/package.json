@@ -2,8 +2,13 @@
   "name": "@vtstech/pi-shared",
   "version": "1.1.0",
   "description": "Shared utilities for Pi Coding Agent extensions",
-  "main": "index.js",
-  "types": "index.d.ts",
+  "exports": {
+    ".": "./index.js",
+    "./format": "./format.js",
+    "./ollama": "./ollama.js",
+    "./security": "./security.js",
+    "./types": "./types.js"
+  },
   "keywords": ["pi-extensions"],
   "license": "MIT",
   "access": "public",
