@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.3] - 04-12-2026 5:55:55PM
+
+### Fixed
+
+- **Status extension overwrites other extensions' footer items** (`extensions/status.ts`)
+  - `setFooter()` replaces the entire footer with a single renderer callback, which swallows status items contributed by every other extension. Only the last extension to call `setFooter()` wins — all others are silently discarded.
+  - Rewrote from a monolithic `setFooter()` callback with custom `render()` / `truncateLine()` logic to individual `ctx.ui.setStatus(name, value)` calls. Each metric (CPU, RAM, Swap, response time, params, security, tool timing) now gets its own named slot that composes cleanly alongside other extensions' status items.
+  - Removed the `tuiRef` reference, `requestRender()` calls, and the entire `render()` / `invalidate()` / `dispose()` footer callback structure.
+
+- **Duplicated status items matching framework defaults** (`extensions/status.ts`)
+  - The extension displayed session token counts (`↑1.2k ↓567`), session context usage (`S:2.2%/128k`), Ollama loaded model (`load:model-name`), and the configured model name (`conf:model-id`) in its own status slots — but the framework already renders all of these in its built-in footer. The duplication consumed valuable horizontal space and confused users about which values were authoritative.
+  - Removed `status-loaded`, `status-ctx`, and `status-tokens` slots and all code that populated them (`fetchOllamaLoadedModel`, `getOllamaLoadedModel`, `captureUsage`, `fmtTk`, `message_end` / `turn_end` listeners, `ollamaLoadedCache` / `ollamaLoadedLastCheck` / `OLLAMA_LOADED_INTERVAL` state, `lastUpstream` / `lastDownstream` tracking, `getContextUsage()` polling, `footerCtxPct` state).
+  - Removed the `exec` import from `node:child_process` (only used for the git branch cache) and the `gitBranchCache` variable.
+
+- **Build artifact `.js` files tracked in git** (`npm-packages/`)
+  - All 12 compiled `.js` files in `npm-packages/` (`api/api.js`, `diag/diag.js`, `model-test/model-test.js`, `ollama-sync/ollama-sync.js`, `openrouter-sync/openrouter-sync.js`, `react-fallback/react-fallback.js`, `security/security.js`, `shared/format.js`, `shared/ollama.js`, `shared/security.js`, `shared/types.js`, `status/status.js`) were committed to the repository. These are generated at publish time by `scripts/build-packages.sh` (esbuild compiles `extensions/*.ts` → `.build-npm/` → syncs to `npm-packages/`). Tracking them in git created merge conflicts and made diffs noisy.
+  - Deleted all 12 `.js` files from version control. The build script remains the sole author of these files.
+
+### Changed
+
+- **Status bar uses composable named slots** (`extensions/status.ts`)
+  - Every metric is now written via `ctx.ui.setStatus("slot-name", value)` instead of a single `setFooter()` callback. This allows other extensions to add their own status items without being overwritten.
+  - On `session_shutdown`, all slots are cleared by setting each to `undefined`: `status-cpu`, `status-ram`, `status-swap`, `status-native-ctx`, `status-thinking`, `status-resp`, `status-params`, `status-sec`, `status-tool`, `system-prompt`.
+
+- **Fast 1s tool timer interval** (`extensions/status.ts`)
+  - Tool execution timing previously relied on the main 5-second metrics interval, making the live timer coarse and visually jarring (jumps of 5 seconds).
+  - Added a dedicated `TOOL_TIMER_INTERVAL_MS = 1000` sub-interval that starts when a tool begins executing (`tool_execution_start`) and stops when it finishes (`tool_execution_end`). The regular 5-second interval continues running for all other metrics.
+
+- **System prompt size displayed in status bar** (`extensions/status.ts`)
+  - On `agent_start`, calls `ctx.getSystemPrompt()` to measure the effective system prompt and displays `Prompt: {chars} chr {tokens} tok` in a `system-prompt` status slot. Uses `theme.fg("dim", "Prompt:")` for the label and `theme.fg("success", ...)` for the values to match the green color scheme used by the rest of the status bar.
+  - This absorbs functionality from a separate example extension, reducing the total extension count.
+
+---
+
 ## [1.1.2] - 04-12-2026 1:40:11 PM
 
 ### Fixed
