@@ -180,8 +180,9 @@ build_all_extensions() {
 sync_to_pkg_dir() {
   log "Syncing build output to npm-packages/..."
 
-  # Sync shared
+  # Sync shared (JS + package.json with version)
   cp "$BUILD_DIR/shared/"*.js "$NPM_PKG_DIR/shared/" 2>/dev/null || true
+  cp "$BUILD_DIR/shared/package.json" "$NPM_PKG_DIR/shared/" 2>/dev/null || true
 
   # Sync each extension
   for ext_dir in "$BUILD_DIR"/*/; do
