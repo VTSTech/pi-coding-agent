@@ -56,7 +56,7 @@ dist/             → npm pack tarball output (gitignored) — for offline testi
 | `extensions/model-test.ts` | 2,059 | Model benchmark (Ollama + cloud) | Largest file; scoring logic, fetch-based HTTP, JSON repair, multi-provider support, inline ReAct parser fallback. Most complex extension. |
 | `extensions/react-fallback.ts` | 809 | ReAct text-based tool calling bridge | Multi-dialect regex parser (4 dialects: classic, function, tool, call), dynamic pattern builder, disabled by default with `/react-mode` toggle |
 | `extensions/api.ts` | 739 | Runtime API mode/URL/thinking switcher | Merged single completion handler (was duplicate), `readSettings()`/`writeSettings()`, `/api provider` sub-command |
-| `shared/ollama.ts` | 590 | Ollama API helpers, models.json I/O, provider detection | Imported by ALL 8 extensions. TTL cache (5s), `EXTENSION_VERSION`, `BUILTIN_PROVIDERS` (11 providers), `detectProvider()` |
+| `shared/ollama.ts` | 590 | Ollama API helpers, models.json I/O, provider detection | Imported by ALL 8 extensions. TTL cache (2s), `EXTENSION_VERSION`, `BUILTIN_PROVIDERS` (11 providers), `detectProvider()` |
 | `shared/security.ts` | 588 | Command blocklist (65), SSRF (29 patterns), path validation, audit log | Imported by 3 extensions. `validatePath()` with `fs.realpathSync()` for symlink bypass prevention. `AUDIT_LOG_PATH` exported. |
 | `extensions/status.ts` | 535 | 2-line status bar (system metrics, model info, generation params) | Session-scoped SEC counter, native fetch for Ollama `/api/ps`, `fmtTk()` for token display. 11 event listeners. |
 | `extensions/diag.ts` | 534 | Full system diagnostic suite | `self_diagnostic` tool registration, 9 check categories, imports `AUDIT_LOG_PATH` from shared |
@@ -136,7 +136,7 @@ At npm publish time, relative `../shared/*` imports are rewritten to `@vtstech/p
 
 - **No barrel export in shared** — the old `index.js` barrel was deleted. All imports use subpath: `from "@vtstech/pi-shared/ollama"`. Both `shared/package.json` and `npm-packages/shared/package.json` have `"exports"` maps with NO `"."` entry. Do not add one.
 
-- **`models.json` is the source of truth** for Ollama URL, provider config, model list, and reasoning flags. Multiple extensions read/write this file. Use `readModelsJson()`/`writeModelsJson()` from shared (with 5s TTL cache) — never raw `fs.readFileSync`.
+- **`models.json` is the source of truth** for Ollama URL, provider config, model list, and reasoning flags. Multiple extensions read/write this file. Use `readModelsJson()`/`writeModelsJson()` from shared (with 2s TTL cache) — never raw `fs.readFileSync`.
 
 - **`npm-packages/shared/` must NOT contain `.ts` files** — the build script's preflight guard will fail if it finds any. Canonical source is `shared/*.ts` only. The build compiles from `shared/*.ts` and syncs compiled `.js` + `package.json` to `npm-packages/shared/`.
 
@@ -182,7 +182,7 @@ At npm publish time, relative `../shared/*` imports are rewritten to `@vtstech/p
 - **No `.npmignore`** — published packages include everything in their directory; build artifacts, READMEs all get published.
 - **No error class hierarchy** — removed in 1.1.0 (was dead code), but extensions throw raw strings or use Pi's error handling. Consider typed errors for better diagnostics.
 - **Duplicated code in model-test.ts** — inline ReAct parser fallback (~50 lines) duplicates `react-fallback.ts`. Also has Ollama-specific + provider-generic variants of nearly every test function (reasoning, tool usage, connectivity), leading to significant duplication.
-- **`CHANGELOG.md` references `sanitizeForReport()` and HTML sanitization** as features from 1.1.0, but this function lives in `shared/format.ts` (not `shared/security.ts` as the changelog implies). The changelog description is misleading.
+- **`CHANGELOG.md` references `sanitizeForReport()` and HTML sanitization** — this function lives in `shared/format.ts`. The changelog was corrected to reference the correct file.
 
 ---
 

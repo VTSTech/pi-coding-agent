@@ -566,7 +566,7 @@ export function detectProvider(ctx: any): ProviderInfo {
     return {
       kind: "builtin",
       name: providerName,
-      apiMode: apiMode || userProviderCfg.api || "openai-completions",
+      apiMode: apiMode || "openai-completions",
       baseUrl,
       apiKey,
     };

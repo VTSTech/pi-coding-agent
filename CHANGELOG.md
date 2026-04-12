@@ -177,7 +177,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **TTL-based in-memory cache for Ollama helpers** (`shared/ollama.ts`)
   - `readModelsJson()` and `getOllamaBaseUrl()` hit the filesystem on every call. Multiple extensions call these repeatedly within the same 3-second metrics cycle.
-  - Added a 5-second TTL in-memory cache for both functions. The cache is invalidated automatically on expiry or manually via `invalidateOllamaCache()`.
+  - Added a 2-second TTL in-memory cache for both functions. The cache is invalidated automatically on expiry or by writing to `models.json` via `writeModelsJson()`.
 
 - **Centralized version string** (all extensions)
   - Version `"1.0.9"` was hardcoded as a string literal in 10+ locations across every extension file. Changing the version required editing each file individually.
@@ -197,7 +197,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Merged into a single handler that covers all sub-commands.
 
 - **`status.ts` raw filesystem reads** (`extensions/status.ts`)
-  - `status.ts` still had a raw `fs.readFileSync()` call for `models.json` despite the shared `readModelsJson()` utility existing with a 5-second TTL cache.
+  - `status.ts` still had a raw `fs.readFileSync()` call for `models.json` despite the shared `readModelsJson()` utility existing with a 2-second TTL cache.
   - Replaced with `readModelsJson()` to benefit from caching and reduce filesystem I/O.
 
 - **`model-test.ts` updateModelsJsonReasoning uses raw fs** (`extensions/model-test.ts`)
@@ -220,7 +220,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `AUDIT_LOG_PATH` was defined in `security.ts` but not exported, forcing `diag.ts` to hardcode the path string independently.
   - Exported `AUDIT_LOG_PATH` from `security.ts`; `diag.ts` now imports it.
 
-- **Stricter HTML detection in `sanitizeForReport()`** (`shared/security.ts`)
+- **Stricter HTML detection in `sanitizeForReport()`** (`shared/format.ts`)
   - The HTML sanitization regex could match normal text containing angle brackets followed by common letters (e.g., `"items< 5"`), producing false positives.
   - Tightened the pattern to require a closing angle bracket or specific HTML tag characters to qualify as HTML.
 
