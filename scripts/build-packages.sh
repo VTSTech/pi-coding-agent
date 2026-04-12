@@ -11,7 +11,7 @@
 #   ./scripts/build-packages.sh shared   # build only shared
 #   ./scripts/build-packages.sh api      # build only api extension
 #
-# Requires: Node.js, npx (for esbuild)
+# Requires: Node.js, npm (for esbuild — must be in devDependencies)
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -28,11 +28,39 @@ VERSION="1.1.1"
 GREEN='\033[0;32m'
 CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m'
 
 log()  { echo -e "${GREEN}[build]${NC} $*"; }
 info() { echo -e "${CYAN}[info]${NC}  $*"; }
 warn() { echo -e "${YELLOW}[warn]${NC}  $*"; }
+err()  { echo -e "${RED}[error]${NC}  $*"; }
+
+# ── Pre-flight checks ────────────────────────────────────────────────────
+preflight() {
+  # Ensure esbuild is available via devDependencies
+  if ! npx --no esbuild --version &>/dev/null; then
+    err "esbuild not found. Run 'npm install' in the repo root first."
+    err "(esbuild is declared as a devDependency in package.json)"
+    exit 1
+  fi
+
+  # Guard against stale .ts files in npm-packages/shared/ — the canonical
+  # source of truth is shared/*.ts at the repo root.  TypeScript files must
+  # NOT exist in npm-packages/shared/ because they are never kept in sync
+  # by the build pipeline and will silently drift out of date.
+  local stale_ts
+  stale_ts=$(find "$NPM_PKG_DIR/shared" -name '*.ts' -type f 2>/dev/null || true)
+  if [ -n "$stale_ts" ]; then
+    err "Stale .ts source files found in npm-packages/shared/:"
+    echo "$stale_ts" | while read -r f; do err "  $f"; done
+    err ""
+    err "These are NOT used by the build (which compiles from shared/*.ts)"
+    err "and will drift out of sync. Delete them with:"
+    err "  rm npm-packages/shared/*.ts"
+    exit 1
+  fi
+}
 
 # ── Clean previous build ──────────────────────────────────────────────────
 clean_build() {
@@ -173,6 +201,7 @@ main() {
   echo "  Version: $VERSION"
   echo ""
 
+  preflight
   clean_build
 
   case "$target" in
