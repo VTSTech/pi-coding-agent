@@ -660,7 +660,7 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.notify(`Unknown sub-command: "${sub}". Use: show, set, list, or a provider name`, "error");
   }
 
-  // ── Tab completion for /api sub-commands ──────────────────────────────
+  // ── Tab completion for /api sub-commands and arguments ──────────────────
 
   pi.registerCompletion?.("api", {
     getCompletions: () => {
@@ -674,12 +674,6 @@ export default function (pi: ExtensionAPI) {
         { value: "provider", label: "provider", description: "Show, set, or list all providers" },
       ];
     },
-  });
-
-  // ── Argument-level tab completion for /api provider ────────────────────
-
-  pi.registerCompletion?.("api", {
-    getCompletions: () => [],
     getArgumentCompletions: (args: string[]) => {
       const sub = args[0]?.toLowerCase() || "";
 

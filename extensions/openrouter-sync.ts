@@ -53,8 +53,8 @@ function parseModelIds(args: string): string[] {
     .split(/[\s,]+/)
     .filter(Boolean)
     .map((arg) => {
-      // Strip OpenRouter URL prefix
-      const match = arg.match(/openrouter\.ai\/(.+)/);
+      // Strip OpenRouter URL prefix (including query parameters)
+      const match = arg.match(/openrouter\.ai\/([^?#]+)/);
       return match ? match[1] : arg;
     });
 }
@@ -82,8 +82,8 @@ function ensureProviderOrder(providers: Record<string, any>): Record<string, any
     ordered["openrouter"] = providers["openrouter"];
   }
 
-  // If ollama exists and was originally before openrouter, emit it second
-  if (olIdx !== -1 && olIdx < orIdx) {
+  // If ollama exists and was originally before openrouter (or openrouter is new), emit it second
+  if (olIdx !== -1 && (orIdx === -1 || olIdx < orIdx)) {
     ordered["ollama"] = providers["ollama"];
   }
 

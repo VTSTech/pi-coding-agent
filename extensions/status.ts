@@ -13,14 +13,12 @@
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import os from "node:os";
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { execSync as gitExecSync } from "node:child_process";
 
 // ── Shared imports (eliminates duplication) ────────────────────────────────
-import { getOllamaBaseUrl, fetchModelContextLength } from "../shared/ollama";
+import { getOllamaBaseUrl, fetchModelContextLength, readModelsJson } from "../shared/ollama";
 import { fmtBytes, fmtDur } from "../shared/format";
-import { readRecentAuditEntries } from "../shared/security";
+// readRecentAuditEntries no longer imported — SEC counter is now session-scoped (in-memory)
 
 export default function (pi: ExtensionAPI) {
   let lastResponseTime: number | null = null;
@@ -64,7 +62,7 @@ export default function (pi: ExtensionAPI) {
   /** Timestamp when the active tool started executing. */
   let activeToolStart = 0;
 
-  /** Cached count of recent blocked operations from the audit log. */
+  /** Session-scoped count of blocked operations (in-memory only, resets on session_shutdown). */
   let blockedCount = 0;
 
   // ── helpers ──────────────────────────────────────────────────────
@@ -255,26 +253,12 @@ export default function (pi: ExtensionAPI) {
   // ── Audit log helpers ─────────────────────────────────────────────
 
   /**
-   * Refresh the blocked-count from the shared security audit log.
-   * Entries are considered "blocked" when they contain a `blocked: true`
-   * field, a `safe: false` field, or an `action: "block"` field.
+   * Increment the session-scoped blocked counter.
+   * Unlike the old audit-log approach, this tracks only events in the
+   * current session, so the counter resets to 0 on session_shutdown.
    */
-  function refreshBlockedCount(): void {
-    try {
-      const entries = readRecentAuditEntries(50);
-      blockedCount = 0;
-      for (const entry of entries) {
-        if (
-          entry.blocked === true ||
-          entry.safe === false ||
-          entry.action === "blocked"
-        ) {
-          blockedCount++;
-        }
-      }
-    } catch {
-      blockedCount = 0;
-    }
+  function incrementBlockedCount(): void {
+    blockedCount++;
   }
 
   // ── metrics refresh (called every 3s) ───────────────────────────
@@ -294,14 +278,8 @@ export default function (pi: ExtensionAPI) {
     }
     ollamaLoaded = getOllamaLoadedModel();
 
-    // Read models.json once per cycle — used for context display + local provider detection
-    let modelsJson: Record<string, any> | null = null;
-    try {
-      const raw = fs.readFileSync(
-        path.join(os.homedir(), ".pi", "agent", "models.json"), "utf-8"
-      );
-      modelsJson = JSON.parse(raw);
-    } catch { /* ignore */ }
+    // Read models.json once per cycle — uses shared utility with 2s TTL cache
+    const modelsJson = readModelsJson();
 
     // Detect local vs remote/cloud provider FIRST (uses pre-parsed modelsJson)
     // Must run before getNativeModelCtx() which depends on isLocalProvider
@@ -324,8 +302,7 @@ export default function (pi: ExtensionAPI) {
       }
     }
 
-    // Refresh security audit count on every metrics cycle
-    refreshBlockedCount();
+    // (blockedCount is now session-scoped — updated on tool_call events, not polled)
   }
 
   // ── event handlers ──────────────────────────────────────────────
@@ -409,7 +386,7 @@ export default function (pi: ExtensionAPI) {
             line2Parts.push(red(`BLOCKED:${securityFlashTool}`));
           }
 
-          // Persistent SEC:N indicator from audit log
+          // Persistent SEC:N indicator (session-scoped — resets on session_shutdown)
           if (blockedCount > 0) {
             line2Parts.push(red(`SEC:${blockedCount}`));
           }
@@ -527,8 +504,8 @@ export default function (pi: ExtensionAPI) {
     if (isBlocked) {
       securityFlashTool = event.tool ?? event.name ?? "unknown";
       securityFlashUntil = Date.now() + 3000; // flash for 3 seconds
-      // Immediately refresh the blocked count from audit log
-      refreshBlockedCount();
+      // Immediately increment the session-scoped blocked counter
+      incrementBlockedCount();
       if (tuiRef) tuiRef.requestRender();
     }
   });

@@ -21,18 +21,6 @@
 export type ToolSupportLevel = "native" | "react" | "none" | "untested";
 
 /**
- * Result type of an agent step.
- *
- * - `"tool_call"`: Agent made a tool call
- * - `"final_answer"`: Agent returned a final answer
- * - `"error"`: Agent encountered an error
- * - `"max_steps"`: Agent reached maximum step limit
- */
-export type StepResultType = "tool_call" | "final_answer" | "error" | "max_steps";
-
-
-
-/**
  * Result of a security check operation.
  *
  * @property safe - Whether the operation passed the security check
@@ -84,23 +72,4 @@ export interface ToolSupportCacheEntry {
   testedAt: string;
   family: string;
   model: string;
-}
-
-/**
- * State tracker for error recovery across tool calls.
- *
- * Used to detect patterns of repeated failures and enable recovery strategies.
- *
- * @property consecutiveFailures - Map of tool names to consecutive failure counts
- * @property failureHistory - List of recent failures with timestamps
- * @property totalFailures - Total number of failures in the current session
- */
-export interface ErrorRecoveryState {
-  consecutiveFailures: Record<string, number>;
-  failureHistory: Array<{
-    tool: string;
-    error: string;
-    timestamp: string;
-  }>;
-  totalFailures: number;
 }

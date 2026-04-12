@@ -8,7 +8,7 @@ import {
   section, ok, fail, warn, info,
   msHuman, truncate, sanitizeForReport,
 } from "../shared/format";
-import { getOllamaBaseUrl, MODELS_JSON_PATH, detectModelFamily, readModelsJson, BUILTIN_PROVIDERS, fetchModelContextLength, EXTENSION_VERSION, detectProvider } from "../shared/ollama";
+import { getOllamaBaseUrl, MODELS_JSON_PATH, detectModelFamily, readModelsJson, writeModelsJson, BUILTIN_PROVIDERS, fetchModelContextLength, EXTENSION_VERSION, detectProvider, type ProviderInfo } from "../shared/ollama";
 import type { ToolSupportLevel } from "../shared/types";
 
 // ── Configuration Constants ─────────────────────────────────────────────
@@ -1507,16 +1507,8 @@ The JSON object must have exactly these 4 keys:
    * Returns { updated, message }.
    */
   function updateModelsJsonReasoning(model: string, hasReasoning: boolean): { updated: boolean; message: string } {
-    const agentDir = path.join(os.homedir(), ".pi", "agent");
-    const modelsJsonPath = path.join(agentDir, "models.json");
-
-    if (!fs.existsSync(modelsJsonPath)) {
-      return { updated: false, message: "models.json not found — skipped" };
-    }
-
     try {
-      const raw = fs.readFileSync(modelsJsonPath, "utf-8");
-      const config = JSON.parse(raw);
+      const config = readModelsJson();
 
       let updated = false;
       for (const provider of Object.values(config.providers || {}) as any[]) {
@@ -1539,8 +1531,7 @@ The JSON object must have exactly these 4 keys:
         return { updated: false, message: `${model} not found in models.json — skipped` };
       }
 
-      // Write back with same formatting
-      fs.writeFileSync(modelsJsonPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+      writeModelsJson(config);
       const action = hasReasoning ? "set reasoning: true" : "set reasoning: false";
       return { updated: true, message: `✅ Updated ${model}: ${action}` };
     } catch (e: any) {

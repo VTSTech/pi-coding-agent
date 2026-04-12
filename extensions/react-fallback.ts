@@ -776,8 +776,9 @@ The bridge will match your tool name (fuzzy matching supported) and normalize ar
       }
 
       // Check for final answer
-      if (FINAL_ANSWER_RE.test(text)) {
-        const fa = FINAL_ANSWER_RE.exec(text)![1].trim();
+      const faMatch = FINAL_ANSWER_RE.exec(text);
+      if (faMatch) {
+        const fa = faMatch[1].trim();
         lines.push(ok(`Final Answer: ${fa}`));
       }
 

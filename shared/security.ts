@@ -98,7 +98,7 @@ export const BLOCKED_COMMANDS: ReadonlySet<string> = new Set([
  */
 export const BLOCKED_URL_PATTERNS: ReadonlySet<string> = new Set([
   // Loopback
-  "localhost", "127.0.0.1", "0.0.0.0", "::1",
+  "localhost", "127.0.0.1", "0.0.0.0", "::1", "::ffff:127.0.0.1",
   // RFC1918 private ranges
   "10.", "192.168.",
   "172.16.", "172.17.", "172.18.", "172.19.", "172.20.", "172.21.",
@@ -379,7 +379,9 @@ export function sanitizeCommand(
 
 /** Default audit log directory. */
 const AUDIT_DIR = path.join(os.homedir(), ".pi", "agent");
-const AUDIT_LOG_PATH = path.join(AUDIT_DIR, "audit.log");
+
+/** Path to the audit log file. Exported for use by diag.ts and other extensions. */
+export const AUDIT_LOG_PATH = path.join(AUDIT_DIR, "audit.log");
 
 /**
  * Append an audit entry to the JSON-lines log file.

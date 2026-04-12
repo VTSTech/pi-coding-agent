@@ -12,6 +12,7 @@ import { MODELS_JSON_PATH, getOllamaBaseUrl, BUILTIN_PROVIDERS, readModelsJson, 
 import {
   BLOCKED_COMMANDS, BLOCKED_URL_PATTERNS,
   validatePath, isSafeUrl, sanitizeCommand, readRecentAuditEntries,
+  AUDIT_LOG_PATH,
 } from "../shared/security";
 
 /**
@@ -396,9 +397,8 @@ export default function (pi: ExtensionAPI) {
     // e. Audit log status
     lines.push(info("Audit log status:"));
     const auditEntries = readRecentAuditEntries(50);
-    const auditLogPath = path.join(os.homedir(), ".pi", "agent", "audit.log");
-    if (fs.existsSync(auditLogPath)) {
-      lines.push(ok(`Audit log exists: ${auditLogPath}`));
+    if (fs.existsSync(AUDIT_LOG_PATH)) {
+      lines.push(ok(`Audit log exists: ${AUDIT_LOG_PATH}`));
       if (auditEntries.length > 0) {
         lines.push(info(`  Recent entries: ${auditEntries.length} (last 50)`));
         // Show the most recent 3 entries (type and timestamp if available)
@@ -412,7 +412,7 @@ export default function (pi: ExtensionAPI) {
         lines.push(info("  No audit entries found (log is empty or unparseable)"));
       }
     } else {
-      lines.push(warn(`Audit log not found at ${auditLogPath}`));
+      lines.push(warn(`Audit log not found at ${AUDIT_LOG_PATH}`));
       lines.push(info("  → Audit logging will begin when security events occur"));
     }
 

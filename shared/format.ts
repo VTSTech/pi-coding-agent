@@ -112,8 +112,9 @@ export function info(msg: string): string { return `  ℹ️  ${msg}`; }
 export function bytesHuman(bytes: number): string {
   const units = ["B", "KB", "MB", "GB", "TB"];
   let i = 0;
-  while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++; }
-  return `${bytes.toFixed(1)}${units[i]}`;
+  let b = bytes;
+  while (b >= 1024 && i < units.length - 1) { b /= 1024; i++; }
+  return `${b.toFixed(1)}${units[i]}`;
 }
 
 /**
@@ -155,6 +156,7 @@ export function msHuman(ms: number): string {
  * ```
  */
 export function fmtBytes(b: number): string {
+  if (b === 0) return "0B";
   if (b >= 1073741824) return `${(b / 1073741824).toFixed(1)}G`;
   if (b >= 1048576) return `${(b / 1048576).toFixed(0)}M`;
   return `${(b / 1024).toFixed(0)}K`;
@@ -196,6 +198,7 @@ export function fmtDur(ms: number): string {
  * ```
  */
 export function pct(used: number, total: number): string {
+  if (total === 0) return "0.0%";
   return `${((used / total) * 100).toFixed(1)}%`;
 }
 
@@ -251,7 +254,9 @@ export function sanitizeForReport(s: string, maxLines = 40): string {
   cleaned = cleaned.replace(/\n{3,}/g, "\n\n").trim();
 
   // Detect HTML content (error pages, curl failures) and truncate to first few lines
-  if (/<[a-z][\s\S]*>/i.test(cleaned) && cleaned.includes("</")) {
+  // Use strict detection: require a closing tag AND a common HTML opening tag to avoid
+  // false positives on code that mentions HTML-like syntax (e.g., "use <Item> from 'react'")
+  if (/<!DOCTYPE\b|<html[\s>]/i.test(cleaned) || (/<[a-z][\s\S]*>/i.test(cleaned) && cleaned.includes("</") && /<(?:div|span|p|head|body|html|table|form|script)\b/i.test(cleaned))) {
     const firstLine = cleaned.split("\n")[0];
     return truncate(firstLine, 200) + "\n  ℹ️  (HTML response truncated)";
   }
