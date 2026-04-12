@@ -405,7 +405,7 @@ CPU/RAM/Swap are only shown when using a local Ollama provider (not for cloud/re
 - **SEC** — 3s flash on blocked tools + session-scoped blocked count (resets on shutdown)
 - **Active tool** — live elapsed timer with `>` indicator while a tool is running
 - **Prompt** — system prompt size as `chars chr tokens tok` displayed on agent start
-- **Versions** — `pi:0.66.1 vts:1.1.4-dev` fetched once at `session_start` (dimmed)
+- **Pi version** — `pi:0.66.1` fetched once at `session_start` (dimmed, always last slot)
 
 All slots are cleared on session shutdown. Metrics that the framework already provides (model name, session tokens, context usage, thinking level) are intentionally omitted to avoid duplication.
 

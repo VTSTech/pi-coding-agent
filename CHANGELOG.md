@@ -30,9 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `M:33k` → `CtxMax:33k` (native model context window)
   - `max:16384` → `RespMax:16k` (max response/completion tokens)
 
-- **Pi and extension version displayed in status bar** (`extensions/status.ts`)
-  - Added `status-versions` slot showing `pi:{version} vts:{EXTENSION_VERSION}` (e.g., `pi:0.66.1 vts:1.1.4-dev`). Pi version fetched once at `session_start` via `execSync("pi -v 2>&1")` (Pi outputs to stderr, not stdout). Falls back to `vts:{version}` alone if Pi version is unavailable. Slot is dimmed to de-emphasize it alongside more prominent metric slots.
-  - Slot is cleared on `session_shutdown` along with all other status slots.
+- **Pi version displayed in status bar** (`extensions/status.ts`)
+  - Added `status-versions` slot showing `pi:{version}` (e.g., `pi:0.66.1`). Pi version fetched once at `session_start` via `execSync("pi -v 2>&1")` (Pi outputs to stderr, not stdout). Slot is dimmed and positioned as the always-last slot in the footer.
+  - Moved `system-prompt` slot from `agent_start` into `flushStatus()` so all slots render in a deterministic order. Prompt text is cached in `agent_start` and flushed alongside other metrics, ensuring `status-versions` is always the trailing slot.
 
 ---
 
