@@ -5,6 +5,32 @@ All notable changes to the Pi Coding Agent Extensions (`@vtstech/pi-coding-agent
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.6] - 04-13-2026 9:45:00 AM
+
+### Fixed
+
+- **System prompt size not displayed in status bar** (`extensions/status.ts`)
+  - The `system-prompt` status slot relied on `ctx.getSystemPrompt()` which throws in Pi v0.66.1 — the API does not exist in this version. The silent `catch {}` block swallowed the error, so `cachedPromptText` stayed `null` and the slot was always set to `undefined` (hidden).
+  - Added `measurePromptFromPayload()` fallback that extracts the system prompt from the `before_provider_request` event payload's `messages[]` array. The system message (role `"system"` or first message) is measured for character count and word count, then cached and flushed to the status bar. This works with any Pi version because it reads the raw provider request payload, which is always present.
+  - The primary path still tries `ctx.getSystemPrompt()` first (for future Pi versions that support it), with a `debugLog()` call on failure instead of a silent catch. The payload fallback runs only if the primary path didn't produce a result.
+
+- **Missing subpath exports in `@vtstech/pi-shared`** (`shared/package.json`, `npm-packages/shared/package.json`)
+  - Three shared modules — `debug.ts`, `model-test-utils.ts`, and `react-parser.ts` — were compiled to JavaScript by the build script and imported by extensions, but were not declared in the `exports` map of `@vtstech/pi-shared`'s `package.json`. Only `./format`, `./ollama`, `./security`, and `./types` were listed.
+  - Node.js strict subpath resolution (enforced by the `"exports"` field) treats unlisted subpaths as errors: `Package subpath './debug' is not defined by "exports"`. This caused `@vtstech/pi-security` and `@vtstech/pi-status` to fail to load entirely when installed via npm (the github bundle uses direct filesystem imports and was unaffected).
+  - Added `"./debug"`, `"./model-test-utils"`, and `"./react-parser"` to the exports map in both `shared/package.json` and `npm-packages/shared/package.json`. All 7 shared modules are now properly exported.
+
+### Changed
+
+- **All npm-package READMEs updated with 1.1.5 features** (`npm-packages/*/README.md`)
+  - `npm-packages/security/README.md`: rewrote protection section with partitioned blocklist, mode-aware SSRF, security mode toggle; added Commands section with `/security mode basic|max` usage examples.
+  - `npm-packages/status/README.md`: updated SEC slot description to show mode indicator (`SEC:BASIC`/`SEC:MAX`); updated both status bar examples to include the security mode.
+  - `npm-packages/shared/README.md`: updated `security` module description with mode toggle, partitioned blocklist counts, mode-aware SSRF counts; added missing module entries (`debug`, `model-test-utils`, `react-parser`) to the modules table — previously only 4 of 7 shared modules were documented.
+
+- **Version bumped from 1.1.4-dev to 1.1.5** (17 files, 30 line edits)
+  - Source of truth: `shared/ollama.ts` (`EXTENSION_VERSION`), root `package.json`, `shared/package.json`, `scripts/build-packages.sh`, `scripts/publish-packages.sh`.
+  - npm-packages: all 9 `package.json` files (version + `@vtstech/pi-shared` dependency).
+  - Documentation: root `README.md` (4 references), `package-lock.json` (2 references), `brief.md` (2 references).
+
 ---
 
 ## [1.1.5] - 04-13-2026 12:15:32 AM
