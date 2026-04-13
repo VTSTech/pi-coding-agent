@@ -173,7 +173,6 @@ export default function (pi: ExtensionAPI) {
     if (payload.temperature !== undefined) params.push(`temp:${payload.temperature}`);
     if (payload.top_p !== undefined) params.push(`top_p:${payload.top_p}`);
     if (payload.top_k !== undefined) params.push(`top_k:${payload.top_k}`);
-    // RespMax handled separately in flushStatus with green highlighting
     if (payload.num_predict !== undefined) params.push(`predict:${payload.num_predict}`);
     if (payload.num_ctx !== undefined) params.push(`ctx:${payload.num_ctx}`);
     if (payload.reasoning_effort !== undefined) params.push(`think:${payload.reasoning_effort}`);
@@ -207,23 +206,17 @@ export default function (pi: ExtensionAPI) {
         : undefined,
     );
 
-    // Native model context length (local & remote Ollama)
-    ctxUi.setStatus("status-native-ctx",
-      footerNativeCtx ? `${dim("CtxMax:")}${green(footerNativeCtx)}` : undefined,
-    );
-
-    // Max response/completion tokens (green highlighted, k-notation)
+    // Model context + max response (combined so they stay adjacent in footer)
+    const ctxParts: string[] = [];
+    if (footerNativeCtx) ctxParts.push(`${dim("CtxMax:")}${green(footerNativeCtx)}`);
     if (lastPayload) {
       const rawMax = lastPayload.max_completion_tokens ?? lastPayload.max_tokens;
       if (rawMax !== undefined) {
         const formatted = rawMax >= 1000 ? `${(rawMax / 1000).toFixed(rawMax % 1000 === 0 ? 0 : 1)}k` : String(rawMax);
-        ctxUi.setStatus("status-resp-max", `${dim("RespMax:")}${green(formatted)}`);
-      } else {
-        ctxUi.setStatus("status-resp-max", undefined);
+        ctxParts.push(`${dim("RespMax:")}${green(formatted)}`);
       }
-    } else {
-      ctxUi.setStatus("status-resp-max", undefined);
     }
+    ctxUi.setStatus("status-ctx", ctxParts.length > 0 ? ctxParts.join(" ") : undefined);
 
     // Response time
     ctxUi.setStatus("status-resp",
@@ -328,9 +321,8 @@ export default function (pi: ExtensionAPI) {
       ui.setStatus("status-cpu", undefined);
       ui.setStatus("status-ram", undefined);
       ui.setStatus("status-swap", undefined);
-      ui.setStatus("status-native-ctx", undefined);
+      ui.setStatus("status-ctx", undefined);
       ui.setStatus("status-resp", undefined);
-      ui.setStatus("status-resp-max", undefined);
       ui.setStatus("status-params", undefined);
       ui.setStatus("status-prompt", undefined);
       ui.setStatus("status-sec", undefined);

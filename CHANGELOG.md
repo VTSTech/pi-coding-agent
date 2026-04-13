@@ -62,6 +62,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The `system-prompt` slot was set to `undefined` (hidden) on `session_start` and only populated later in `agent_start` or `before_provider_request`. The Pi framework treats `undefined` slots as absent, so when the slot finally got a value mid-session, the framework appended it after `status-versions` — violating the "versions always last" invariant.
   - Fixed with two changes: (1) renamed the slot from `system-prompt` to `status-prompt` so it sorts alphabetically before `status-versions` in the framework's slot ordering, and (2) registered a placeholder value (`Prompt: …`) on the first `flushStatus()` call so the framework knows the slot's position from session start. Once the prompt is measured, the placeholder is replaced with the real `Prompt: 2840 chr 393 tok` string in-place.
 
+- **CtxMax and RespMax separated in status bar by other slots** (`extensions/status.ts`)
+  - CtxMax (`status-native-ctx`) and RespMax (`status-resp-max`) were separate slots that sorted apart alphabetically — `status-native-ctx` appeared near the beginning while `status-resp-max` appeared mid-bar, separated by `status-resp` and `status-params`.
+  - Combined into a single `status-ctx` slot that renders both values as one unit: `CtxMax:33k RespMax:16.4k`. Both values are still independently computed and either can be absent without affecting the other.
+
 ### Changed
 
 - **Single source of truth for version — VERSION file** (`VERSION`, `scripts/build-packages.sh`, `scripts/publish-packages.sh`, `scripts/bump-version.sh`, `scripts/bump-version.ps1`)
