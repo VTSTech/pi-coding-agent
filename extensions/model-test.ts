@@ -10,6 +10,8 @@ import type { ToolSupportLevel } from "../shared/types";
 import {
   ALL_DIALECT_PATTERNS,
   parseReactWithPatterns,
+  detectReactDialect,
+  extractBraceJson,
 } from "../shared/react-parser";
 import {
   CONFIG,
@@ -71,9 +73,9 @@ export default function (pi: ExtensionAPI) {
    * Returns the delay message line to append to the report.
    */
   async function rateLimitDelay(lines: string[]): Promise<void> {
-    if (CONFIG.TEST_DELAY_MS > 0) {
-      lines.push(info(`Waiting ${msHuman(CONFIG.TEST_DELAY_MS)} to avoid rate limiting...`));
-      await new Promise(r => setTimeout(r, CONFIG.TEST_DELAY_MS));
+    if (effectiveConfig.TEST_DELAY_MS > 0) {
+      lines.push(info(`Waiting ${msHuman(effectiveConfig.TEST_DELAY_MS)} to avoid rate limiting...`));
+      await new Promise(r => setTimeout(r, effectiveConfig.TEST_DELAY_MS));
     }
   }
 
@@ -625,23 +627,6 @@ export default function (pi: ExtensionAPI) {
     return testToolUsageUnified(makeProviderChatFn(providerInfo), model);
   }
 
-  // ── helpers (parsing) ─────────────────────────────────────────────
-
-  /**
-   * Extract a JSON object string from raw text by matching braces.
-   * Used to extract Action Input arguments from ReAct format responses.
-   */
-  function extractBraceJson(raw: string): string {
-    const jsonStart = raw.indexOf("{");
-    if (jsonStart === -1) return "";
-    let depth = 0, jsonEnd = -1;
-    for (let i = jsonStart; i < raw.length; i++) {
-      if (raw[i] === "{") depth++;
-      else if (raw[i] === "}") { depth--; if (depth === 0) { jsonEnd = i; break; } }
-    }
-    return jsonEnd !== -1 ? raw.slice(jsonStart, jsonEnd + 1) : "";
-  }
-
   // ── test: ReAct parsing (Ollama-only) ──────────────────────────────
 
   /**
@@ -897,7 +882,7 @@ export default function (pi: ExtensionAPI) {
     try {
       const start = Date.now();
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 130000);
+      const timeoutId = setTimeout(() => controller.abort(), effectiveConfig.TOOL_SUPPORT_TIMEOUT_MS);
       const res = await fetch(`${ollamaBase()}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -948,46 +933,18 @@ export default function (pi: ExtensionAPI) {
       }
 
       // ── Check ReAct format (multi-dialect) ──────────────────────
-      // Detect any known ReAct dialect: Action:, Function:, Tool:, Call:, etc.
-      const reactPatterns = [
-        // Classic ReAct
-        /^\s*Action:\s*/im,
-        /^\s*Action Input:\s*/im,
-        /^\s*Thought:\s*/im,
-        /Action:\s*\w+/i,
-        /Action Input:\s*\{/i,
-        // Function dialect
-        /^\s*Function:\s*/im,
-        /^\s*Function Input:\s*/im,
-        /Function:\s*\w+/i,
-        // Tool dialect
-        /^\s*Tool:\s*/im,
-        /^\s*Tool Input:\s*/im,
-        /Tool:\s*\w+/i,
-        // Call dialect
-        /^\s*Call:\s*/im,
-        /^\s*Input:\s*/im,
-        /Call:\s*\w+/i,
-      ];
+      // Use the shared detectReactDialect() from react-parser module.
+      // This checks ALL registered dialects (Action:, Function:, Tool:, Call:, etc.)
+      // and keeps them in sync with the canonical source.
+      const detectedDialect = detectReactDialect(content);
 
-      const matchedPatterns: string[] = [];
-      for (const p of reactPatterns) {
-        if (p.test(content)) matchedPatterns.push(p.source);
-      }
-
-      if (matchedPatterns.length > 0) {
-        // Determine which dialect was matched for evidence
-        let dialectName = "react";
-        if (/Function:/i.test(content)) dialectName = "function";
-        else if (/Tool:/i.test(content)) dialectName = "tool";
-        else if (/Call:/i.test(content)) dialectName = "call";
-
+      if (detectedDialect) {
         const level: ToolSupportLevel = "react";
         cacheToolSupport(model, level, family);
         return {
           level,
           cached: false,
-          evidence: `ReAct format detected (${dialectName} dialect) in text response`,
+          evidence: `ReAct format detected (${detectedDialect.name} dialect) in text response`,
           elapsedMs,
         };
       }

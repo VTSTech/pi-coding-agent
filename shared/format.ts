@@ -157,6 +157,7 @@ export function msHuman(ms: number): string {
  */
 export function fmtBytes(b: number): string {
   if (b === 0) return "0B";
+  if (b < 1024) return `${b}B`;
   if (b >= 1073741824) return `${(b / 1073741824).toFixed(1)}G`;
   if (b >= 1048576) return `${(b / 1048576).toFixed(0)}M`;
   return `${(b / 1024).toFixed(0)}K`;

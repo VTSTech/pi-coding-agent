@@ -6,6 +6,9 @@
  * created and inserted above the "ollama" entry (if present).
  * Existing models are never removed.
  *
+ * Uses readModifyWriteModelsJson() for atomic read-modify-write cycles
+ * to prevent lost-update races with other extensions (SEC-01 fix).
+ *
  * Usage:
  *   /or-sync https://openrouter.ai/liquid/lfm-2.5-1.2b-thinking:free
  *   /or-sync liquid/lfm-2.5-1.2b-thinking:free
@@ -18,9 +21,11 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
   type PiModelEntry,
+  type PiModelsJson,
   MODELS_JSON_PATH as MODELS_FILE,
   readModelsJson,
   writeModelsJson,
+  readModifyWriteModelsJson,
   BUILTIN_PROVIDERS,
   EXTENSION_VERSION,
 } from "../shared/ollama";
@@ -96,6 +101,62 @@ function ensureProviderOrder(providers: Record<string, any>): Record<string, any
   return ordered;
 }
 
+// ── Sync logic (shared between command and tool) ─────────────────────────
+
+/**
+ * Result of an openrouter sync operation.
+ */
+interface SyncResult {
+  added: string[];
+  skipped: string[];
+  totalModels: number;
+}
+
+/**
+ * Core sync logic: add model IDs to the openrouter provider in models.json.
+ * Uses readModifyWriteModelsJson() for mutex-protected atomic read-modify-write.
+ *
+ * Returns the sync result, or throws on failure.
+ */
+async function performSync(modelIds: string[]): Promise<SyncResult> {
+  let result!: SyncResult;
+
+  await readModifyWriteModelsJson((data) => {
+    // Ensure openrouter provider exists
+    if (!data.providers["openrouter"]) {
+      data.providers["openrouter"] = {
+        baseUrl: OR_CONFIG.baseUrl,
+        api: OR_CONFIG.api,
+        models: [],
+      };
+    }
+
+    const orProvider = data.providers["openrouter"];
+    if (!orProvider.models) orProvider.models = [];
+
+    const existingIds = new Set(orProvider.models.map((m: PiModelEntry) => m.id));
+    const added: string[] = [];
+    const skipped: string[] = [];
+
+    for (const modelId of modelIds) {
+      if (existingIds.has(modelId)) {
+        skipped.push(modelId);
+        continue;
+      }
+      orProvider.models.push({ id: modelId } as PiModelEntry);
+      added.push(modelId);
+    }
+
+    // Reorder providers so openrouter is above ollama
+    data.providers = ensureProviderOrder(data.providers);
+
+    result = { added, skipped, totalModels: orProvider.models.length };
+    return data; // commit
+  });
+
+  return result;
+}
+
 // ── Extension ─────────────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
@@ -118,43 +179,13 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.setStatus("openrouter-sync", `Adding ${modelIds.length} model(s)...`);
 
       try {
-        const existing = readModelsJson();
-
-        // Ensure openrouter provider exists
-        if (!existing.providers["openrouter"]) {
-          existing.providers["openrouter"] = {
-            baseUrl: OR_CONFIG.baseUrl,
-            api: OR_CONFIG.api,
-            models: [],
-          };
-        }
-
-        const orProvider = existing.providers["openrouter"];
-        if (!orProvider.models) orProvider.models = [];
-
-        const existingIds = new Set(orProvider.models.map((m: PiModelEntry) => m.id));
-        const added: string[] = [];
-        const skipped: string[] = [];
-
-        for (const modelId of modelIds) {
-          if (existingIds.has(modelId)) {
-            skipped.push(modelId);
-            continue;
-          }
-          orProvider.models.push({ id: modelId } as PiModelEntry);
-          added.push(modelId);
-        }
-
-        // Reorder providers so openrouter is above ollama
-        existing.providers = ensureProviderOrder(existing.providers);
-
-        writeModelsJson(existing);
+        const { added, skipped, totalModels } = await performSync(modelIds);
 
         // ── Build report ─────────────────────────────────────────────────
         const lines: string[] = [""];
         lines.push(`  Provider: openrouter (built-in)`);
         lines.push(`  Base URL: ${OR_CONFIG.baseUrl}`);
-        lines.push(`  Total models: ${orProvider.models.length}`);
+        lines.push(`  Total models: ${totalModels}`);
 
         if (added.length > 0) {
           lines.push(section("Added"));
@@ -228,55 +259,40 @@ export default function (pi: ExtensionAPI) {
       }
 
       const modelIds = parseModelIds(rawModels.join(" "));
-      const existing = readModelsJson();
 
-      if (!existing.providers["openrouter"]) {
-        existing.providers["openrouter"] = {
-          baseUrl: OR_CONFIG.baseUrl,
-          api: OR_CONFIG.api,
-          models: [],
+      try {
+        const { added, skipped, totalModels } = await performSync(modelIds);
+
+        // Read final state for display
+        const config = readModelsJson();
+        const orProvider = config.providers["openrouter"];
+        const modelList = (orProvider?.models || []).map((m: PiModelEntry) => `  - ${m.id}`).join("\n");
+
+        const report = [
+          BRANDING,
+          "",
+          `Added ${added.length} model(s) to openrouter provider (${totalModels} total).`,
+          ...(added.length > 0 ? ["\nAdded:"] : []),
+          ...added.map((id) => `  + ${id}`),
+          ...(skipped.length > 0 ? ["\nSkipped (already present):"] : []),
+          ...skipped.map((id) => `  = ${id}`),
+          "",
+          `Written to ${MODELS_FILE}. Run /reload to pick up changes.`,
+          "",
+          "Current openrouter models:",
+          modelList,
+        ].join("\n");
+
+        return {
+          content: [{ type: "text", text: report }],
+          details: { added: added.length, skipped: skipped.length, total: totalModels },
+        };
+      } catch (err: any) {
+        return {
+          content: [{ type: "text", text: `Error: ${err.message}` }],
+          details: {},
         };
       }
-
-      const orProvider = existing.providers["openrouter"];
-      if (!orProvider.models) orProvider.models = [];
-
-      const existingIds = new Set(orProvider.models.map((m: PiModelEntry) => m.id));
-      const added: string[] = [];
-      const skipped: string[] = [];
-
-      for (const modelId of modelIds) {
-        if (existingIds.has(modelId)) {
-          skipped.push(modelId);
-          continue;
-        }
-        orProvider.models.push({ id: modelId } as PiModelEntry);
-        added.push(modelId);
-      }
-
-      existing.providers = ensureProviderOrder(existing.providers);
-      writeModelsJson(existing);
-
-      const modelList = orProvider.models.map((m: PiModelEntry) => `  - ${m.id}`).join("\n");
-      const report = [
-        BRANDING,
-        "",
-        `Added ${added.length} model(s) to openrouter provider (${orProvider.models.length} total).`,
-        ...(added.length > 0 ? ["\nAdded:"] : []),
-        ...added.map((id) => `  + ${id}`),
-        ...(skipped.length > 0 ? ["\nSkipped (already present):"] : []),
-        ...skipped.map((id) => `  = ${id}`),
-        "",
-        `Written to ${MODELS_FILE}. Run /reload to pick up changes.`,
-        "",
-        "Current openrouter models:",
-        modelList,
-      ].join("\n");
-
-      return {
-        content: [{ type: "text", text: report }],
-        details: { added: added.length, skipped: skipped.length, total: orProvider.models.length },
-      };
     },
   });
 }

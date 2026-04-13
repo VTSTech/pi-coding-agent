@@ -203,6 +203,24 @@ export function extractJsonArgs(rawArgs: string): Record<string, unknown> | null
   return { input: jsonStr };
 }
 
+/**
+ * Extract a raw JSON object string from text by matching balanced braces.
+ * Returns the JSON substring (or empty string if none found).
+ * Used by model-test for extracting Action Input arguments from ReAct responses
+ * when the parsed args object is empty but raw match text may contain JSON.
+ */
+export function extractBraceJson(raw: string): string {
+  const jsonStart = raw.indexOf("{");
+  if (jsonStart === -1) return "";
+  let depth = 0;
+  let jsonEnd = -1;
+  for (let i = jsonStart; i < raw.length; i++) {
+    if (raw[i] === "{") depth++;
+    else if (raw[i] === "}") { depth--; if (depth === 0) { jsonEnd = i; break; } }
+  }
+  return jsonEnd !== -1 ? raw.slice(jsonStart, jsonEnd + 1) : "";
+}
+
 export function parseReact(text: string): ParsedToolCall | null {
   // Try all registered dialects in order (classic ReAct first)
   for (const dp of ALL_DIALECT_PATTERNS) {

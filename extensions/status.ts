@@ -13,7 +13,10 @@
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import * as fs from "node:fs";
-import { execSync } from "node:child_process";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
+
+const execAsync = promisify(exec);
 import os from "node:os";
 
 // ── Shared imports ─────────────────────────────────────────────────────────
@@ -297,9 +300,10 @@ export default function (pi: ExtensionAPI) {
     ctxTheme = ctx.ui.theme;
     prevCpuInfo = getCpuSnapshot();
 
-    // Fetch Pi version once at session start
+    // Fetch Pi version once at session start (async — avoids blocking event loop)
     try {
-      const out = execSync("pi -v 2>&1", { encoding: "utf-8", timeout: 5000 }).trim();
+      const { stdout } = await execAsync("pi -v 2>&1", { timeout: 5000 });
+      const out = stdout.trim();
       if (out) versionsText = `pi:${out}`;
     } catch { /* ignore */ }
     updateMetrics();

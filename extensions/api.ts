@@ -17,11 +17,10 @@
  * Written by VTSTech — https://www.vts-tech.org
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import * as fs from "node:fs";
-import * as path from "node:path";
 import os from "node:os";
 import { section, ok, fail, info, warn } from "../shared/format";
 import { readModelsJson, writeModelsJson, getOllamaBaseUrl, BUILTIN_PROVIDERS, EXTENSION_VERSION } from "../shared/ollama";
+import { SETTINGS_PATH, readSettings, writeSettings } from "../shared/config-io";
 
 // ============================================================================
 // Constants
@@ -66,27 +65,8 @@ const COMPAT_FLAGS: Record<string, { description: string; values: string[] }> = 
 };
 
 // ============================================================================
-// Settings helpers
+// Extension
 // ============================================================================
-
-const SETTINGS_PATH = path.join(os.homedir(), ".pi", "agent", "settings.json");
-
-/** Read Pi's settings.json, returning empty object if not found. */
-function readSettings(): Record<string, any> {
-  try {
-    if (fs.existsSync(SETTINGS_PATH)) {
-      return JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf-8"));
-    }
-  } catch { /* ignore */ }
-  return {};
-}
-
-/** Write Pi's settings.json, creating directory if needed. */
-function writeSettings(data: Record<string, any>): void {
-  const dir = path.dirname(SETTINGS_PATH);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(data, null, 2) + "\n", "utf-8");
-}
 
 /** Get the first local provider name (usually "ollama"). */
 function getLocalProvider(config: ReturnType<typeof readModelsJson>): { name: string; isLocal: boolean } {
