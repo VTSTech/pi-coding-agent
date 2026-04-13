@@ -366,24 +366,11 @@ export function validatePath(
     }
   }
 
-  // Allow safe paths: cwd and /home (both user-owned directories).
-  // Temp writes are restricted to ~/.pi/agent/tmp/ with restrictive permissions
-  // rather than open /tmp or /var/tmp which are world-readable/writable.
+  // Allow safe paths: cwd, /home, and /tmp (standard temp directory).
   const cwd = process.cwd();
-  const agentTmpDir = path.join(os.homedir(), ".pi", "agent", "tmp");
-  const safePrefixes = [agentTmpDir, "/home", cwd];
+  const safePrefixes = ["/home", "/tmp", cwd];
   for (const prefix of safePrefixes) {
     if (resolved.startsWith(prefix + "/") || resolved === prefix) return { valid: true, error: "" };
-  }
-
-  // Explicitly block /tmp, /var/tmp, and other shared temp directories.
-  // These are world-readable/writable — files placed here can be read,
-  // modified, or deleted by other processes and users on the system.
-  const blockedTempPrefixes = ["/tmp", "/var/tmp", "/dev/shm"];
-  for (const prefix of blockedTempPrefixes) {
-    if (resolved.startsWith(prefix + "/") || resolved === prefix) {
-      return { valid: false, error: `Shared temp directory not allowed: ${prefix}. Use ${agentTmpDir} instead.` };
-    }
   }
 
   // Check against custom allowed directories

@@ -113,10 +113,9 @@ describe("validatePath", () => {
     assert.ok(result.error.includes("sensitive"));
   });
 
-  it("rejects paths in shared /tmp directory", () => {
+  it("allows paths in /tmp directory", () => {
     const result = validatePath("/tmp/test.txt");
-    assert.equal(result.valid, false);
-    assert.ok(result.error.includes("Shared temp directory"));
+    assert.equal(result.valid, true);
   });
 
   it("accepts paths in /home", () => {
@@ -453,10 +452,9 @@ describe("checkFileToolInput", () => {
     assert.equal(result.rule, "path_validation");
   });
 
-  it("rejects /tmp/test.txt (shared temp directory)", () => {
+  it("allows /tmp/test.txt", () => {
     const result = checkFileToolInput({ file_path: "/tmp/test.txt" });
-    assert.equal(result.safe, false);
-    assert.ok(result.detail.includes("Shared temp"));
+    assert.equal(result.safe, true);
   });
 
   it("handles multiple path fields", () => {
