@@ -259,7 +259,7 @@ export default function (pi: ExtensionAPI) {
 
     // System prompt size (placeholder registered at session_start so slot
     // order is fixed before agent_start / before_provider_request populates it)
-    ctxUi.setStatus("system-prompt", cachedPromptText ?? dim("Prompt: …"));
+    ctxUi.setStatus("status-prompt", cachedPromptText ?? dim("Prompt: …"));
 
     // Versions — always last slot
     if (versionsText) {
@@ -332,7 +332,7 @@ export default function (pi: ExtensionAPI) {
       ui.setStatus("status-resp", undefined);
       ui.setStatus("status-resp-max", undefined);
       ui.setStatus("status-params", undefined);
-      ui.setStatus("system-prompt", undefined);
+      ui.setStatus("status-prompt", undefined);
       ui.setStatus("status-sec", undefined);
       ui.setStatus("status-tool", undefined);
       ui.setStatus("status-versions", undefined);
