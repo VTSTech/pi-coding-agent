@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { describe, it, test } from "node:test";
 import assert from "node:assert/strict";
 import {
   isReasoningModel,
@@ -182,4 +182,166 @@ describe("BUILTIN_PROVIDERS", () => {
     assert.ok(provider.baseUrl.includes("openai.com"));
     assert.equal(provider.envKey, "OPENAI_API_KEY");
   });
+});
+
+// ── ROB-01: Retry Logic Tests ────────────────────────────────────────
+
+test("withRetry succeeds on first attempt", async () => {
+  const { withRetry } = await import("../shared/ollama");
+  let attempts = 0;
+  const result = await withRetry(async () => {
+    attempts++;
+    return "success";
+  });
+  assert.equal(result, "success");
+  assert.equal(attempts, 1);
+});
+
+test("withRetry retries on transient errors", async () => {
+  const { withRetry } = await import("../shared/ollama");
+  let attempts = 0;
+  const result = await withRetry(
+    async () => {
+      attempts++;
+      if (attempts < 3) throw new Error("ECONNREFUSED");
+      return "recovered";
+    },
+    { maxRetries: 3, baseDelayMs: 10 }
+  );
+  assert.equal(result, "recovered");
+  assert.equal(attempts, 3);
+});
+
+test("withRetry throws after exhausting retries", async () => {
+  const { withRetry } = await import("../shared/ollama");
+  let attempts = 0;
+  await assert.rejects(
+    withRetry(
+      async () => {
+        attempts++;
+        throw new Error("ECONNREFUSED");
+      },
+      { maxRetries: 2, baseDelayMs: 10 }
+    ),
+    /ECONNREFUSED/
+  );
+  assert.equal(attempts, 3); // initial + 2 retries
+});
+
+test("withRetry does not retry non-retryable errors", async () => {
+  const { withRetry } = await import("../shared/ollama");
+  let attempts = 0;
+  await assert.rejects(
+    withRetry(
+      async () => {
+        attempts++;
+        throw new Error("API returned 403");
+      },
+      { maxRetries: 2, baseDelayMs: 10 }
+    ),
+    /API returned 403/
+  );
+  assert.equal(attempts, 1); // no retries for non-retryable errors
+});
+
+test("withRetry respects custom retry options", async () => {
+  const { withRetry } = await import("../shared/ollama");
+  let attempts = 0;
+  await assert.rejects(
+    withRetry(
+      async () => {
+        attempts++;
+        throw new Error("fetch failed");
+      },
+      { maxRetries: 0, baseDelayMs: 10 }
+    ),
+    /fetch failed/
+  );
+  assert.equal(attempts, 1); // maxRetries=0 means no retries
+});
+
+// ── SEC-02: Concurrent Write Protection Tests ────────────────────────
+
+test("acquireModelsJsonLock provides release function", async () => {
+  const { acquireModelsJsonLock } = await import("../shared/ollama");
+
+  const { release } = await acquireModelsJsonLock();
+  // Should not throw when releasing
+  release();
+});
+
+test("acquireModelsJsonLock serializes concurrent access", async () => {
+  const { acquireModelsJsonLock } = await import("../shared/ollama");
+
+  const order: number[] = [];
+  const lock1Promise = acquireModelsJsonLock();
+  const lock2Promise = acquireModelsJsonLock();
+
+  // Start both waiters
+  const p1 = lock1Promise.then(({ release }) => {
+    order.push(1);
+    release();
+  });
+
+  const p2 = lock2Promise.then(({ release }) => {
+    order.push(2);
+    release();
+  });
+
+  await Promise.all([p1, p2]);
+
+  // Lock 2 should have waited for lock 1
+  assert.equal(order[0], 1);
+  assert.equal(order[1], 2);
+});
+
+test("readModifyWriteModelsJson reads, modifies, and writes under lock", async () => {
+  const { readModifyWriteModelsJson, readModelsJson, writeModelsJson } = await import("../shared/ollama");
+
+  // Save original state
+  const originalData = readModelsJson();
+
+  try {
+    // Write known state
+    writeModelsJson({ providers: { test: { models: [{ id: "test-model" }] } } });
+
+    // Use readModifyWriteModelsJson to add a model
+    const result = await readModifyWriteModelsJson((data) => {
+      if (!data.providers["test"]) data.providers["test"] = { models: [] };
+      data.providers["test"].models.push({ id: "new-model" } as any);
+      return data;
+    });
+
+    assert.equal(result, true);
+
+    // Verify the write
+    const updated = readModelsJson();
+    const models = updated.providers["test"]?.models || [];
+    assert.equal(models.length, 2);
+    assert.equal(models[1].id, "new-model");
+  } finally {
+    // Restore original state
+    writeModelsJson(originalData);
+  }
+});
+
+test("readModifyWriteModelsJson aborts when modifier returns null", async () => {
+  const { readModifyWriteModelsJson, readModelsJson, writeModelsJson } = await import("../shared/ollama");
+
+  const originalData = readModelsJson();
+
+  try {
+    writeModelsJson({ providers: { test: { models: [{ id: "test-model" }] } } });
+
+    const result = await readModifyWriteModelsJson(() => null);
+
+    assert.equal(result, false);
+
+    // Verify no changes were made
+    const current = readModelsJson();
+    const models = current.providers["test"]?.models || [];
+    assert.equal(models.length, 1);
+  } finally {
+    writeModelsJson(originalData);
+  }
 });

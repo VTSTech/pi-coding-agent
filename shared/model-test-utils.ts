@@ -60,6 +60,62 @@ export const CONFIG = {
 } as const;
 
 // ============================================================================
+// User Configuration Overrides
+// ============================================================================
+
+const TEST_CONFIG_DIR = path.join(os.homedir(), ".pi", "agent");
+export const TEST_CONFIG_PATH = path.join(TEST_CONFIG_DIR, "model-test-config.json");
+
+/** Shape of the user configuration file. */
+export interface ModelTestUserConfig {
+  defaultTimeoutMs?: number;
+  connectTimeoutS?: number;
+  maxRetries?: number;
+  retryDelayMs?: number;
+  testDelayMs?: number;
+  toolTestTimeoutMs?: number;
+  providerTimeoutMs?: number;
+  providerToolTimeoutMs?: number;
+  numPredict?: number;
+  temperature?: number;
+}
+
+/**
+ * Read user configuration from ~/.pi/agent/model-test-config.json.
+ * Returns an empty object if the file doesn't exist or is invalid.
+ */
+export function readTestConfig(): ModelTestUserConfig {
+  try {
+    if (fs.existsSync(TEST_CONFIG_PATH)) {
+      const raw = fs.readFileSync(TEST_CONFIG_PATH, "utf-8");
+      return JSON.parse(raw) as ModelTestUserConfig;
+    }
+  } catch { /* ignore parse errors */ }
+  return {};
+}
+
+/**
+ * Get effective test configuration by merging user overrides with defaults.
+ * User values take precedence over CONFIG defaults.
+ */
+export function getEffectiveConfig(): typeof CONFIG {
+  const userConfig = readTestConfig();
+  return {
+    ...CONFIG,
+    DEFAULT_TIMEOUT_MS: (userConfig.defaultTimeoutMs ?? CONFIG.DEFAULT_TIMEOUT_MS) as typeof CONFIG.DEFAULT_TIMEOUT_MS,
+    CONNECT_TIMEOUT_S: (userConfig.connectTimeoutS ?? CONFIG.CONNECT_TIMEOUT_S) as typeof CONFIG.CONNECT_TIMEOUT_S,
+    MAX_RETRIES: (userConfig.maxRetries ?? CONFIG.MAX_RETRIES) as typeof CONFIG.MAX_RETRIES,
+    RETRY_DELAY_MS: (userConfig.retryDelayMs ?? CONFIG.RETRY_DELAY_MS) as typeof CONFIG.RETRY_DELAY_MS,
+    TEST_DELAY_MS: (userConfig.testDelayMs ?? CONFIG.TEST_DELAY_MS) as typeof CONFIG.TEST_DELAY_MS,
+    TOOL_TEST_TIMEOUT_MS: (userConfig.toolTestTimeoutMs ?? CONFIG.TOOL_TEST_TIMEOUT_MS) as typeof CONFIG.TOOL_TEST_TIMEOUT_MS,
+    PROVIDER_TIMEOUT_MS: (userConfig.providerTimeoutMs ?? CONFIG.PROVIDER_TIMEOUT_MS) as typeof CONFIG.PROVIDER_TIMEOUT_MS,
+    PROVIDER_TOOL_TIMEOUT_MS: (userConfig.providerToolTimeoutMs ?? CONFIG.PROVIDER_TOOL_TIMEOUT_MS) as typeof CONFIG.PROVIDER_TOOL_TIMEOUT_MS,
+    NUM_PREDICT: (userConfig.numPredict ?? CONFIG.NUM_PREDICT) as typeof CONFIG.NUM_PREDICT,
+    TEMPERATURE: (userConfig.temperature ?? CONFIG.TEMPERATURE) as typeof CONFIG.TEMPERATURE,
+  };
+}
+
+// ============================================================================
 // Weather Tool Definition (shared across all tool tests)
 // ============================================================================
 
@@ -214,6 +270,178 @@ export function cacheToolSupport(model: string, support: ToolSupportLevel, famil
   };
   _toolSupportCacheInMemory = cache; // keep in-memory cache in sync
   writeToolSupportCache(cache);
+}
+
+// ============================================================================
+// Test History Tracking
+// ============================================================================
+
+const TEST_HISTORY_DIR = path.join(os.homedir(), ".pi", "agent", "cache");
+const TEST_HISTORY_PATH = path.join(TEST_HISTORY_DIR, "model-test-history.json");
+
+/** Maximum number of history entries to keep per model. */
+const MAX_HISTORY_PER_MODEL = 50;
+
+/** Maximum total history entries across all models. */
+const MAX_HISTORY_TOTAL = 500;
+
+/**
+ * A single test history entry, stored per model per run.
+ */
+export interface TestHistoryEntry {
+  /** ISO 8601 timestamp of when the test was run */
+  timestamp: string;
+  /** Model identifier */
+  model: string;
+  /** Provider kind (ollama, builtin, unknown) */
+  providerKind: string;
+  /** Provider name */
+  providerName: string;
+  /** Individual test scores */
+  tests: {
+    reasoning: { score: string; pass: boolean; answer?: string };
+    thinking: { supported: boolean };
+    toolUsage: { score: string; pass: boolean; toolCall: string };
+    reactParsing: { score: string; pass: boolean; toolCall: string; dialect?: string };
+    instructionFollowing: { score: string; pass: boolean };
+    toolSupport: { level: string; evidence: string };
+  };
+  /** Summary: number of tests passed */
+  passedCount: number;
+  /** Summary: total number of tests */
+  totalCount: number;
+  /** Total time in ms */
+  totalMs: number;
+}
+
+/** Shape of the history file on disk. */
+export interface TestHistoryFile {
+  [modelName: string]: TestHistoryEntry[];
+}
+
+/**
+ * Read test history from disk.
+ * Returns an empty object if the file doesn't exist or is invalid.
+ */
+export function readTestHistory(): TestHistoryFile {
+  try {
+    if (fs.existsSync(TEST_HISTORY_PATH)) {
+      const raw = fs.readFileSync(TEST_HISTORY_PATH, "utf-8");
+      return JSON.parse(raw) as TestHistoryFile;
+    }
+  } catch { /* ignore parse errors */ }
+  return {};
+}
+
+/**
+ * Write test history to disk.
+ * Enforces per-model and total entry limits.
+ */
+export function writeTestHistory(history: TestHistoryFile): void {
+  // Enforce per-model limits
+  for (const model of Object.keys(history)) {
+    if (history[model].length > MAX_HISTORY_PER_MODEL) {
+      history[model] = history[model].slice(-MAX_HISTORY_PER_MODEL);
+    }
+  }
+
+  // Enforce total limit
+  let totalEntries = 0;
+  const modelsByRecency = Object.entries(history)
+    .map(([model, entries]) => ({
+      model,
+      entries,
+      lastEntry: entries[entries.length - 1]?.timestamp || "",
+    }))
+    .sort((a, b) => b.lastEntry.localeCompare(a.lastEntry));
+
+  const trimmedHistory: TestHistoryFile = {};
+  for (const { model, entries } of modelsByRecency) {
+    if (totalEntries + entries.length > MAX_HISTORY_TOTAL) {
+      const remaining = MAX_HISTORY_TOTAL - totalEntries;
+      if (remaining <= 0) break;
+      trimmedHistory[model] = entries.slice(-remaining);
+      totalEntries += remaining;
+    } else {
+      trimmedHistory[model] = entries;
+      totalEntries += entries.length;
+    }
+  }
+
+  if (!fs.existsSync(TEST_HISTORY_DIR)) {
+    fs.mkdirSync(TEST_HISTORY_DIR, { recursive: true });
+  }
+  fs.writeFileSync(TEST_HISTORY_PATH, JSON.stringify(trimmedHistory, null, 2) + "\n", "utf-8");
+}
+
+/**
+ * Append a test result entry to the history.
+ * Handles creating new model entries and updating existing ones.
+ */
+export function appendTestHistory(entry: TestHistoryEntry): void {
+  const history = readTestHistory();
+  if (!history[entry.model]) {
+    history[entry.model] = [];
+  }
+  history[entry.model].push(entry);
+  writeTestHistory(history);
+}
+
+/**
+ * Get the recent test history for a specific model.
+ * @param model - Model name
+ * @param limit - Maximum entries to return (default: 10)
+ */
+export function getModelHistory(model: string, limit = 10): TestHistoryEntry[] {
+  const history = readTestHistory();
+  const entries = history[model] || [];
+  return entries.slice(-limit);
+}
+
+/**
+ * Detect if a model's test scores have regressed compared to its last run.
+ * Returns null if there's no previous run, or an object describing the regression.
+ */
+export function detectRegression(
+  model: string,
+  current: TestHistoryEntry,
+): Array<{ test: string; previous: string; current: string }> {
+  const history = readTestHistory();
+  const entries = history[model] || [];
+  if (entries.length < 2) return []; // No previous run to compare
+
+  const previous = entries[entries.length - 2]; // Second-to-last entry
+  const regressions: Array<{ test: string; previous: string; current: string }> = [];
+
+  const scoreOrder = ["STRONG", "MODERATE", "WEAK", "FAIL", "ERROR", "NO", "YES"];
+  const scoreRank = (s: string): number => {
+    const idx = scoreOrder.indexOf(s);
+    return idx >= 0 ? idx : 99;
+  };
+
+  // Compare reasoning
+  if (scoreRank(current.tests.reasoning.score) > scoreRank(previous.tests.reasoning.score)) {
+    regressions.push({ test: "Reasoning", previous: previous.tests.reasoning.score, current: current.tests.reasoning.score });
+  }
+  // Compare tool usage
+  if (scoreRank(current.tests.toolUsage.score) > scoreRank(previous.tests.toolUsage.score)) {
+    regressions.push({ test: "Tool Usage", previous: previous.tests.toolUsage.score, current: current.tests.toolUsage.score });
+  }
+  // Compare ReAct parsing
+  if (scoreRank(current.tests.reactParsing.score) > scoreRank(previous.tests.reactParsing.score)) {
+    regressions.push({ test: "ReAct Parsing", previous: previous.tests.reactParsing.score, current: current.tests.reactParsing.score });
+  }
+  // Compare instruction following
+  if (scoreRank(current.tests.instructionFollowing.score) > scoreRank(previous.tests.instructionFollowing.score)) {
+    regressions.push({ test: "Instructions", previous: previous.tests.instructionFollowing.score, current: current.tests.instructionFollowing.score });
+  }
+  // Compare tool support
+  const supportRank = (s: string): number => s === "native" ? 0 : s === "react" ? 1 : 2;
+  if (supportRank(current.tests.toolSupport.level) > supportRank(previous.tests.toolSupport.level)) {
+    regressions.push({ test: "Tool Support", previous: previous.tests.toolSupport.level, current: current.tests.toolSupport.level });
+  }
+
+  return regressions;
 }
 
 // ============================================================================

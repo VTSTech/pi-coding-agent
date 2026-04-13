@@ -20,7 +20,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BUILD_DIR="$REPO_ROOT/.build-npm"
 
-VERSION="1.1.5"
+# Read version from the VERSION file (single source of truth)
+if [ ! -f "$REPO_ROOT/VERSION" ]; then
+  echo -e "\033[0;31m[error]\033[0m  VERSION file not found at $REPO_ROOT/VERSION"
+  exit 1
+fi
+VERSION="$(cat "$REPO_ROOT/VERSION" | tr -d '[:space:]')"
+
 DRY_RUN=false
 DIST_TAG="latest"
 

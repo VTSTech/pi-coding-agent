@@ -43,7 +43,8 @@ SHARED_SRC="$REPO_ROOT/shared"
 EXT_SRC="$REPO_ROOT/extensions"
 BUILD_DIR="$REPO_ROOT/.build-npm"
 
-VERSION="1.1.5"
+# Read version from the VERSION file (single source of truth)
+VERSION="$(cat "$REPO_ROOT/VERSION" | tr -d '[:space:]')"
 
 # Colors
 GREEN='\033[0;32m'
@@ -63,6 +64,12 @@ preflight() {
   if ! npx --no esbuild --version &>/dev/null; then
     err "esbuild not found. Run 'npm install' in the repo root first."
     err "(esbuild is declared as a devDependency in package.json)"
+    exit 1
+  fi
+
+  # Ensure VERSION file exists (single source of truth for version)
+  if [ ! -f "$REPO_ROOT/VERSION" ]; then
+    err "VERSION file not found at $REPO_ROOT/VERSION"
     exit 1
   fi
 

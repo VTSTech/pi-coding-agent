@@ -16,12 +16,17 @@ import type { PiExtensionContext } from "./types";
 // ============================================================================
 
 /**
- * Extension package version. Single source of truth — read from root package.json
- * and hardcoded here so extensions don't need to import JSON at runtime.
+ * Extension package version. Derived from the VERSION file in the repo root.
  *
- * IMPORTANT: When bumping the version, update this constant AND root package.json.
+ * IMPORTANT: Do NOT update this constant manually.
+ * Use ./scripts/bump-version.sh <new-version> to update ALL locations:
+ *   - VERSION file (source of truth)
+ *   - shared/ollama.ts (EXTENSION_VERSION)
+ *   - scripts/build-packages.sh (derived from VERSION at runtime)
+ *   - scripts/publish-packages.sh (derived from VERSION at runtime)
+ *   - package.json (version field)
  */
-export const EXTENSION_VERSION = "1.1.5";
+export const EXTENSION_VERSION = "1.1.7-dev";
 
 /**
  * Path to Pi's models.json configuration file.
@@ -274,9 +279,162 @@ export function writeModelsJson(data: PiModelsJson): void {
   _ollamaBaseUrlCache = null;
 }
 
+// In-memory mutex for models.json write operations
+let _modelsJsonLock: Promise<void> | null = null;
+
+/**
+ * Acquire the models.json write lock.
+ * Returns a release function that MUST be called when done.
+ * Prevents concurrent read-modify-write cycles from different extensions.
+ */
+export async function acquireModelsJsonLock(): Promise<{ release: () => void }> {
+  // Wait for any existing lock to be released
+  while (_modelsJsonLock) {
+    await _modelsJsonLock;
+  }
+  // Create new lock
+  let releaseLock: () => void;
+  _modelsJsonLock = new Promise<void>((resolve) => {
+    releaseLock = resolve;
+  });
+  return {
+    release: () => {
+      releaseLock!();
+      _modelsJsonLock = null;
+    },
+  };
+}
+
+/**
+ * Safely read, modify, and write models.json under a lock.
+ * Prevents concurrent read-modify-write cycles between extensions.
+ *
+ * @param modifier - Function that receives the current data and returns modified data (or null to abort)
+ * @returns true if the write succeeded, false if aborted
+ */
+export async function readModifyWriteModelsJson(
+  modifier: (data: PiModelsJson) => PiModelsJson | null
+): Promise<boolean> {
+  const { release } = await acquireModelsJsonLock();
+  try {
+    const data = readModelsJson();
+    const modified = modifier(data);
+    if (modified === null) return false;
+    writeModelsJson(modified);
+    return true;
+  } finally {
+    release();
+  }
+}
+
 // ============================================================================
 // Ollama API Helpers
 // ============================================================================
+
+/**
+ * Retry configuration for Ollama API calls.
+ */
+export interface RetryOptions {
+  /** Maximum number of retry attempts (default: 2) */
+  maxRetries?: number;
+  /** Base delay in ms for exponential backoff (default: 1000) */
+  baseDelayMs?: number;
+  /** Maximum delay in ms (default: 10000) */
+  maxDelayMs?: number;
+  /** Whether to retry on timeout (default: true) */
+  retryOnTimeout?: boolean;
+  /** Whether to retry on connection errors (default: true) */
+  retryOnConnectionError?: boolean;
+}
+
+const DEFAULT_RETRY_OPTIONS: Required<RetryOptions> = {
+  maxRetries: 2,
+  baseDelayMs: 1000,
+  maxDelayMs: 10000,
+  retryOnTimeout: true,
+  retryOnConnectionError: true,
+};
+
+/**
+ * Calculate exponential backoff delay with jitter.
+ */
+function backoffDelay(attempt: number, baseDelayMs: number, maxDelayMs: number): number {
+  const delay = Math.min(baseDelayMs * Math.pow(2, attempt), maxDelayMs);
+  // Add jitter (±25%) to avoid thundering herd
+  const jitter = delay * 0.25 * (Math.random() * 2 - 1);
+  return Math.max(0, Math.round(delay + jitter));
+}
+
+/**
+ * Error message patterns that indicate transient (retryable) failures.
+ */
+const RETRYABLE_ERROR_PATTERNS = [
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENOTFOUND",
+  "ETIMEDOUT",
+  "fetch failed",
+  "network error",
+  "socket hang up",
+  "Empty response",
+];
+
+/**
+ * Determine if an error is retryable based on its message.
+ */
+function isRetryableError(error: unknown, opts: Required<RetryOptions>): boolean {
+  if (error instanceof Error) {
+    if (error.name === "AbortError" && opts.retryOnTimeout) return true;
+    const msg = error.message;
+    if (opts.retryOnConnectionError && RETRYABLE_ERROR_PATTERNS.some(p => msg.includes(p))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Execute a fetch request with exponential backoff retry logic.
+ *
+ * Wraps any async function with automatic retry on transient failures.
+ * Uses exponential backoff with jitter to avoid thundering herd.
+ *
+ * @param fn - The async function to execute (typically a fetch call)
+ * @param options - Retry configuration
+ * @returns The result of the function
+ * @throws The last error if all retries are exhausted
+ *
+ * @example
+ * ```typescript
+ * const models = await withRetry(
+ *   () => fetchOllamaModels(baseUrl),
+ *   { maxRetries: 2, baseDelayMs: 1000 }
+ * );
+ * ```
+ */
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  options?: RetryOptions,
+): Promise<T> {
+  const opts = { ...DEFAULT_RETRY_OPTIONS, ...options };
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= opts.maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt < opts.maxRetries && isRetryableError(error, opts)) {
+        const delay = backoffDelay(attempt, opts.baseDelayMs, opts.maxDelayMs);
+        debugLog("ollama", `Retry ${attempt + 1}/${opts.maxRetries} after ${delay}ms: ${error instanceof Error ? error.message : String(error)}`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
+}
 
 /**
  * Fetch the list of available models from an Ollama instance.
@@ -297,12 +455,14 @@ export function writeModelsJson(data: PiModelsJson): void {
  * ```
  */
 export async function fetchOllamaModels(baseUrl: string): Promise<OllamaModel[]> {
-  const res = await fetch(`${baseUrl}/api/tags`, {
-    signal: AbortSignal.timeout(5000),
+  return withRetry(async () => {
+    const res = await fetch(`${baseUrl}/api/tags`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) throw new Error(`Ollama returned ${res.status}`);
+    const data = (await res.json()) as { models?: OllamaModel[] };
+    return data.models ?? [];
   });
-  if (!res.ok) throw new Error(`Ollama returned ${res.status}`);
-  const data = (await res.json()) as { models?: OllamaModel[] };
-  return data.models ?? [];
 }
 
 /**
@@ -326,31 +486,34 @@ export async function fetchModelContextLength(
   baseUrl: string,
   modelName: string
 ): Promise<number | undefined> {
-  try {
-    const res = await fetch(`${baseUrl}/api/show`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: modelName }),
-      signal: AbortSignal.timeout(30000),
-    });
-    if (!res.ok) return undefined;
-    const data = (await res.json()) as {
-      model_info?: Record<string, unknown>;
-      template?: string;
-    };
-    // Ollama uses architecture-specific keys like "qwen3.context_length"
-    for (const key of Object.keys(data?.model_info ?? {})) {
-      if (key.endsWith(".context_length")) {
-        const val = data.model_info[key];
-        if (typeof val === "number") return val;
+  return withRetry(async () => {
+    try {
+      const res = await fetch(`${baseUrl}/api/show`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: modelName }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!res.ok) return undefined;
+      const data = (await res.json()) as {
+        model_info?: Record<string, unknown>;
+        template?: string;
+      };
+      // Ollama uses architecture-specific keys like "qwen3.context_length"
+      for (const key of Object.keys(data?.model_info ?? {})) {
+        if (key.endsWith(".context_length")) {
+          const val = data.model_info[key];
+          if (typeof val === "number") return val;
+        }
       }
+      // Fallback: generic "num_ctx" key
+      const numCtx = data?.model_info?.["num_ctx"];
+      if (typeof numCtx === "number") return numCtx;
+    } catch {
+      return undefined;
     }
-    // Fallback: generic "num_ctx" key
-    const numCtx = data?.model_info?.["num_ctx"];
-    if (typeof numCtx === "number") return numCtx;
-  } catch {
     return undefined;
-  }
+  });
 }
 
 /**

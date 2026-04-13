@@ -18,6 +18,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import os from "node:os";
 import { debugLog } from "./debug";
+import dns from "node:dns";
 
 // ============================================================================
 // Settings Path
@@ -377,6 +378,86 @@ export function validatePath(
   return { valid: false, error: `Path not in allowed directories: ${filePath}` };
 }
 
+// ── IP Address Validation Utilities ──────────────────────────────────────────
+
+/**
+ * Check if an IP address is a loopback address.
+ * Handles IPv4 (127.0.0.0/8) and IPv6 (::1, ::ffff:127.0.0.0/104).
+ */
+function isLoopbackIp(ip: string): boolean {
+  // IPv4 loopback
+  if (ip.startsWith("127.") || ip === "0.0.0.0") return true;
+  // IPv6 loopback
+  if (ip === "::1" || ip === "::ffff:0.0.0.0") return true;
+  // IPv4-mapped IPv6 loopback
+  if (ip.startsWith("::ffff:127.")) return true;
+  return false;
+}
+
+/**
+ * Check if an IP address is a private/RFC1918 address.
+ * Handles IPv4 (10.x, 172.16-31.x, 192.168.x) and IPv6 (fc00::/7, fe80::/10).
+ */
+function isPrivateIp(ip: string): boolean {
+  // IPv4 private ranges
+  if (ip.startsWith("10.") || ip.startsWith("192.168.")) return true;
+  // 172.16.0.0 – 172.31.255.255
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true;
+  // Cloud metadata
+  if (ip === "169.254.169.254") return true;
+  // IPv6 unique local (fc00::/7) and link-local (fe80::/10)
+  if (ip.startsWith("fc") || ip.startsWith("fd")) return true;
+  if (ip.startsWith("fe80:")) return true;
+  return false;
+}
+
+/**
+ * Resolve a hostname to its IP addresses and check against blocked ranges.
+ *
+ * Uses dns.lookup() (not dns.resolve()) to follow the system resolver,
+ * which respects /etc/hosts and nsswitch.conf. This catches DNS rebinding
+ * attacks where a hostname resolves differently at check time vs request time.
+ *
+ * @param hostname - The hostname to resolve
+ * @param blockPrivate - Whether to block private/loopback IPs
+ * @returns Object with `safe` boolean and `error` message if unsafe
+ */
+export async function resolveAndCheckHostname(
+  hostname: string,
+  blockPrivate = true,
+): Promise<{ safe: boolean; error: string }> {
+  try {
+    const addresses = await new Promise<dns.LookupAddress[]>((resolve, reject) => {
+      dns.lookup(hostname, { all: true }, (err: unknown, addresses: unknown) => {
+        if (err) reject(err);
+        else resolve(addresses as dns.LookupAddress[]);
+      });
+    });
+
+    if (!addresses || addresses.length === 0) {
+      // DNS resolution failed — could be a network issue, not a security violation
+      // The URL pattern checks already passed, so allow it
+      return { safe: true, error: "" };
+    }
+
+    for (const addr of addresses) {
+      const ip = addr.address;
+      // Always block cloud metadata endpoint
+      if (ip === "169.254.169.254") {
+        return { safe: false, error: `SSRF protection: hostname ${hostname} resolves to cloud metadata IP ${ip}` };
+      }
+      if (blockPrivate && (isLoopbackIp(ip) || isPrivateIp(ip))) {
+        return { safe: false, error: `SSRF protection: hostname ${hostname} resolves to private/reserved IP ${ip} (DNS rebinding check)` };
+      }
+    }
+
+    return { safe: true, error: "" };
+  } catch {
+    // DNS resolution failed — allow since pattern checks already passed
+    return { safe: true, error: "" };
+  }
+}
+
 // ============================================================================
 // URL Validation (SSRF Protection — Mode-Aware)
 // ============================================================================
@@ -391,6 +472,11 @@ export function validatePath(
  * 4. Always blocks Cloud Metadata IPs and RFC1918 private ranges
  * 5. In max mode, additionally blocks loopback (localhost, 127.x)
  * 6. In basic mode, allows localhost/127.x for local development
+ *
+ * NOTE: For stronger protection against DNS rebinding attacks, use the
+ * async `resolveAndCheckHostname()` function to perform DNS resolution
+ * checks AFTER calling isSafeUrl(). This catches cases where a hostname
+ * resolves to a private IP at request time despite passing pattern checks.
  *
  * @param url - The URL to validate
  * @param blockSsrf - Whether to apply SSRF blocking rules (default: true)
@@ -585,13 +671,69 @@ const AUDIT_DIR = path.join(os.homedir(), ".pi", "agent");
 /** Path to the audit log file. Exported for use by diag.ts and other extensions. */
 export const AUDIT_LOG_PATH = path.join(AUDIT_DIR, "audit.log");
 
+// ── Audit Log Rate Limiting ──────────────────────────────────────────
+
+/** Maximum entries to buffer before forcing a flush. */
+const AUDIT_BUFFER_MAX_ENTRIES = 50;
+
+/** Maximum interval between automatic flushes (ms). */
+const AUDIT_FLUSH_INTERVAL_MS = 500;
+
+/** In-memory buffer for batched audit entries. */
+let _auditBuffer: string[] = [];
+
+/** Timer ID for the periodic flush. */
+let _auditFlushTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Ensure the periodic flush timer is running.
+ * Starts the timer on first call; subsequent calls are no-ops.
+ */
+function ensureAuditFlushTimer(): void {
+  if (_auditFlushTimer) return;
+  _auditFlushTimer = setInterval(() => {
+    if (_auditBuffer.length > 0) {
+      flushAuditBuffer();
+    }
+  }, AUDIT_FLUSH_INTERVAL_MS);
+  // Allow the Node.js process to exit even if the timer is active
+  // unref() is a Node.js Timer extension not in the DOM typings
+  const timerRef = _auditFlushTimer as unknown as { unref?: () => void };
+  if (timerRef.unref) {
+    timerRef.unref();
+  }
+}
+
+/**
+ * Flush the audit buffer to disk.
+ * Writes all buffered entries as a single appendFileSync call.
+ * Called automatically by the timer or when the buffer is full.
+ */
+export function flushAuditBuffer(): void {
+  if (_auditBuffer.length === 0) return;
+  try {
+    if (!fs.existsSync(AUDIT_DIR)) {
+      fs.mkdirSync(AUDIT_DIR, { recursive: true });
+    }
+    const batch = _auditBuffer.join("");
+    fs.appendFileSync(AUDIT_LOG_PATH, batch, "utf-8");
+  } catch (err) {
+    debugLog("security", "audit buffer flush failure", err);
+  }
+  _auditBuffer = [];
+}
+
 /**
  * Append an audit entry to the JSON-lines log file.
  *
  * Each entry is written as a single line of JSON, making the log
  * easy to parse and analyze. The current security mode is automatically
- * injected into the entry metadata. Log write failures are silently
- * ignored since logging is non-critical.
+ * injected into the entry metadata.
+ *
+ * Entries are buffered and flushed in batches to reduce disk I/O:
+ * - Buffer flushes automatically every 500ms
+ * - Buffer flushes immediately when it reaches 50 entries
+ * - Manual flush available via flushAuditBuffer()
  *
  * @param entry - The audit entry to write (enriched with securityMode)
  *
@@ -609,13 +751,16 @@ export const AUDIT_LOG_PATH = path.join(AUDIT_DIR, "audit.log");
  */
 export function appendAuditEntry(entry: Record<string, unknown>): void {
   try {
-    if (!fs.existsSync(AUDIT_DIR)) {
-      fs.mkdirSync(AUDIT_DIR, { recursive: true });
-    }
+    ensureAuditFlushTimer();
     const enriched = { ...entry, securityMode: getSecurityMode() };
     const line = JSON.stringify(enriched) + "\n";
-    fs.appendFileSync(AUDIT_LOG_PATH, line, "utf-8");
-  } catch (err) { debugLog("security", "audit log write failure", err); }
+    _auditBuffer.push(line);
+
+    // Force flush if buffer is full
+    if (_auditBuffer.length >= AUDIT_BUFFER_MAX_ENTRIES) {
+      flushAuditBuffer();
+    }
+  } catch (err) { debugLog("security", "audit log entry creation failure", err); }
 }
 
 /**

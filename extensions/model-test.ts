@@ -22,10 +22,16 @@ import {
   writeToolSupportCache,
   getCachedToolSupport,
   cacheToolSupport,
+  readTestConfig,
+  getEffectiveConfig,
+  readTestHistory,
+  appendTestHistory,
+  detectRegression,
   type ChatFn,
   type ReasoningTestResult,
   type ToolUsageTestResult,
   type InstructionFollowingTestResult,
+  type TestHistoryEntry,
   testToolUsageUnified,
   testReasoningUnified,
   testInstructionFollowingUnified,
@@ -46,6 +52,9 @@ import {
  *   /model-test --all        — test all models (Ollama only)
  */
 export default function (pi: ExtensionAPI) {
+
+  // Use effective config (user overrides merged with defaults)
+  const effectiveConfig = getEffectiveConfig();
 
   // ── helpers ──────────────────────────────────────────────────────────
 
@@ -74,9 +83,10 @@ export default function (pi: ExtensionAPI) {
    * Wrap ollamaChat into the ChatFn interface.
    * Does NOT support tools (for reasoning, instruction following tests).
    */
-  function makeOllamaChatFn(): ChatFn {
+  function makeOllamaChatFn(useStreaming = true): ChatFn {
     return async (model, messages, _options) => {
-      const result = await ollamaChat(model, messages);
+      const chatFn = useStreaming ? ollamaChatStream : ollamaChat;
+      const result = await chatFn(model, messages);
       return {
         content: result.response?.message?.content || "",
         elapsedMs: result.elapsedMs,
@@ -223,6 +233,99 @@ export default function (pi: ExtensionAPI) {
       }
     }
     throw new Error("Unreachable");
+  }
+
+  /**
+   * Call Ollama /api/chat with streaming enabled.
+   * Accumulates response chunks for progressive processing.
+   * Returns the complete response once all chunks are received.
+   *
+   * Streaming provides:
+   * - Earlier timeout detection (first token arrives quickly)
+   * - Real-time progress feedback potential
+   * - Reduced memory pressure for very long responses
+   */
+  async function ollamaChatStream(
+    model: string,
+    messages: Array<{ role: string; content: string }>,
+    options: Record<string, unknown> = {},
+    timeoutMs = CONFIG.DEFAULT_TIMEOUT_MS,
+  ): Promise<{ response: any; elapsedMs: number }> {
+    const body: any = { model, messages, stream: true, options: { num_predict: CONFIG.NUM_PREDICT, temperature: CONFIG.TEMPERATURE, ...options } };
+    const url = `${ollamaBase()}/api/chat`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const start = Date.now();
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => "unknown error");
+        throw new Error(`Ollama API returned ${res.status}: ${truncate(errorText, 200)}`);
+      }
+
+      if (!res.body) {
+        throw new Error("Ollama streaming response has no body");
+      }
+
+      // Accumulate streaming response
+      let messageContent = "";
+      let thinkingContent = "";
+      let done = false;
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (!done) {
+        const { value, done: streamDone } = await reader.read();
+        if (streamDone) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        // Ollama sends NDJSON — each line is a complete JSON object
+        const lines = chunk.split("\n").filter((line: string) => line.trim().length > 0);
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line);
+            if (parsed.message?.content) messageContent += parsed.message.content;
+            if (parsed.message?.thinking) thinkingContent += parsed.message.thinking;
+            if (parsed.done) done = true;
+          } catch {
+            // Skip malformed JSON chunks
+          }
+        }
+      }
+
+      const elapsedMs = Date.now() - start;
+
+      if (!messageContent.trim() && !thinkingContent.trim()) {
+        throw new Error("Empty streaming response from Ollama");
+      }
+
+      // Construct a response object compatible with the non-streaming format
+      const response = {
+        message: {
+          content: messageContent,
+          thinking: thinkingContent,
+          role: "assistant",
+        },
+        done: true,
+      };
+
+      return { response, elapsedMs };
+    } catch (e: unknown) {
+      if (e instanceof Error && e.name === "AbortError") {
+        throw new Error(`Ollama API timed out after ${msHuman(timeoutMs)}`);
+      }
+      throw e;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   // ── Provider Chat (OpenAI-compatible) ───────────────────────────────
@@ -522,6 +625,23 @@ export default function (pi: ExtensionAPI) {
     return testToolUsageUnified(makeProviderChatFn(providerInfo), model);
   }
 
+  // ── helpers (parsing) ─────────────────────────────────────────────
+
+  /**
+   * Extract a JSON object string from raw text by matching braces.
+   * Used to extract Action Input arguments from ReAct format responses.
+   */
+  function extractBraceJson(raw: string): string {
+    const jsonStart = raw.indexOf("{");
+    if (jsonStart === -1) return "";
+    let depth = 0, jsonEnd = -1;
+    for (let i = jsonStart; i < raw.length; i++) {
+      if (raw[i] === "{") depth++;
+      else if (raw[i] === "}") { depth--; if (depth === 0) { jsonEnd = i; break; } }
+    }
+    return jsonEnd !== -1 ? raw.slice(jsonStart, jsonEnd + 1) : "";
+  }
+
   // ── test: ReAct parsing (Ollama-only) ──────────────────────────────
 
   /**
@@ -611,17 +731,7 @@ export default function (pi: ExtensionAPI) {
               argsStr = rawArgs;
             } else if (result.raw) {
               // Try to extract JSON from raw match
-              const jsonStart = result.raw.indexOf("{");
-              if (jsonStart !== -1) {
-                let depth = 0, jsonEnd = -1;
-                for (let i = jsonStart; i < result.raw.length; i++) {
-                  if (result.raw[i] === "{") depth++;
-                  else if (result.raw[i] === "}") { depth--; if (depth === 0) { jsonEnd = i; break; } }
-                }
-                argsStr = jsonEnd !== -1 ? result.raw.slice(jsonStart, jsonEnd + 1) : "";
-              } else {
-                argsStr = "";
-              }
+              argsStr = extractBraceJson(result.raw);
             } else {
               argsStr = "";
             }
@@ -639,17 +749,7 @@ export default function (pi: ExtensionAPI) {
             if (rawArgs && rawArgs !== "{}") {
               argsStr = rawArgs;
             } else if (result.raw) {
-              const jsonStart = result.raw.indexOf("{");
-              if (jsonStart !== -1) {
-                let depth = 0, jsonEnd = -1;
-                for (let i = jsonStart; i < result.raw.length; i++) {
-                  if (result.raw[i] === "{") depth++;
-                  else if (result.raw[i] === "}") { depth--; if (depth === 0) { jsonEnd = i; break; } }
-                }
-                argsStr = jsonEnd !== -1 ? result.raw.slice(jsonStart, jsonEnd + 1) : "";
-              } else {
-                argsStr = "";
-              }
+              argsStr = extractBraceJson(result.raw);
             } else {
               argsStr = "";
             }
@@ -1263,6 +1363,38 @@ export default function (pi: ExtensionAPI) {
     } else {
       lines.push(fail(`${model} is WEAK — limited capabilities for agent use`));
     }
+
+    // Save test history
+    try {
+      const historyEntry: TestHistoryEntry = {
+        timestamp: new Date().toISOString(),
+        model,
+        providerKind: "ollama",
+        providerName: providerName || "ollama",
+        tests: {
+          reasoning: { score: reasoning.score, pass: reasoning.score === "STRONG" || reasoning.score === "MODERATE", answer: reasoning.answer },
+          thinking: { supported: thinking.supported },
+          toolUsage: { score: tools.score, pass: tools.score === "STRONG" || tools.score === "MODERATE", toolCall: tools.toolCall },
+          reactParsing: { score: react.score, pass: react.score === "STRONG" || react.score === "MODERATE", toolCall: react.toolCall, dialect: react.dialect },
+          instructionFollowing: { score: instructions.score, pass: instructions.pass },
+          toolSupport: { level: toolSupport.level, evidence: toolSupport.evidence },
+        },
+        passedCount: passed,
+        totalCount: total,
+        totalMs,
+      };
+      appendTestHistory(historyEntry);
+
+      // Check for regression
+      const regressions = detectRegression(model, historyEntry);
+      if (regressions.length > 0) {
+        lines.push(section("REGRESSION DETECTED"));
+        for (const reg of regressions) {
+          lines.push(warn(`${reg.test}: ${reg.previous} → ${reg.current}`));
+        }
+      }
+    } catch { /* history save is non-critical */ }
+
     return lines.join("\n");
   }
 
@@ -1427,6 +1559,38 @@ export default function (pi: ExtensionAPI) {
     } else {
       lines.push(fail(`${model} is WEAK via ${providerInfo.name} — limited capabilities for agent use`));
     }
+
+    // Save test history
+    try {
+      const historyEntry: TestHistoryEntry = {
+        timestamp: new Date().toISOString(),
+        model,
+        providerKind: "builtin",
+        providerName: providerInfo.name,
+        tests: {
+          reasoning: { score: reasoning.score, pass: reasoning.score === "STRONG" || reasoning.score === "MODERATE", answer: reasoning.answer },
+          thinking: { supported: false },
+          toolUsage: { score: toolTest.score, pass: toolTest.pass, toolCall: toolTest.toolCall },
+          reactParsing: { score: "SKIP", pass: false, toolCall: "n/a" },
+          instructionFollowing: { score: instructions.score, pass: instructions.pass },
+          toolSupport: { level: "native", evidence: "provider-native (not probed)" },
+        },
+        passedCount: passed,
+        totalCount: total,
+        totalMs,
+      };
+      appendTestHistory(historyEntry);
+
+      // Check for regression
+      const regressions = detectRegression(model, historyEntry);
+      if (regressions.length > 0) {
+        lines.push(section("REGRESSION DETECTED"));
+        for (const reg of regressions) {
+          lines.push(warn(`${reg.test}: ${reg.previous} → ${reg.current}`));
+        }
+      }
+    } catch { /* history save is non-critical */ }
+
     return lines.join("\n");
   }
 

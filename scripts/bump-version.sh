@@ -10,12 +10,13 @@
 #   ./scripts/bump-version.sh 1.1.3-rc.1     # bump to prerelease
 #
 # Locations updated:
-#   1. shared/ollama.ts        EXTENSION_VERSION constant
-#   2. package.json            root version field
-#   3. shared/package.json     shared package version
-#   4. scripts/build-packages.sh  VERSION variable
-#   5. scripts/publish-packages.sh VERSION variable
+#   1. VERSION file            single source of truth (repo root)
+#   2. shared/ollama.ts        EXTENSION_VERSION constant
+#   3. package.json            root version field
+#   4. shared/package.json     shared package version
 #
+# NOTE: scripts/build-packages.sh and scripts/publish-packages.sh derive
+# the version from the VERSION file at runtime — they do NOT need updating.
 # NOTE: npm-packages/*/package.json versions are auto-updated by
 # build-packages.sh via sed — they do NOT need manual bumping.
 # ---------------------------------------------------------------------------
@@ -59,9 +60,13 @@ echo "  ⚡ Pi Extensions — Version Bumper"
 echo ""
 
 # ── Detect current version ────────────────────────────────────────────────
-CURRENT_VERSION="$(grep -oP 'export const EXTENSION_VERSION = "\K[^"]+' "$REPO_ROOT/shared/ollama.ts")"
+if [ ! -f "$REPO_ROOT/VERSION" ]; then
+  echo "Error: VERSION file not found at $REPO_ROOT/VERSION"
+  exit 1
+fi
+CURRENT_VERSION="$(cat "$REPO_ROOT/VERSION" | tr -d '[:space:]')"
 if [ -z "$CURRENT_VERSION" ]; then
-  echo "Error: Could not detect current version from shared/ollama.ts"
+  echo "Error: VERSION file is empty at $REPO_ROOT/VERSION"
   exit 1
 fi
 
@@ -76,30 +81,24 @@ fi
 
 # ── Update each location ─────────────────────────────────────────────────
 
-# 1. shared/ollama.ts — EXTENSION_VERSION constant
+# 1. VERSION file — single source of truth
+log "Updating VERSION file"
+echo "$NEW_VERSION" > "$REPO_ROOT/VERSION"
+
+# 2. shared/ollama.ts — EXTENSION_VERSION constant
 log "Updating shared/ollama.ts"
 sed -i "s/export const EXTENSION_VERSION = \"[^\"]*\"/export const EXTENSION_VERSION = \"$NEW_VERSION\"/" \
   "$REPO_ROOT/shared/ollama.ts"
 
-# 2. Root package.json — version field
+# 3. Root package.json — version field
 log "Updating package.json"
 sed -i "s/\"version\": \"$CURRENT_VERSION\"/\"version\": \"$NEW_VERSION\"/" \
   "$REPO_ROOT/package.json"
 
-# 3. shared/package.json — version field
+# 4. shared/package.json — version field
 log "Updating shared/package.json"
 sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$NEW_VERSION\"/" \
   "$REPO_ROOT/shared/package.json"
-
-# 4. scripts/build-packages.sh — VERSION variable
-log "Updating scripts/build-packages.sh"
-sed -i "s/^VERSION=\"[^\"]*\"/VERSION=\"$NEW_VERSION\"/" \
-  "$REPO_ROOT/scripts/build-packages.sh"
-
-# 5. scripts/publish-packages.sh — VERSION variable
-log "Updating scripts/publish-packages.sh"
-sed -i "s/^VERSION=\"[^\"]*\"/VERSION=\"$NEW_VERSION\"/" \
-  "$REPO_ROOT/scripts/publish-packages.sh"
 
 echo ""
 log "✅ Version bumped: $CURRENT_VERSION → $NEW_VERSION"
