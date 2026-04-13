@@ -806,6 +806,21 @@ export function readRecentAuditEntries(count = 50): Array<Record<string, unknown
   }
 }
 
+// ── Crash-safe audit log flush ───────────────────────────────────────────
+
+// Ensure audit buffer is flushed synchronously on process exit.
+// process.on("exit") callbacks run synchronously and cannot use async APIs,
+// so we call flushAuditBuffer() directly (which uses appendFileSync).
+// Note: process.on("exit") does NOT support async operations or process.exit().
+process.on("exit", () => {
+  flushAuditBuffer();
+});
+
+// Handle SIGTERM (graceful shutdown) — flush then let the process exit.
+process.on("SIGTERM", () => {
+  flushAuditBuffer();
+});
+
 // ============================================================================
 // Tool Input Security Checks
 // ============================================================================

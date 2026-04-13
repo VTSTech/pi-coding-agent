@@ -185,14 +185,14 @@ export function extractJsonArgs(rawArgs: string): Record<string, unknown> | null
   try {
     const parsed = JSON.parse(jsonStr);
     return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : { input: String(parsed) };
-  } catch { /* not valid JSON */ }
+  } catch { /* not valid JSON — expected for non-JSON tool arguments */ }
 
   // Try sanitized parse
   try {
     const sanitized = sanitizeModelJson(jsonStr);
     const parsed = JSON.parse(sanitized);
     return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : { input: String(parsed) };
-  } catch { /* sanitized also failed */ }
+  } catch { /* sanitized parse also failed — will fall through to regex extraction */ }
 
   // Last resort: regex extraction for common patterns
   const exprMatch = jsonStr.match(/['"]expression['"]:\s*['"]([^'"]+)['"]/);

@@ -5,11 +5,14 @@
   "exports": {
     "./config-io": "./config-io.js",
     "./debug": "./debug.js",
+    "./errors": "./errors.js",
     "./format": "./format.js",
     "./model-test-utils": "./model-test-utils.js",
     "./ollama": "./ollama.js",
+    "./provider-sync": "./provider-sync.js",
     "./react-parser": "./react-parser.js",
     "./security": "./security.js",
+    "./test-report": "./test-report.js",
     "./types": "./types.js"
   },
   "keywords": ["pi-extensions"],

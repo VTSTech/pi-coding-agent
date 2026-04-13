@@ -18,6 +18,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { section, ok, fail, warn, info } from "../shared/format";
 import { EXTENSION_VERSION } from "../shared/ollama";
+import { debugLog } from "../shared/debug";
 
 // ── Shared ReAct parser imports ──────────────────────────────────────────
 import {
@@ -54,7 +55,7 @@ function readReactConfig(): ReactConfig {
       const raw = JSON.parse(fs.readFileSync(REACT_CONFIG_PATH, "utf-8"));
       if (typeof raw.enabled === "boolean") return raw;
     }
-  } catch { /* ignore */ }
+  } catch (err) { debugLog("react-fallback", "failed to read ReAct config", err); }
   return { enabled: false };
 }
 
@@ -286,7 +287,7 @@ The bridge will match your tool name (fuzzy matching supported) and normalize ar
             }
           }
         }
-      } catch { /* not JSON */ }
+      } catch (err) { debugLog("react-fallback", "failed to extract JSON from parse test input", err); }
 
       // Check for schema dump
       if (looksLikeSchemaDump(text)) {

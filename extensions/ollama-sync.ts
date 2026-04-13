@@ -6,11 +6,12 @@ import {
   fetchOllamaModels,
   fetchContextLengthsBatched,
   readModelsJson,
-  writeModelsJson,
+  readModifyWriteModelsJson,
   isReasoningModel,
   getOllamaBaseUrl,
   EXTENSION_VERSION,
 } from "../shared/ollama";
+import { mergeModels } from "../shared/provider-sync";
 import { section, ok, fail, warn, info, bytesHuman, estimateMemory } from "../shared/format";
 
 // ── Branding ──────────────────────────────────────────────────────────────
@@ -57,32 +58,6 @@ function buildModelEntry(m: { name: string; details: { parameter_size: string; q
   };
 }
 
-// ── Merge helper ──────────────────────────────────────────────────────────
-
-/**
- * Merge new model entries with old entries, preserving any extra
- * user-defined fields while always refreshing standard metadata.
- */
-function mergeModels(
-  newModels: PiModelEntry[],
-  oldModels: PiModelEntry[]
-): PiModelEntry[] {
-  const oldModelMap = new Map(oldModels.map((m) => [m.id, m]));
-
-  return newModels.map((m) => {
-    const old = oldModelMap.get(m.id);
-    if (old) {
-      // Start with fresh metadata, overlay any extra user fields from old entry
-      const merged = { ...m } as Record<string, unknown>;
-      for (const [k, v] of Object.entries(old)) {
-        if (!(k in m)) merged[k] = v;
-      }
-      return merged as PiModelEntry;
-    }
-    return m;
-  });
-}
-
 // ── Shared sync result type ───────────────────────────────────────────────
 
 interface SyncResult {
@@ -111,13 +86,16 @@ interface SyncResult {
  * Returns a structured SyncResult for the caller to format as needed.
  */
 async function performSync(overrideUrl?: string): Promise<SyncResult> {
-  const existing = readModelsJson();
-  const config = getProviderConfig(existing);
-
-  // URL priority: CLI arg > models.json baseUrl > env var / localhost
-  const ollamaBaseUrl = overrideUrl
-    ? overrideUrl.replace(/\/v1$/, "").replace(/\/+$/, "")
-    : config.baseUrl?.replace(/\/v1$/, "") ?? getOllamaBaseUrl();
+  // URL resolution — preliminary read for config baseUrl (no lock needed)
+  // The actual merge uses a fresh read inside the mutex for correctness.
+  let ollamaBaseUrl: string;
+  if (overrideUrl) {
+    ollamaBaseUrl = overrideUrl.replace(/\/v1$/, "").replace(/\/+$/, "");
+  } else {
+    const preview = readModelsJson();
+    const config = getProviderConfig(preview);
+    ollamaBaseUrl = config.baseUrl?.replace(/\/v1$/, "") ?? getOllamaBaseUrl();
+  }
 
   try {
     const models = await fetchOllamaModels(ollamaBaseUrl);
@@ -146,26 +124,35 @@ async function performSync(overrideUrl?: string): Promise<SyncResult> {
       buildModelEntry(m, contextMap.get(m.name))
     );
 
-    // Diff against old entries
-    const oldIds = new Set(
-      existing.providers["ollama"]?.models?.map((m) => m.id) ?? []
-    );
-    const added = newModels.filter((m) => !oldIds.has(m.id));
-    const removed = [...oldIds].filter((id) => !newModels.some((m) => m.id === id));
+    // Mutex-protected read-modify-write: re-read fresh state, diff, merge, write
+    let added: PiModelEntry[] = [];
+    let removed: string[] = [];
 
-    // Merge preserving extra user fields
-    const mergedModels = mergeModels(
-      newModels,
-      existing.providers["ollama"]?.models ?? []
-    );
+    await readModifyWriteModelsJson((existing) => {
+      const config = getProviderConfig(existing);
 
-    // Write back — use the actual URL we synced from
-    existing.providers["ollama"] = {
-      ...config,
-      baseUrl: ollamaBaseUrl + "/v1",
-      models: mergedModels,
-    };
-    writeModelsJson(existing);
+      // Diff against current entries (re-read inside lock for correctness)
+      const oldIds = new Set(
+        existing.providers["ollama"]?.models?.map((m) => m.id) ?? []
+      );
+      added = newModels.filter((m) => !oldIds.has(m.id));
+      removed = [...oldIds].filter((id) => !newModels.some((m) => m.id === id));
+
+      // Merge preserving extra user fields
+      const mergedModels = mergeModels(
+        newModels,
+        existing.providers["ollama"]?.models ?? []
+      );
+
+      // Write back — use the actual URL we synced from
+      existing.providers["ollama"] = {
+        ...config,
+        baseUrl: ollamaBaseUrl + "/v1",
+        models: mergedModels,
+      };
+
+      return existing;
+    });
 
     return {
       ollamaBaseUrl,

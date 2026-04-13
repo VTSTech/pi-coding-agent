@@ -39,6 +39,12 @@ import {
   testInstructionFollowingUnified,
   TOOL_SUPPORT_CACHE_PATH,
 } from "../shared/model-test-utils";
+import {
+  branding as sharedBranding,
+  formatTestSummary,
+  formatRecommendation,
+  type TestSummaryRow,
+} from "../shared/test-report";
 
 /**
  * Model testing extension for Pi Coding Agent.
@@ -297,9 +303,7 @@ export default function (pi: ExtensionAPI) {
             if (parsed.message?.content) messageContent += parsed.message.content;
             if (parsed.message?.thinking) thinkingContent += parsed.message.thinking;
             if (parsed.done) done = true;
-          } catch {
-            // Skip malformed JSON chunks
-          }
+          } catch (err) { debugLog("model-test", "skipped malformed JSON chunk in streaming response", err); }
         }
       }
 
@@ -919,9 +923,7 @@ export default function (pi: ExtensionAPI) {
         try {
           const args = typeof fn.arguments === "string" ? JSON.parse(fn.arguments) : (fn.arguments || {});
           argsStr = JSON.stringify(args);
-        } catch {
-          argsStr = String(fn.arguments);
-        }
+        } catch (err) { debugLog("model-test", "failed to parse tool call arguments", err); argsStr = String(fn.arguments); }
         const level: ToolSupportLevel = "native";
         cacheToolSupport(model, level, family);
         return {
@@ -1005,11 +1007,18 @@ export default function (pi: ExtensionAPI) {
       if (!res.ok) return [];
       const data = await res.json();
       return (data.models || []).map((m: any) => m.name).filter(Boolean);
-    } catch {
-      return [];
-    }
+    } catch (err) { debugLog("model-test", "failed to list Ollama models", err); return []; }
   }
 
+  /**
+   * Extract the current model ID from a Pi framework agent context.
+   *
+   * @param ctx - Pi framework agent context (typed as `any` because the
+   *   ExtensionAPI does not export the concrete context type. Only the
+   *   `ctx.model.id` property is accessed, which is stable across versions.)
+   * @returns The model ID string, or undefined if not set.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function getCurrentModel(ctx: any): string | undefined {
     return ctx.model?.id;
   }
@@ -1053,21 +1062,22 @@ export default function (pi: ExtensionAPI) {
 
   // ── run all tests on one model ───────────────────────────────────────
 
-  const branding = [
-    `  ⚡ Pi Model Benchmark v${EXTENSION_VERSION}`,
-    `  Written by VTSTech`,
-    `  GitHub: https://github.com/VTSTech`,
-    `  Website: www.vts-tech.org`,
-  ].join("\n");
-
   /**
    * Run the full Ollama test suite (existing behavior).
+   *
+   * @param model - Ollama model identifier (e.g. "qwen3:0.6b").
+   * @param providerInfo - Optional provider info from detectProvider().
+   * @param ctx - Pi framework agent context (typed as `any` because the
+   *   ExtensionAPI does not export the concrete context type. Only
+   *   `ctx.model.provider` is accessed to determine the API mode.)
+   * @returns A multi-line benchmark report string.
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async function testModelOllama(model: string, providerInfo?: ProviderInfo, ctx?: any): Promise<string> {
     const lines: string[] = [];
     const totalStart = Date.now();
 
-    lines.push(branding);
+    lines.push(sharedBranding);
     lines.push(section(`MODEL: ${model}`));
     lines.push(info("Provider: Ollama (local/remote)"));
 
@@ -1115,7 +1125,7 @@ export default function (pi: ExtensionAPI) {
           modelModified = modDate ? modDate.toLocaleDateString() : "unknown";
         }
       }
-    } catch { /* ignore */ }
+    } catch (err) { debugLog("model-test", "failed to fetch model metadata from /api/show", err); }
 
     // Use detected family from shared utility (falls back to Ollama-reported family)
     const detectedFamily = detectModelFamily(model);
@@ -1288,11 +1298,10 @@ export default function (pi: ExtensionAPI) {
     lines.push(info(`Cache: ${TOOL_SUPPORT_CACHE_PATH}`));
 
     // Summary
-    lines.push(section("SUMMARY"));
     const totalMs = Date.now() - totalStart;
     const toolPass = tools.score === "STRONG" || tools.score === "MODERATE";
     const reactPass = react.score === "STRONG" || react.score === "MODERATE";
-    const tests = [
+    const ollamaTests: TestSummaryRow[] = [
       { name: "Reasoning", pass: reasoning.score === "STRONG" || reasoning.score === "MODERATE", score: reasoning.score },
       { name: "Thinking", pass: thinking.supported, score: thinking.supported ? "YES" : "NO" },
       { name: "Tool Usage", pass: toolPass, score: tools.score },
@@ -1300,26 +1309,10 @@ export default function (pi: ExtensionAPI) {
       { name: "Instructions", pass: instructions.pass, score: instructions.score },
       { name: "Tool Support", pass: toolSupport.level === "native" || toolSupport.level === "react", score: toolSupport.level.toUpperCase() },
     ];
-    const passed = tests.filter(t => t.pass).length;
-    const total = tests.length;
-
-    for (const t of tests) {
-      lines.push(t.pass ? ok(`${t.name}: ${t.score}`) : fail(`${t.name}: ${t.score}`));
-    }
-    lines.push(info(`Total time: ${msHuman(totalMs)}`));
-    lines.push(info(`Score: ${passed}/${total} tests passed`));
-
-    // Recommendation
-    lines.push(section("RECOMMENDATION"));
-    if (passed === 6) {
-      lines.push(ok(`${model} is a STRONG model — full capability`));
-    } else if (passed >= 5) {
-      lines.push(ok(`${model} is a GOOD model — most capabilities work`));
-    } else if (passed >= 4) {
-      lines.push(warn(`${model} is USABLE — some capabilities are limited`));
-    } else {
-      lines.push(fail(`${model} is WEAK — limited capabilities for agent use`));
-    }
+    const passed = ollamaTests.filter(t => t.pass).length;
+    const total = ollamaTests.length;
+    lines.push(...formatTestSummary(ollamaTests, totalMs));
+    lines.push(...formatRecommendation(model, passed, total));
 
     // Save test history
     try {
@@ -1350,7 +1343,7 @@ export default function (pi: ExtensionAPI) {
           lines.push(warn(`${reg.test}: ${reg.previous} → ${reg.current}`));
         }
       }
-    } catch { /* history save is non-critical */ }
+    } catch (err) { debugLog("model-test", "failed to save test history", err); }
 
     return lines.join("\n");
   }
@@ -1364,7 +1357,7 @@ export default function (pi: ExtensionAPI) {
     const lines: string[] = [];
     const totalStart = Date.now();
 
-    lines.push(branding);
+    lines.push(sharedBranding);
     lines.push(section(`MODEL: ${model}`));
     lines.push(info(`Provider: ${providerInfo.name} (built-in)`));
     lines.push(info(`API: ${providerInfo.apiMode || "openai-completions"}`));
@@ -1488,34 +1481,17 @@ export default function (pi: ExtensionAPI) {
     lines.push(warn("Model metadata — Ollama-specific /api/tags endpoint"));
 
     // Summary
-    lines.push(section("SUMMARY"));
     const totalMs = Date.now() - totalStart;
-    const tests = [
+    const providerTests: TestSummaryRow[] = [
       { name: "Connectivity", pass: connectivity.pass, score: connectivity.pass ? "OK" : "FAIL" },
       { name: "Reasoning", pass: reasoning.score === "STRONG" || reasoning.score === "MODERATE", score: reasoning.score },
       { name: "Instructions", pass: instructions.pass, score: instructions.score },
       { name: "Tool Usage", pass: toolTest.pass, score: toolTest.score },
     ];
-    const passed = tests.filter(t => t.pass).length;
-    const total = tests.length;
-
-    for (const t of tests) {
-      lines.push(t.pass ? ok(`${t.name}: ${t.score}`) : fail(`${t.name}: ${t.score}`));
-    }
-    lines.push(info(`Total time: ${msHuman(totalMs)}`));
-    lines.push(info(`Score: ${passed}/${total} tests passed`));
-
-    // Recommendation
-    lines.push(section("RECOMMENDATION"));
-    if (passed === 4) {
-      lines.push(ok(`${model} is a STRONG model via ${providerInfo.name} — full capability`));
-    } else if (passed >= 3) {
-      lines.push(ok(`${model} is a GOOD model via ${providerInfo.name} — most capabilities work`));
-    } else if (passed >= 2) {
-      lines.push(warn(`${model} is USABLE via ${providerInfo.name} — some capabilities are limited`));
-    } else {
-      lines.push(fail(`${model} is WEAK via ${providerInfo.name} — limited capabilities for agent use`));
-    }
+    const passed = providerTests.filter(t => t.pass).length;
+    const total = providerTests.length;
+    lines.push(...formatTestSummary(providerTests, totalMs));
+    lines.push(...formatRecommendation(model, passed, total, providerInfo.name));
 
     // Save test history
     try {
@@ -1546,7 +1522,7 @@ export default function (pi: ExtensionAPI) {
           lines.push(warn(`${reg.test}: ${reg.previous} → ${reg.current}`));
         }
       }
-    } catch { /* history save is non-critical */ }
+    } catch (err) { debugLog("model-test", "failed to save provider test history", err); }
 
     return lines.join("\n");
   }
@@ -1576,9 +1552,7 @@ export default function (pi: ExtensionAPI) {
         const models = await getOllamaModels();
         return models.map(m => ({ label: m, description: `Test ${m}` }))
           .filter(m => m.label.startsWith(prefix));
-      } catch {
-        return [];
-      }
+      } catch (err) { debugLog("model-test", "failed to get model completions", err); return []; }
     },
     handler: async (args, ctx) => {
       if (!ctx.hasUI) {
@@ -1601,7 +1575,8 @@ export default function (pi: ExtensionAPI) {
         let models: string[];
         try {
           models = await getOllamaModels();
-        } catch {
+        } catch (err) {
+          debugLog("model-test", "failed to list Ollama models for --all", err);
           ctx.ui.notify("Could not list Ollama models", "error");
           return;
         }

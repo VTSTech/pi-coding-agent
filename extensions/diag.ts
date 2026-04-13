@@ -17,6 +17,21 @@ import {
   validatePath, isSafeUrl, sanitizeCommand, readRecentAuditEntries,
   AUDIT_LOG_PATH,
 } from "../shared/security";
+import { debugLog } from "../shared/debug";
+
+// ── Secret redaction ───────────────────────────────────────────────────
+
+const SECRET_KEY_PATTERNS = [
+  /key/i, /token/i, /secret/i, /password/i, /credential/i, /auth/i, /apikey/i, /api_key/i,
+];
+
+function redactValue(key: string, value: unknown): string {
+  if (typeof value !== "string") return JSON.stringify(value);
+  if (SECRET_KEY_PATTERNS.some(p => p.test(key))) return "[REDACTED]";
+  // Also redact values that look like API keys (long strings with no spaces)
+  if (value.length > 20 && !value.includes(" ") && /^[A-Za-z0-9_\-+/=]+$/.test(value)) return value.slice(0, 8) + "...";
+  return value;
+}
 
 /**
  * Diagnostic extension for Pi Coding Agent.
@@ -34,6 +49,17 @@ export default function (pi: ExtensionAPI) {
     `  Website: www.vts-tech.org`,
   ].join("\n");
 
+  /**
+   * Run all diagnostic checks and return a formatted report string.
+   *
+   * @param ctx - Pi framework agent context (typed as `any` because the
+   *   ExtensionAPI does not export the concrete context type. The context
+   *   provides `ctx.model` (with `id`, `provider`, `contextWindow`,
+   *   `maxTokens`), `ctx.getContextUsage()`, and `ctx.ui` properties whose
+   *   shapes vary across Pi versions.)
+   * @returns A multi-line diagnostic report string.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async function runDiagnostics(ctx: any): Promise<string> {
     const lines: string[] = [];
     let passCount = 0;
@@ -140,7 +166,7 @@ export default function (pi: ExtensionAPI) {
               lines.push(info("No model currently loaded in Ollama"));
             }
           }
-        } catch { /* ignore */ }
+        } catch (err) { debugLog("diag", "failed to check remote Ollama loaded models", err); }
       }
     } else {
       // Local Ollama — probe via CLI
@@ -185,7 +211,7 @@ export default function (pi: ExtensionAPI) {
               lines.push(warn("No model currently loaded in Ollama"));
             }
           }
-        } catch { /* ignore */ }
+        } catch (err) { debugLog("diag", "failed to check local Ollama loaded models", err); }
       }
     }
 
@@ -246,7 +272,7 @@ export default function (pi: ExtensionAPI) {
         const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
         lines.push(info("Global settings found:"));
         for (const [key, val] of Object.entries(settings)) {
-          lines.push(info(`  ${key}: ${JSON.stringify(val)}`));
+          lines.push(info(`  ${key}: ${redactValue(key, val)}`));
         }
         check(true, "settings.json valid JSON", "");
       } catch (e: any) {

@@ -40,6 +40,7 @@ import {
 import { debugLog } from "../shared/debug";
 import { section, ok, fail, warn, info, bytesHuman } from "../shared/format";
 import { EXTENSION_VERSION } from "../shared/ollama";
+import { SecurityError } from "../shared/errors";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -198,6 +199,12 @@ export default function (pi: ExtensionAPI) {
   // multi-level completion. The simpler getArgumentCompletions on registerCommand
   // only supports a single argument level and silently drops unmatched tokens.
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // NOTE: Cast to `any` is required because pi.registerCompletion() expects a
+  // specific CompletionHandler type whose shape includes additional internal
+  // fields not exposed in the public ExtensionAPI types. Our object satisfies
+  // the functional contract (getCompletions + getArgumentCompletions) but does
+  // not match the exact TypeScript interface, which is version-dependent.
   pi.registerCompletion?.("security", {
     getCompletions: () => {
       return [

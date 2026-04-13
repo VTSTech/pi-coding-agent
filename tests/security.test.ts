@@ -1,4 +1,4 @@
-import { describe, it, test } from "node:test";
+import { describe, it, test, after } from "node:test";
 import assert from "node:assert/strict";
 import {
   validatePath,
@@ -9,10 +9,16 @@ import {
   checkHttpToolInput,
   checkInjectionPatterns,
   BLOCKED_COMMANDS,
+  CRITICAL_COMMANDS,
+  EXTENDED_COMMANDS,
   appendAuditEntry,
   readRecentAuditEntries,
   BLOCKED_URL_PATTERNS,
   AUDIT_LOG_PATH,
+  SECURITY_CONFIG_PATH,
+  SETTINGS_PATH,
+  setSecurityMode,
+  getSecurityMode,
 } from "../shared/security";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -670,4 +676,389 @@ test("resolveAndCheckHostname respects blockPrivate=false", async () => {
   // Depends on DNS resolution — just verify it returns valid structure
   assert.ok(typeof result.safe === "boolean");
   assert.ok(typeof result.error === "string");
+});
+
+// ============================================================================
+// TEST-01: Extended Security Unit Tests
+// ============================================================================
+
+// ── sanitizeCommand — mode-aware behavior ────────────────────────────
+
+describe("sanitizeCommand — mode-aware behavior", () => {
+  const originalMode = getSecurityMode();
+
+  after(() => {
+    setSecurityMode(originalMode);
+  });
+
+  it("allows safe command in basic mode", () => {
+    setSecurityMode("basic");
+    const result = sanitizeCommand("ls -la /home/user/project");
+    assert.equal(result.isSafe, true);
+    assert.equal(result.error, "");
+    assert.equal(result.command, "ls -la /home/user/project");
+  });
+
+  it("allows safe command in max mode", () => {
+    setSecurityMode("max");
+    const result = sanitizeCommand("ls -la /home/user/project");
+    assert.equal(result.isSafe, true);
+    assert.equal(result.error, "");
+  });
+
+  it("blocks critical command (dd) regardless of mode", () => {
+    setSecurityMode("basic");
+    const result = sanitizeCommand("dd if=/dev/zero of=/dev/sda");
+    assert.equal(result.isSafe, false);
+    assert.ok(result.error.includes("dd"));
+    assert.ok(result.error.includes("critical"));
+  });
+
+  it("blocks critical command (ssh) regardless of mode", () => {
+    setSecurityMode("max");
+    const result = sanitizeCommand("ssh user@host");
+    assert.equal(result.isSafe, false);
+    assert.ok(result.error.includes("ssh"));
+    assert.ok(result.error.includes("critical"));
+  });
+
+  it("blocks extended command (npm) in max mode but allows in basic mode", () => {
+    setSecurityMode("max");
+    const resultMax = sanitizeCommand("npm install lodash");
+    assert.equal(resultMax.isSafe, false);
+    assert.ok(resultMax.error.includes("npm"));
+    assert.ok(resultMax.error.includes("max mode"));
+
+    setSecurityMode("basic");
+    const resultBasic = sanitizeCommand("npm install lodash");
+    assert.equal(resultBasic.isSafe, true);
+    assert.equal(resultBasic.error, "");
+  });
+
+  it("blocks extended command (rm) in max mode but allows in basic mode", () => {
+    setSecurityMode("max");
+    const resultMax = sanitizeCommand("rm -rf /tmp/stale-cache");
+    assert.equal(resultMax.isSafe, false);
+    assert.ok(resultMax.error.includes("rm"));
+    assert.ok(resultMax.error.includes("max mode"));
+
+    setSecurityMode("basic");
+    const resultBasic = sanitizeCommand("rm -rf /tmp/stale-cache");
+    assert.equal(resultBasic.isSafe, true);
+  });
+
+  it("blocks shell injection attempt ($() substitution)", () => {
+    setSecurityMode("basic");
+    const result = sanitizeCommand("echo $(cat /etc/passwd)");
+    assert.equal(result.isSafe, false);
+    assert.ok(result.error.includes("injection"));
+  });
+
+  it("blocks shell injection attempt (backtick substitution)", () => {
+    setSecurityMode("basic");
+    const result = sanitizeCommand("echo `whoami`");
+    assert.equal(result.isSafe, false);
+    assert.ok(result.error.includes("injection"));
+  });
+
+  it("rejects empty command string", () => {
+    const result = sanitizeCommand("");
+    assert.equal(result.isSafe, false);
+    assert.ok(result.error.includes("empty"));
+  });
+
+  it("rejects whitespace-only command", () => {
+    const result = sanitizeCommand("   ");
+    assert.equal(result.isSafe, false);
+    assert.ok(result.error.includes("empty"));
+  });
+});
+
+// ── CRITICAL_COMMANDS and EXTENDED_COMMANDS partitioning ─────────────
+
+describe("CRITICAL_COMMANDS", () => {
+  it("contains destructive filesystem commands", () => {
+    assert.ok(CRITICAL_COMMANDS.has("mkfs"));
+    assert.ok(CRITICAL_COMMANDS.has("dd"));
+    assert.ok(CRITICAL_COMMANDS.has("shred"));
+  });
+
+  it("contains privilege escalation commands", () => {
+    assert.ok(CRITICAL_COMMANDS.has("su"));
+    assert.ok(CRITICAL_COMMANDS.has("doas"));
+    assert.ok(CRITICAL_COMMANDS.has("pkexec"));
+  });
+
+  it("contains network attack tools", () => {
+    assert.ok(CRITICAL_COMMANDS.has("nmap"));
+    assert.ok(CRITICAL_COMMANDS.has("nc"));
+    assert.ok(CRITICAL_COMMANDS.has("telnet"));
+  });
+
+  it("does not contain extended-only commands", () => {
+    assert.ok(!CRITICAL_COMMANDS.has("rm"));
+    assert.ok(!CRITICAL_COMMANDS.has("sudo"));
+    assert.ok(!CRITICAL_COMMANDS.has("curl"));
+    assert.ok(!CRITICAL_COMMANDS.has("npm"));
+    assert.ok(!CRITICAL_COMMANDS.has("git"));
+  });
+
+  it("is disjoint from EXTENDED_COMMANDS", () => {
+    for (const cmd of CRITICAL_COMMANDS) {
+      assert.ok(!EXTENDED_COMMANDS.has(cmd), `${cmd} should not be in both CRITICAL and EXTENDED`);
+    }
+  });
+});
+
+describe("EXTENDED_COMMANDS", () => {
+  it("contains file deletion commands", () => {
+    assert.ok(EXTENDED_COMMANDS.has("rm"));
+    assert.ok(EXTENDED_COMMANDS.has("rmdir"));
+  });
+
+  it("contains download tools", () => {
+    assert.ok(EXTENDED_COMMANDS.has("wget"));
+    assert.ok(EXTENDED_COMMANDS.has("curl"));
+  });
+
+  it("contains package managers", () => {
+    assert.ok(EXTENDED_COMMANDS.has("npm"));
+    assert.ok(EXTENDED_COMMANDS.has("pip"));
+    assert.ok(EXTENDED_COMMANDS.has("cargo"));
+  });
+
+  it("contains version control", () => {
+    assert.ok(EXTENDED_COMMANDS.has("git"));
+  });
+
+  it("does not contain critical-only commands", () => {
+    assert.ok(!EXTENDED_COMMANDS.has("mkfs"));
+    assert.ok(!EXTENDED_COMMANDS.has("ssh"));
+    assert.ok(!EXTENDED_COMMANDS.has("nmap"));
+  });
+});
+
+// ── validatePath — additional coverage ───────────────────────────────
+
+describe("validatePath — sensitive paths", () => {
+  it("rejects security.json (SECURITY_CONFIG_PATH)", () => {
+    const result = validatePath(SECURITY_CONFIG_PATH);
+    assert.equal(result.valid, false);
+    assert.ok(result.error.includes("sensitive"));
+  });
+
+  it("rejects settings.json (SETTINGS_PATH)", () => {
+    const result = validatePath(SETTINGS_PATH);
+    assert.equal(result.valid, false);
+    assert.ok(result.error.includes("sensitive"));
+  });
+});
+
+describe("validatePath — edge cases", () => {
+  it("rejects path traversal with single ../", () => {
+    const result = validatePath("../etc/passwd");
+    assert.equal(result.valid, false);
+    assert.ok(result.error.includes("traversal"));
+  });
+
+  it("rejects /var directory (system directory)", () => {
+    const result = validatePath("/var/log/syslog");
+    assert.equal(result.valid, false);
+    assert.ok(result.error.includes("/var"));
+  });
+
+  it("rejects /usr directory (system directory)", () => {
+    const result = validatePath("/usr/bin/env");
+    assert.equal(result.valid, false);
+    assert.ok(result.error.includes("/usr"));
+  });
+});
+
+// ── isSafeUrl — mode-aware localhost behavior ────────────────────────
+
+describe("isSafeUrl — mode-aware localhost behavior", () => {
+  const originalMode = getSecurityMode();
+
+  after(() => {
+    setSecurityMode(originalMode);
+  });
+
+  it("allows public URL in both modes", () => {
+    setSecurityMode("max");
+    const resultMax = isSafeUrl("https://api.github.com/repos/test/data");
+    assert.equal(resultMax.safe, true);
+
+    setSecurityMode("basic");
+    const resultBasic = isSafeUrl("https://api.github.com/repos/test/data");
+    assert.equal(resultBasic.safe, true);
+  });
+
+  it("always blocks cloud metadata URL", () => {
+    setSecurityMode("basic");
+    const result = isSafeUrl("http://169.254.169.254/latest/meta-data/ami-id");
+    assert.equal(result.safe, false);
+    assert.ok(result.error.includes("SSRF"));
+  });
+
+  it("always blocks private IP (10.x)", () => {
+    setSecurityMode("basic");
+    const result = isSafeUrl("http://10.0.0.1/admin");
+    assert.equal(result.safe, false);
+    assert.ok(result.error.includes("SSRF"));
+  });
+
+  it("always blocks private IP (192.168.x)", () => {
+    setSecurityMode("basic");
+    const result = isSafeUrl("http://192.168.1.1/panel");
+    assert.equal(result.safe, false);
+    assert.ok(result.error.includes("SSRF"));
+  });
+
+  it("allows localhost in basic mode", () => {
+    setSecurityMode("basic");
+    const result = isSafeUrl("http://localhost:3000/debug");
+    assert.equal(result.safe, true);
+    assert.equal(result.error, "");
+  });
+
+  it("allows 127.x in basic mode", () => {
+    setSecurityMode("basic");
+    const result = isSafeUrl("http://127.0.0.1:8080/api");
+    assert.equal(result.safe, true);
+    assert.equal(result.error, "");
+  });
+
+  it("blocks localhost in max mode", () => {
+    setSecurityMode("max");
+    const result = isSafeUrl("http://localhost:3000/debug");
+    assert.equal(result.safe, false);
+    assert.ok(result.error.includes("SSRF"));
+    assert.ok(result.error.includes("max mode"));
+  });
+
+  it("blocks 127.x in max mode", () => {
+    setSecurityMode("max");
+    const result = isSafeUrl("http://127.0.0.1:8080/api");
+    assert.equal(result.safe, false);
+    assert.ok(result.error.includes("SSRF"));
+  });
+});
+
+// ── checkBashToolInput — extended coverage ───────────────────────────
+
+describe("checkBashToolInput — extended coverage", () => {
+  const originalMode = getSecurityMode();
+
+  after(() => {
+    setSecurityMode(originalMode);
+  });
+
+  it("blocks dangerous command (nmap)", () => {
+    setSecurityMode("max");
+    const result = checkBashToolInput({ command: "nmap -sV target.local" });
+    assert.equal(result.safe, false);
+    assert.equal(result.rule, "command_blocklist");
+  });
+
+  it("allows safe command (ls) in both modes", () => {
+    setSecurityMode("max");
+    const resultMax = checkBashToolInput({ command: "ls -la /home/user" });
+    assert.equal(resultMax.safe, true);
+
+    setSecurityMode("basic");
+    const resultBasic = checkBashToolInput({ command: "ls -la /home/user" });
+    assert.equal(resultBasic.safe, true);
+  });
+
+  it("blocks injection pattern in command ($() substitution)", () => {
+    setSecurityMode("basic");
+    const result = checkBashToolInput({ command: "echo $(whoami)" });
+    assert.equal(result.safe, false);
+    assert.equal(result.rule, "command_blocklist");
+    assert.ok(result.detail.includes("injection"));
+  });
+
+  it("blocks injection pattern in command (backtick substitution)", () => {
+    setSecurityMode("basic");
+    const result = checkBashToolInput({ command: "echo `id`" });
+    assert.equal(result.safe, false);
+    assert.equal(result.rule, "command_blocklist");
+    assert.ok(result.detail.includes("injection"));
+  });
+});
+
+// ── checkFileToolInput — extended coverage ───────────────────────────
+
+describe("checkFileToolInput — extended coverage", () => {
+  it("allows valid file path in cwd", () => {
+    const result = checkFileToolInput({ file_path: path.join(process.cwd(), "README.md") });
+    assert.equal(result.safe, true);
+  });
+
+  it("blocks system directory access (/proc)", () => {
+    const result = checkFileToolInput({ file_path: "/proc/self/mem" });
+    assert.equal(result.safe, false);
+    assert.equal(result.rule, "path_validation");
+  });
+
+  it("blocks path traversal attempt", () => {
+    const result = checkFileToolInput({ file_path: "../../etc/shadow" });
+    assert.equal(result.safe, false);
+    assert.equal(result.rule, "path_validation");
+    assert.ok(result.detail.includes("traversal"));
+  });
+
+  it("blocks sensitive path (.ssh)", () => {
+    const sshPath = path.join(os.homedir(), ".ssh", "id_rsa");
+    const result = checkFileToolInput({ file_path: sshPath });
+    assert.equal(result.safe, false);
+    assert.equal(result.rule, "path_validation");
+  });
+
+  it("allows /var/tmp paths", () => {
+    const result = checkFileToolInput({ file_path: "/var/tmp/build-output.log" });
+    assert.equal(result.safe, true);
+  });
+});
+
+// ── checkHttpToolInput — extended coverage ───────────────────────────
+
+describe("checkHttpToolInput — extended coverage", () => {
+  const originalMode = getSecurityMode();
+
+  after(() => {
+    setSecurityMode(originalMode);
+  });
+
+  it("allows public URL", () => {
+    const result = checkHttpToolInput({ url: "https://registry.npmjs.org/package" });
+    assert.equal(result.safe, true);
+  });
+
+  it("blocks SSRF pattern (cloud metadata) in both modes", () => {
+    setSecurityMode("basic");
+    const result = checkHttpToolInput({ url: "http://169.254.169.254/latest/meta-data/" });
+    assert.equal(result.safe, false);
+    assert.equal(result.rule, "ssrf_protection");
+  });
+
+  it("blocks localhost (max mode)", () => {
+    setSecurityMode("max");
+    const result = checkHttpToolInput({ url: "http://127.0.0.1:9200/_cat/indices" });
+    assert.equal(result.safe, false);
+    assert.equal(result.rule, "ssrf_protection");
+  });
+
+  it("allows localhost in basic mode", () => {
+    setSecurityMode("basic");
+    const result = checkHttpToolInput({ url: "http://localhost:5432/status" });
+    assert.equal(result.safe, true);
+  });
+
+  it("blocks internal. hostname pattern", () => {
+    setSecurityMode("basic");
+    const result = checkHttpToolInput({ url: "http://internal.corp.local/secrets" });
+    assert.equal(result.safe, false);
+    assert.equal(result.rule, "ssrf_protection");
+  });
 });

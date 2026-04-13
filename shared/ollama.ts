@@ -509,7 +509,8 @@ export async function fetchModelContextLength(
       // Fallback: generic "num_ctx" key
       const numCtx = data?.model_info?.["num_ctx"];
       if (typeof numCtx === "number") return numCtx;
-    } catch {
+    } catch (err) {
+      debugLog("ollama", `failed to fetch context length for ${model}`, err);
       return undefined;
     }
     return undefined;

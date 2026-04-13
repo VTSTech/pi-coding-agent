@@ -4,8 +4,10 @@
  * Each piece of info (CPU, RAM, tokens, security, etc.) gets its own named slot
  * so it composes cleanly with other extensions' status items.
  *
- * Metrics update every 5 seconds. All status slots are cleared on session_shutdown.
+ * Metrics update every 5 seconds while a session is active; polling is paused between
+ * sessions (interval created on session_start, cleared on session_shutdown).
  * Active tool timing uses a fast 1s sub-interval while a tool is running.
+ * Both intervals use .unref() so they never prevent the process from exiting.
  *
  * Written by VTSTech
  * GitHub: https://github.com/VTSTech
@@ -141,7 +143,7 @@ export default function (pi: ExtensionAPI) {
           }
         }
       }
-    } catch { /* ignore */ }
+    } catch (err) { debugLog("status", "failed to detect local provider", err); }
     return false;
   }
 
@@ -164,7 +166,7 @@ export default function (pi: ExtensionAPI) {
           if (ctx != null) {
             footerNativeCtx = ctx >= 1000 ? `${(ctx / 1000).toFixed(0)}k` : String(ctx);
           }
-        } catch { /* ignore */ }
+        } catch (err) { debugLog("status", "failed to fetch native model context", err); }
         finally { nativeCtxPromise = null; }
       })();
     }
@@ -305,12 +307,16 @@ export default function (pi: ExtensionAPI) {
       const { stdout } = await execAsync("pi -v 2>&1", { timeout: 5000 });
       const out = stdout.trim();
       if (out) versionsText = `pi:${out}`;
-    } catch { /* ignore */ }
+    } catch (err) { debugLog("status", "failed to fetch Pi version", err); }
     updateMetrics();
 
     // Main metrics loop (every 5s)
+    // Interval is session-gated: started here on session_start, cleared on session_shutdown.
     if (updateInterval) clearInterval(updateInterval);
     updateInterval = setInterval(updateMetrics, STATUS_UPDATE_INTERVAL_MS);
+    // Allow process to exit even if the status interval is still pending
+    // (unref() is a Node.js Timer method — safe because this runs only in Node.js)
+    (updateInterval as unknown as { unref(): void }).unref();
   });
 
   pi.on("session_shutdown", async (_event, ctx) => {
@@ -418,6 +424,9 @@ export default function (pi: ExtensionAPI) {
   function startToolTimer() {
     if (toolTimerInterval) return; // already running
     toolTimerInterval = setInterval(flushStatus, TOOL_TIMER_INTERVAL_MS);
+    // Allow process to exit even if the tool timer is still pending
+    // (unref() is a Node.js Timer method — safe because this runs only in Node.js)
+    (toolTimerInterval as unknown as { unref(): void }).unref();
   }
 
   /** Stop the fast tool timer interval. */
@@ -430,6 +439,13 @@ export default function (pi: ExtensionAPI) {
 
   /**
    * Track tool_call events for security blocking.
+   *
+   * eslint-disable-next-line @typescript-eslint/no-explicit-any
+   * NOTE: `event` is typed as `any` because the Pi framework does not export
+   * specific event type interfaces for tool_call events. The event shape
+   * varies across Pi versions and includes properties like `tool`, `name`,
+   * `blocked`, and `result`. Until Pi exports stable event types, `any`
+   * is the only safe option to avoid runtime breakage on framework updates.
    */
   pi.on("tool_call", (event: any) => {
     if (!event) return;
@@ -451,6 +467,12 @@ export default function (pi: ExtensionAPI) {
   /**
    * Track tool_execution_start events to show per-tool timing.
    * Starts a fast 1s update interval so the timer is visible.
+   *
+   * eslint-disable-next-line @typescript-eslint/no-explicit-any
+   * NOTE: `event` is typed as `any` because the Pi framework does not export
+   * specific event type interfaces for tool_execution_start events. The event
+   * shape includes `tool`/`name` properties but is not formally typed in the
+   * ExtensionAPI. Using `any` avoids type cast fragility across Pi versions.
    */
   pi.on("tool_execution_start", (event: any) => {
     if (!event) return;

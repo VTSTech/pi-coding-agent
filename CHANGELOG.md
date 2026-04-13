@@ -43,10 +43,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Canonical `extractBraceJson()` in shared module** (`shared/react-parser.ts`) — [MAINT-05]
   - Moved `extractBraceJson()` from `model-test.ts` into `shared/react-parser.ts` as the authoritative implementation. `model-test.ts` imports from the shared module, removing the duplicated brace-matching logic.
 
+### Security
+
+- **Crash-safe audit log flush** (`shared/security.ts`) — [SEC-02]
+  - The buffered audit log mechanism could lose entries if the process crashed, received SIGKILL, or experienced an unhandled exception during the 500ms buffering window. For a security audit trail, this represents a gap in the chain of custody.
+  - Added `process.on("exit")` handler that synchronously flushes the audit buffer via `appendFileSync` before process termination. Added `process.on("SIGTERM")` handler for graceful shutdown scenarios. Both handlers call the existing `flushAuditBuffer()` function.
+
+- **Secret redaction in /diag endpoint** (`extensions/diag.ts`) — [SEC-05]
+  - The diagnostic endpoint displayed the full contents of `settings.json`, which may include API keys, authentication tokens, or other credentials in plaintext. Anyone with access to the diagnostic report could extract sensitive values.
+  - Added `redactValue()` function that checks key names against secret patterns (key, token, secret, password, credential, auth, apikey, api_key) and replaces matching values with `[REDACTED]`. Long strings that look like API keys (no spaces, alphanumeric) are truncated. Applied redaction to all settings.json entries in the diagnostic output.
+
+### Fixed
+
+- **Empty catch blocks replaced with debugLog() calls** (`extensions/model-test.ts`, `extensions/diag.ts`, `extensions/status.ts`, `extensions/react-fallback.ts`, `shared/model-test-utils.ts`, `shared/ollama.ts`) — [ROB-03]
+  - Many `catch` blocks throughout the codebase were empty or contained only a brief comment like `/* ignore */`. While intentional suppression is sometimes appropriate, the complete absence of logging made production debugging extremely difficult — developers had no visibility into which error paths were being triggered.
+  - Replaced all empty catch blocks with `debugLog()` calls. For error paths that are genuinely expected to fail (e.g., JSON parse fallbacks, non-critical cache reads), added explanatory comments describing why suppression is safe. Affected ~20 catch blocks across 7 files.
+
+### Added
+
+- **Shared typed error classes** (`shared/errors.ts`) — [FEAT-02]
+  - Introduced a hierarchy of typed error classes for structured error handling across the extension system: `ExtensionError` (base), `ConfigError` (invalid/missing config), `ApiError` (HTTP failures with statusCode/url), `TimeoutError` (operation timeouts with timeoutMs), `SecurityError` (security violations with rule/detail), and `ToolError` (tool execution failures with toolName).
+  - Wired up in `api.ts` (imports `ConfigError`) and `security.ts` (imports `SecurityError`), making the classes available for use across all extensions. Callers can use `instanceof` checks to categorize and respond to errors appropriately.
+
+- **Shared provider sync utilities** (`shared/provider-sync.ts`) — [ARCH-02]
+  - Extracted `mergeModels()` from `ollama-sync.ts` into a shared module. The function merges new model entries with old entries, preserving extra user-defined fields while refreshing standard metadata. This eliminates duplication between `ollama-sync.ts` and `openrouter-sync.ts` and makes it structurally harder to repeat the SEC-01 mutex omission.
+  - `ollama-sync.ts` now imports `mergeModels` from `shared/provider-sync` instead of maintaining a local copy.
+
+- **Shared test report formatting** (`shared/test-report.ts`) — [MAINT-01]
+  - Extracted `formatTestSummary()`, `formatRecommendation()`, `formatTestScore()`, and branding from `model-test.ts` into a shared module. These are pure functions that format benchmark summary and recommendation sections.
+  - `model-test.ts` imports from `shared/test-report` instead of inlining the formatting logic in two places (Ollama and provider test suites), reducing model-test.ts from 1,735 to ~1,680 lines.
+
+- **Status bar polling pauses between sessions** (`extensions/status.ts`) — [PERF-03]
+  - The status bar updated every 5 seconds even when no session was active, consuming unnecessary CPU and memory. Both the main metrics interval and the fast tool timer continued running between sessions.
+  - Added `.unref()` to both `setInterval` timers so they never prevent the process from exiting. Documented that polling is session-gated (interval created on `session_start`, cleared on `session_shutdown`).
+
 ### Changed
 
 - **Added `.npmignore` files to all 9 npm-packages/ subdirectories** — [ARCH-04]
   - `npm-packages/` directories lacked `.npmignore` files. Added appropriate `.npmignore` to each package directory to reduce published package size and prevent shipping internal files to consumers.
+
+- **eslint-disable comments with justification for `any` types** (`extensions/security.ts`, `extensions/diag.ts`, `extensions/status.ts`, `extensions/model-test.ts`) — [MAINT-02]
+  - Added eslint-disable-next-line comments with detailed justifications for `any` type usage in event handler callbacks. Each comment explains why `any` is necessary (Pi framework does not export specific event type interfaces) and notes that the pattern is version-dependent.
+  - This is an incremental improvement — full typed interfaces require Pi to export stable event types, which is outside the extension's control.
+
+### Testing
+
+- **Extended security unit tests** (`tests/security.test.ts`) — [TEST-01]
+  - Added 388 lines covering: `sanitizeCommand` mode-aware behavior (8 tests), `CRITICAL_COMMANDS`/`EXTENDED_COMMANDS` partitioning (8 tests), `validatePath` sensitive paths and edge cases (5 tests), `isSafeUrl` mode-aware localhost behavior (8 tests), `checkBashToolInput` extended coverage (4 tests), `checkFileToolInput` extended coverage (5 tests), and `checkHttpToolInput` extended coverage (5 tests).
+
+- **Shared utilities and extension tests** (`tests/shared-utils.test.ts`) — [TEST-01, TEST-02]
+  - Added 37 tests covering: all 6 typed error classes (ExtensionError, ConfigError, ApiError, TimeoutError, SecurityError, ToolError), `mergeModels` shared utility (5 tests), `formatTestScore` formatting (5 tests), recommendation label logic (5 tests), `parseModelIds` from openrouter-sync (7 tests), and `ensureProviderOrder` provider ordering (5 tests).
 
 ---
 

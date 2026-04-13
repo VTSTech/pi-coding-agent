@@ -34,7 +34,7 @@ export function readJsonConfig<T = Record<string, any>>(
     if (fs.existsSync(filePath)) {
       return JSON.parse(fs.readFileSync(filePath, "utf-8")) as T;
     }
-  } catch { /* ignore — return default */ }
+  } catch (err) { /* read failure is non-critical — caller receives defaultValue */ }
   return defaultValue;
 }
 

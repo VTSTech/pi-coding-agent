@@ -90,7 +90,7 @@ export function readTestConfig(): ModelTestUserConfig {
       const raw = fs.readFileSync(TEST_CONFIG_PATH, "utf-8");
       return JSON.parse(raw) as ModelTestUserConfig;
     }
-  } catch { /* ignore parse errors */ }
+  } catch { /* config read/parse failure is non-critical — defaults are used */ }
   return {};
 }
 
@@ -230,7 +230,7 @@ export function readToolSupportCache(): ToolSupportCache {
       const raw = fs.readFileSync(TOOL_SUPPORT_CACHE_PATH, "utf-8");
       return JSON.parse(raw) as ToolSupportCache;
     }
-  } catch { /* ignore parse errors */ }
+  } catch { /* cache read/parse failure is non-critical — cache will be rebuilt */ }
   return {};
 }
 
@@ -329,7 +329,7 @@ export function readTestHistory(): TestHistoryFile {
       const raw = fs.readFileSync(TEST_HISTORY_PATH, "utf-8");
       return JSON.parse(raw) as TestHistoryFile;
     }
-  } catch { /* ignore parse errors */ }
+  } catch { /* history read/parse failure is non-critical — returns empty history */ }
   return {};
 }
 
@@ -527,6 +527,7 @@ export async function testToolUsageUnified(
       try {
         args = typeof fn.arguments === "string" ? JSON.parse(fn.arguments) : (fn.arguments || {});
       } catch {
+        // Arguments are not valid JSON — still count as tool usage (WEAK)
         return {
           pass: true,
           score: "WEAK",
@@ -634,7 +635,7 @@ The JSON object must have exactly these 4 keys:
       const cleaned = msg.replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
       parsed = JSON.parse(cleaned);
     } catch {
-      // Attempt JSON repair — use stack-based brace/bracket matching
+      // Not valid JSON — attempt repair via brace/bracket matching
       const cleaned = msg.replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
       let braceDepth = 0, bracketDepth = 0;
       let inString = false, escapeNext = false;
