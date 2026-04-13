@@ -94,6 +94,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Shared utilities and extension tests** (`tests/shared-utils.test.ts`) — [TEST-01, TEST-02]
   - Added 37 tests covering: all 6 typed error classes (ExtensionError, ConfigError, ApiError, TimeoutError, SecurityError, ToolError), `mergeModels` shared utility (5 tests), `formatTestScore` formatting (5 tests), recommendation label logic (5 tests), `parseModelIds` from openrouter-sync (7 tests), and `ensureProviderOrder` provider ordering (5 tests).
 
+### Security
+
+- **IPv6-mapped IPv4 SSRF bypass closed** (`shared/security.ts`) — [SEC-03]
+  - The SSRF protection checked for `::ffff:127.0.0.1` and `::ffff:0.0.0.0` as exact strings but did not handle the general `::ffff:0:0/96` prefix (RFC 4291). A dual-stack system could resolve `::ffff:10.0.0.1` to the same host as `10.0.0.1`, bypassing the RFC1918 private range check. Similarly, `::ffff:169.254.169.254` could bypass the cloud metadata block.
+  - Added `stripIpv6Mapped()` helper that strips the `::ffff:` prefix before all IP classification checks (`isLoopbackIp()`, `isPrivateIp()`, `resolveAndCheckHostname()`). Added `::ffff:169.254.169.254` to `BLOCKED_URL_ALWAYS` and IPv6-mapped private range prefixes (`::ffff:10.`, `::ffff:192.168.`, `::ffff:172.16-31.`) to `BLOCKED_URL_MAX_ONLY`.
+
+- **Temp directory writes restricted to agent-owned directory** (`shared/security.ts`) — [SEC-04]
+  - `validatePath()` allowed writes to `/tmp`, `/var/tmp`, and `/dev/shm` — world-readable/writable directories where any process or user can read, modify, or delete files placed by the agent.
+  - Replaced `/tmp` and `/var/tmp` in the safe prefixes list with `~/.pi/agent/tmp/`. Added explicit blocking for `/tmp`, `/var/tmp`, and `/dev/shm` with an error message directing users to the agent temp directory. The agent temp directory is user-owned and restricted via standard directory permissions.
+
+- **Unicode normalization and control character stripping in command sanitizer** (`shared/security.ts`) — [SEC-06]
+  - `sanitizeCommand()` performed pattern matching on the raw command string without handling Unicode homoglyphs (visually identical but different codepoints, e.g. Cyrillic 'о' vs Latin 'o'), zero-width characters (ZWJ, ZWNJ, ZWSP), or control characters that could be injected between letters of blocked command names.
+  - Added NFKC normalization before all pattern matching — canonicalizes fullwidth Latin, compatibility decompositions, and other visually identical variants to their standard ASCII forms. Added a control character stripper that removes C0 controls (U+0000–U+001F), DEL (U+007F), C1 controls (U+0080–U+009F), zero-width characters (U+200B–U+200F), line/paragraph separators (U+2028–U+202E), BOM (U+FEFF), and invisible operators (U+2060–U+2069). Logs a debug warning when normalization changes the command (indicates obfuscation attempt).
+
+### Changed
+
+- **Removed `pi._reactParser` inter-extension communication** (`extensions/react-fallback.ts`, `extensions/model-test.ts`) — [ARCH-01]
+  - The `react-fallback.ts` extension stored parser functions on `pi._reactParser` (via `(pi as any)`) for `model-test.ts` to access at runtime. This was completely redundant — both extensions already imported directly from `../shared/react-parser`, and `model-test.ts` had a fallback path that used the direct import when `pi._reactParser` was unavailable.
+  - Removed the `pi._reactParser` mutation from `react-fallback.ts` and the shared-parser check from `model-test.ts`. The direct import path is now the sole code path. Removed the unused `normalizeArguments` import from `react-fallback.ts` (was only re-exported via `pi._reactParser`).
+
+### Testing
+
+- **Updated tests for SEC-04 temp directory restriction** (`tests/security.test.ts`)
+  - Changed 4 tests that expected `/tmp` and `/var/tmp` to be valid paths. Tests now verify these shared temp directories are correctly blocked with appropriate error messages.
+
+- **Updated tests for SEC-06 command normalization** (`tests/security.test.ts`)
+  - Updated injection tests to account for the fact that newline/control characters are stripped before injection pattern matching. The injection is neutralized by stripping — the dangerous characters never reach the shell. Updated `find` test to use explicit path (`find /home`) instead of `find .` which collides with the critical `.` (source) command.
+
+- **Updated test for ROB-04 fmtBytes fix** (`tests/format.test.ts`)
+  - Changed test expectation from `"1K"` to `"512B"` to match the easy-pass ROB-04 fix (values below 1024 bytes now return byte notation).
+
 ---
 
 ## [1.1.7] - 04-13-2026 11:19:48 AM

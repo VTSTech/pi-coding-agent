@@ -702,49 +702,22 @@ export default function (pi: ExtensionAPI) {
 
       // ── Multi-dialect ReAct parsing ──
       // Try all registered ReAct dialects (Action:, Function:, Tool:, Call:, etc.)
-      // Uses the shared parser from react-fallback.ts via pi._reactParser if available,
-      // otherwise falls back to a local inline multi-dialect implementation.
+      // Uses the shared parser from shared/react-parser module directly.
       let parsedResult: { name: string; args: string; thought: string; dialect?: string } | null = null;
-      // Try using the shared parser from react-fallback extension
-      const sharedParser = (pi as any)._reactParser;
-      if (sharedParser?.ALL_DIALECT_PATTERNS) {
-        for (const dp of sharedParser.ALL_DIALECT_PATTERNS) {
-          // Use parseReactWithPatterns in tight mode (reject natural language)
-          const result = sharedParser.parseReactWithPatterns(content, dp, true);
-          if (result) {
-            let toolName = result.name;
-            // Extract args as string
-            let argsStr: string;
-            const rawArgs = result.args ? JSON.stringify(result.args) : "";
-            if (rawArgs && rawArgs !== "{}") {
-              argsStr = rawArgs;
-            } else if (result.raw) {
-              // Try to extract JSON from raw match
-              argsStr = extractBraceJson(result.raw);
-            } else {
-              argsStr = "";
-            }
-            parsedResult = { name: toolName, args: argsStr, thought: result.thought || "", dialect: result.dialect };
-            break;
+      for (const dp of ALL_DIALECT_PATTERNS) {
+        const result = parseReactWithPatterns(content, dp, true);
+        if (result) {
+          let argsStr: string;
+          const rawArgs = result.args ? JSON.stringify(result.args) : "";
+          if (rawArgs && rawArgs !== "{}") {
+            argsStr = rawArgs;
+          } else if (result.raw) {
+            argsStr = extractBraceJson(result.raw);
+          } else {
+            argsStr = "";
           }
-        }
-      } else {
-        // Fallback: use shared react-parser module directly
-        for (const dp of ALL_DIALECT_PATTERNS) {
-          const result = parseReactWithPatterns(content, dp, true);
-          if (result) {
-            let argsStr: string;
-            const rawArgs = result.args ? JSON.stringify(result.args) : "";
-            if (rawArgs && rawArgs !== "{}") {
-              argsStr = rawArgs;
-            } else if (result.raw) {
-              argsStr = extractBraceJson(result.raw);
-            } else {
-              argsStr = "";
-            }
-            parsedResult = { name: result.name, args: argsStr, thought: result.thought || "", dialect: result.dialect };
-            break;
-          }
+          parsedResult = { name: result.name, args: argsStr, thought: result.thought || "", dialect: result.dialect };
+          break;
         }
       }
       if (parsedResult) {

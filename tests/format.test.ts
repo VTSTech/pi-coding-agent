@@ -86,9 +86,9 @@ describe("fmtBytes", () => {
     assert.equal(fmtBytes(1073741824), "1.0G");
   });
 
-  it("formats 512 as 1K (rounds up with toFixed(0))", () => {
-    // 512 / 1024 = 0.5 → toFixed(0) → "1" → "1K"
-    assert.equal(fmtBytes(512), "1K");
+  it("formats 512 as 512B (below KB threshold)", () => {
+    // ROB-04 fix: values below 1024 return bytes, not "0K"
+    assert.equal(fmtBytes(512), "512B");
   });
 
   it("formats 2048 as 2K", () => {

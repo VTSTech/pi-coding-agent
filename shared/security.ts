@@ -233,6 +233,8 @@ export const BLOCKED_URL_ALWAYS: ReadonlySet<string> = new Set([
   "172.16.", "172.17.", "172.18.", "172.19.", "172.20.", "172.21.",
   "172.22.", "172.23.", "172.24.", "172.25.", "172.26.", "172.27.",
   "172.28.", "172.29.", "172.30.", "172.31.",
+  // IPv6-mapped IPv4 cloud metadata (always blocked)
+  "::ffff:169.254.169.254",
   // Internal service patterns
   "internal.", "private.", "intranet.",
 ]);
@@ -247,6 +249,12 @@ export const BLOCKED_URL_ALWAYS: ReadonlySet<string> = new Set([
 export const BLOCKED_URL_MAX_ONLY: ReadonlySet<string> = new Set([
   // Loopback addresses (full 127.0.0.0/8 range)
   "localhost", "127.", "0.0.0.0", "::1", "::ffff:127.0.0.1", "::ffff:0.0.0.0",
+  // IPv6-mapped IPv4 private ranges (always blocked in max mode)
+  "::ffff:10.", "::ffff:192.168.", "::ffff:172.16.", "::ffff:172.17.",
+  "::ffff:172.18.", "::ffff:172.19.", "::ffff:172.20.", "::ffff:172.21.",
+  "::ffff:172.22.", "::ffff:172.23.", "::ffff:172.24.", "::ffff:172.25.",
+  "::ffff:172.26.", "::ffff:172.27.", "::ffff:172.28.", "::ffff:172.29.",
+  "::ffff:172.30.", "::ffff:172.31.",
   // Local/internal patterns
   "local.",
 ]);
@@ -358,11 +366,24 @@ export function validatePath(
     }
   }
 
-  // Allow standard safe paths
+  // Allow safe paths: cwd and /home (both user-owned directories).
+  // Temp writes are restricted to ~/.pi/agent/tmp/ with restrictive permissions
+  // rather than open /tmp or /var/tmp which are world-readable/writable.
   const cwd = process.cwd();
-  const safePrefixes = ["/tmp", "/var/tmp", "/home", cwd];
+  const agentTmpDir = path.join(os.homedir(), ".pi", "agent", "tmp");
+  const safePrefixes = [agentTmpDir, "/home", cwd];
   for (const prefix of safePrefixes) {
-    if (resolved.startsWith(prefix)) return { valid: true, error: "" };
+    if (resolved.startsWith(prefix + "/") || resolved === prefix) return { valid: true, error: "" };
+  }
+
+  // Explicitly block /tmp, /var/tmp, and other shared temp directories.
+  // These are world-readable/writable — files placed here can be read,
+  // modified, or deleted by other processes and users on the system.
+  const blockedTempPrefixes = ["/tmp", "/var/tmp", "/dev/shm"];
+  for (const prefix of blockedTempPrefixes) {
+    if (resolved.startsWith(prefix + "/") || resolved === prefix) {
+      return { valid: false, error: `Shared temp directory not allowed: ${prefix}. Use ${agentTmpDir} instead.` };
+    }
   }
 
   // Check against custom allowed directories
@@ -381,30 +402,51 @@ export function validatePath(
 // ── IP Address Validation Utilities ──────────────────────────────────────────
 
 /**
+ * Strip the ::ffff: prefix from IPv6-mapped IPv4 addresses.
+ *
+ * IPv6-mapped IPv4 addresses embed an IPv4 address in the low 32 bits
+ * of an IPv6 address (e.g. `::ffff:10.0.0.1` reaches the same host as `10.0.0.1`).
+ * The ::ffff:0:0/96 prefix (RFC 4291) is used by dual-stack systems.
+ *
+ * @param ip - IP address string that may be IPv6-mapped IPv4
+ * @returns The underlying IPv4 address if mapped, or the original string if not
+ */
+function stripIpv6Mapped(ip: string): string {
+  if (ip.startsWith("::ffff:") && !ip.startsWith("::ffff:0:0")) {
+    // Extract the IPv4 portion after ::ffff:
+    return ip.slice(7);
+  }
+  return ip;
+}
+
+/**
  * Check if an IP address is a loopback address.
  * Handles IPv4 (127.0.0.0/8) and IPv6 (::1, ::ffff:127.0.0.0/104).
  */
 function isLoopbackIp(ip: string): boolean {
+  // Strip IPv6-mapped prefix for IPv4 comparison
+  const norm = stripIpv6Mapped(ip);
   // IPv4 loopback
-  if (ip.startsWith("127.") || ip === "0.0.0.0") return true;
+  if (norm.startsWith("127.") || norm === "0.0.0.0") return true;
   // IPv6 loopback
   if (ip === "::1" || ip === "::ffff:0.0.0.0") return true;
-  // IPv4-mapped IPv6 loopback
-  if (ip.startsWith("::ffff:127.")) return true;
   return false;
 }
 
 /**
  * Check if an IP address is a private/RFC1918 address.
- * Handles IPv4 (10.x, 172.16-31.x, 192.168.x) and IPv6 (fc00::/7, fe80::/10).
+ * Handles IPv4 (10.x, 172.16-31.x, 192.168.x), cloud metadata,
+ * IPv6 (fc00::/7, fe80::/10), and IPv6-mapped IPv4 (::ffff:x.x.x.x).
  */
 function isPrivateIp(ip: string): boolean {
+  // Strip IPv6-mapped prefix for IPv4 comparison
+  const norm = stripIpv6Mapped(ip);
   // IPv4 private ranges
-  if (ip.startsWith("10.") || ip.startsWith("192.168.")) return true;
+  if (norm.startsWith("10.") || norm.startsWith("192.168.")) return true;
   // 172.16.0.0 – 172.31.255.255
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(norm)) return true;
   // Cloud metadata
-  if (ip === "169.254.169.254") return true;
+  if (norm === "169.254.169.254") return true;
   // IPv6 unique local (fc00::/7) and link-local (fe80::/10)
   if (ip.startsWith("fc") || ip.startsWith("fd")) return true;
   if (ip.startsWith("fe80:")) return true;
@@ -442,8 +484,9 @@ export async function resolveAndCheckHostname(
 
     for (const addr of addresses) {
       const ip = addr.address;
-      // Always block cloud metadata endpoint
-      if (ip === "169.254.169.254") {
+      // Always block cloud metadata endpoint (including IPv6-mapped)
+      const normIp = stripIpv6Mapped(ip);
+      if (normIp === "169.254.169.254") {
         return { safe: false, error: `SSRF protection: hostname ${hostname} resolves to cloud metadata IP ${ip}` };
       }
       if (blockPrivate && (isLoopbackIp(ip) || isPrivateIp(ip))) {
@@ -624,9 +667,31 @@ export function sanitizeCommand(
 ): { isSafe: boolean; error: string; command: string } {
   if (!command) return { isSafe: false, error: "Command cannot be empty", command: "" };
 
+  // ── Unicode normalization & control character stripping (SEC-06) ──
+  // Normalize to NFKC to canonicalize visually identical characters
+  // (e.g. fullwidth Latin 'ｒｍ' → ASCII 'rm', Cyrillic 'о' → Latin 'o').
+  // This prevents homoglyph-based bypasses where lookalike Unicode characters
+  // are used to spell blocked commands.
+  let normalizedCmd = command.normalize("NFKC");
+
+  // Strip zero-width characters and control characters (except space).
+  // Zero-width joiners (\u200d), non-joiners (\u200c), spaces (\u200b),
+  // and other invisible characters can be injected between letters of
+  // blocked command names to evade pattern matching.
+  normalizedCmd = normalizedCmd.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\ufeff\u2060-\u2069]/g, "");
+
+  // Reject if normalization changed the command — indicates obfuscation attempt
+  if (normalizedCmd !== command.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\ufeff\u2060-\u2069]/g, "").normalize("NFKC")) {
+    debugLog("security", "command contained Unicode normalization variance (possible homoglyph bypass)", { original: command });
+  }
+
+  // Use normalized command for all subsequent checks
+  command = normalizedCmd;
+
   // Parse base command
-  const parts = command.trim().split(/\s+/);
-  if (!parts.length) return { isSafe: false, error: "Command cannot be empty", command: "" };
+  const trimmed = command.trim();
+  if (!trimmed) return { isSafe: false, error: "Command cannot be empty", command: "" };
+  const parts = trimmed.split(/\s+/);
 
   let baseCmd = parts[0].toLowerCase();
 

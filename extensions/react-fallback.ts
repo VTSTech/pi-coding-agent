@@ -32,7 +32,6 @@ import {
   parseReactWithPatterns,
   detectReactDialect,
   fuzzyMatchToolName,
-  normalizeArguments,
   looksLikeSchemaDump,
   REACT_DIALECTS,
   ALL_DIALECT_PATTERNS,
@@ -309,20 +308,4 @@ The bridge will match your tool name (fuzzy matching supported) and normalize ar
     },
   });
 
-  // ── Export shared ReAct parser utilities for other extensions ────────
-  // (accessible via pi.events for inter-extension communication)
-
-  // Store parser functions on pi.events for other extensions to use
-  (pi as any)._reactParser = {
-    parseReact,
-    parseReactWithPatterns,
-    detectReactDialect,
-    sanitizeModelJson,
-    extractToolFromJson,
-    fuzzyMatchToolName,
-    normalizeArguments,
-    looksLikeSchemaDump,
-    REACT_DIALECTS,
-    ALL_DIALECT_PATTERNS,
-  };
 }
