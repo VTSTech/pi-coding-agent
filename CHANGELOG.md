@@ -46,7 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Added `.npmignore` files to all 9 npm-packages/ subdirectories** — [ARCH-04]
-  - `npm-packages/` directories lacked `.npmignore` files, meaning published packages included test fixtures, internal scripts, and documentation. Added appropriate `.npmignore` to each package directory to reduce published package size and prevent shipping internal files to consumers.
+  - `npm-packages/` directories lacked `.npmignore` files. Added appropriate `.npmignore` to each package directory to reduce published package size and prevent shipping internal files to consumers.
 
 ---
 
