@@ -69,122 +69,155 @@ export default function (pi: ExtensionAPI) {
   ].join("\n");
 
   // ── /security command (mode toggle) ───────────────────────────────────
+  //
+  // IMPORTANT: We use pi.registerCompletion() (separate from registerCommand) for
+  // tab-completion. The getArgumentCompletions on registerCommand only supports a
+  // SINGLE argument level — it silently drops tokens that don't match a completion.
+  // So "/security mode basic" would have "basic" eaten and only "mode" passed to
+  // the handler. pi.registerCompletion() provides depth-aware getArgumentCompletions
+  // that receives an already-split args[] array, matching the /api command pattern.
 
   pi.registerCommand("security", {
     description: "Manage security mode — usage: /security mode [basic|max]",
-    getArgumentCompletions: async () => {
+    handler: async (args, ctx) => {
+      try {
+        const parts = args.trim().split(/\s+/);
+        const sub = parts[0]?.toLowerCase() || "";
+
+        if (sub === "mode") {
+          const value = parts[1]?.toLowerCase();
+          const currentMode = getSecurityMode();
+
+          // /security mode — show current
+          if (!value) {
+            const lines: string[] = [branding];
+            lines.push(section("SECURITY MODE"));
+            lines.push(info(`Current mode: ${currentMode.toUpperCase()}`));
+            lines.push(info(`Config path: ${SECURITY_CONFIG_PATH}`));
+            lines.push(info(`Critical commands (always blocked): ${CRITICAL_COMMANDS.size}`));
+            lines.push(info(`Extended commands (max only): ${EXTENDED_COMMANDS.size}`));
+            lines.push(info(`Total blocked (max): ${CRITICAL_COMMANDS.size + EXTENDED_COMMANDS.size}`));
+            lines.push(info(`URL patterns always blocked: ${BLOCKED_URL_ALWAYS.size}`));
+            lines.push(info(`URL patterns (max only): ${BLOCKED_URL_MAX_ONLY.size}`));
+            lines.push(section("MODE DIFFERENCES"));
+            lines.push(info("Basic: critical commands blocked, localhost/127.x allowed"));
+            lines.push(info("Max: all commands blocked, full SSRF protection"));
+            lines.push(section("SWITCH MODE"));
+            lines.push(info("/security mode basic  — relax restrictions for development"));
+            lines.push(info("/security mode max    — full lockdown (default)"));
+            lines.push(branding);
+
+            pi.sendMessage({
+              customType: "security-mode-info",
+              content: lines.join("\n"),
+              display: { type: "content", content: lines.join("\n") },
+            });
+            return;
+          }
+
+          // /security mode basic|max
+          if (value === "basic" || value === "max") {
+            if (value === currentMode) {
+              ctx.ui.notify(`Security mode is already ${value.toUpperCase()}`, "info");
+              return;
+            }
+
+            const writeOk = setSecurityMode(value as "basic" | "max");
+            if (!writeOk) {
+              ctx.ui.notify(`FAILED to persist security mode: could not write ${SECURITY_CONFIG_PATH}`, "error");
+              debugLog("security", `/security mode ${value}: write failed`, { path: SECURITY_CONFIG_PATH });
+              return;
+            }
+
+            ctx.ui.setStatus("status-sec", value.toUpperCase());
+            ctx.ui.notify(`Security mode set to ${value.toUpperCase()}`, "success");
+
+            appendAuditEntry({
+              timestamp: new Date().toISOString(),
+              toolName: "security-command",
+              toolCallId: "",
+              action: "allowed",
+              rule: "mode_change",
+              detail: `Security mode changed to ${value.toUpperCase()}`,
+            });
+
+            const totalCmds = CRITICAL_COMMANDS.size + EXTENDED_COMMANDS.size;
+            const lines: string[] = [branding];
+            lines.push(section("SECURITY MODE CHANGED"));
+            lines.push(ok(`Mode: ${value.toUpperCase()}`));
+            lines.push(info(`Previous: ${currentMode.toUpperCase()}`));
+            lines.push(info(`Config: ${SECURITY_CONFIG_PATH}`));
+
+            if (value === "basic") {
+              lines.push(warn("Extended commands are now ALLOWED: rm, sudo, npm, apt, git, curl, wget, etc."));
+              lines.push(warn("Localhost and 127.x URLs are now ALLOWED for SSRF"));
+              lines.push(ok("Critical commands remain blocked: dd, mkfs, shred, fdisk, ssh, etc."));
+            } else {
+              lines.push(ok(`Full lockdown active — all ${totalCmds} commands blocked`));
+              lines.push(ok("Full SSRF protection — localhost and private IPs blocked"));
+            }
+
+            lines.push(branding);
+
+            pi.sendMessage({
+              customType: "security-mode-changed",
+              content: lines.join("\n"),
+              display: { type: "content", content: lines.join("\n") },
+            });
+            return;
+          }
+
+          // Invalid mode value
+          ctx.ui.notify(`Invalid mode: "${value}". Use \"basic\" or \"max\".`, "error");
+          return;
+        }
+
+        // No subcommand — show usage
+        const lines: string[] = [branding];
+        lines.push(section("SECURITY COMMANDS"));
+        lines.push(info("/security mode        — show current security mode"));
+        lines.push(info("/security mode basic  — relax to basic mode"));
+        lines.push(info("/security mode max    — switch to max lockdown"));
+        lines.push(info("/security-audit       — show security audit report"));
+        lines.push(branding);
+
+        pi.sendMessage({
+          customType: "security-usage",
+          content: lines.join("\n"),
+          display: { type: "content", content: lines.join("\n") },
+        });
+      } catch (e: any) {
+        debugLog("security", "/security command handler error", e);
+        ctx.ui.notify(`/security error: ${e.message}`, "error");
+      }
+    },
+  });
+
+  // ── Tab completion for /security sub-commands and arguments ─────────────
+  // Uses pi.registerCompletion() (same pattern as /api) for depth-aware
+  // multi-level completion. The simpler getArgumentCompletions on registerCommand
+  // only supports a single argument level and silently drops unmatched tokens.
+
+  pi.registerCompletion?.("security", {
+    getCompletions: () => {
       return [
         { value: "mode", label: "mode", description: "View or change the security enforcement mode" },
       ];
     },
-    handler: async (args, ctx) => {
-      const parts = args.trim().split(/\s+/);
-      const sub = parts[0]?.toLowerCase() || "";
+    getArgumentCompletions: (args: string[]) => {
+      const sub = args[0]?.toLowerCase() || "";
 
-      if (sub === "mode") {
-        const value = parts[1]?.toLowerCase();
-        const currentMode = getSecurityMode();
-
-        // /security mode — show current
-        if (!value) {
-          const lines: string[] = [branding];
-          lines.push(section("SECURITY MODE"));
-          lines.push(info(`Current mode: ${currentMode.toUpperCase()}`));
-          lines.push(info(`Config path: ${SECURITY_CONFIG_PATH}`));
-          lines.push(info(`Critical commands (always blocked): ${CRITICAL_COMMANDS.size}`));
-          lines.push(info(`Extended commands (max only): ${EXTENDED_COMMANDS.size}`));
-          lines.push(info(`Total blocked (max): ${CRITICAL_COMMANDS.size + EXTENDED_COMMANDS.size}`));
-          lines.push(info(`URL patterns always blocked: ${BLOCKED_URL_ALWAYS.size}`));
-          lines.push(info(`URL patterns (max only): ${BLOCKED_URL_MAX_ONLY.size}`));
-          lines.push(section("MODE DIFFERENCES"));
-          lines.push(info("Basic: critical commands blocked, localhost/127.x allowed"));
-          lines.push(info("Max: all commands blocked, full SSRF protection"));
-          lines.push(section("SWITCH MODE"));
-          lines.push(info("/security mode basic  — relax restrictions for development"));
-          lines.push(info("/security mode max    — full lockdown (default)"));
-          lines.push(branding);
-
-          pi.sendMessage({
-            customType: "security-mode-info",
-            content: lines.join("\n"),
-            display: { type: "content", content: lines.join("\n") },
-          });
-          return;
-        }
-
-        // /security mode basic
-        if (value === "basic" || value === "max") {
-          if (value === currentMode) {
-            ctx.ui.notify(`Security mode is already ${value.toUpperCase()}`, "info");
-            return;
-          }
-
-          const writeOk = setSecurityMode(value as "basic" | "max");
-          if (!writeOk) {
-            ctx.ui.notify(`FAILED to persist security mode: could not write ${SECURITY_CONFIG_PATH}`, "error");
-            debugLog("security", `/security mode ${value}: write failed`, { path: SECURITY_CONFIG_PATH });
-            return;
-          }
-
-          ctx.ui.setStatus("status-sec", value.toUpperCase());
-          ctx.ui.notify(`Security mode set to ${value.toUpperCase()}`, "success");
-
-          appendAuditEntry({
-            timestamp: new Date().toISOString(),
-            toolName: "security-command",
-            toolCallId: "",
-            action: "allowed",
-            rule: "mode_change",
-            detail: `Security mode changed to ${value.toUpperCase()}`,
-          });
-
-          const totalCmds = CRITICAL_COMMANDS.size + EXTENDED_COMMANDS.size;
-          const lines: string[] = [branding];
-          lines.push(section("SECURITY MODE CHANGED"));
-          lines.push(ok(`Mode: ${value.toUpperCase()}`));
-          lines.push(info(`Previous: ${currentMode.toUpperCase()}`));
-          lines.push(info(`Config: ${SECURITY_CONFIG_PATH}`));
-
-          if (value === "basic") {
-            lines.push(warn("Extended commands are now ALLOWED: rm, sudo, npm, apt, git, curl, wget, etc."));
-            lines.push(warn("Localhost and 127.x URLs are now ALLOWED for SSRF"));
-            lines.push(ok("Critical commands remain blocked: dd, mkfs, shred, fdisk, ssh, etc."));
-          } else {
-            lines.push(ok(`Full lockdown active — all ${totalCmds} commands blocked`));
-            lines.push(ok("Full SSRF protection — localhost and private IPs blocked"));
-          }
-
-          lines.push(branding);
-
-          pi.sendMessage({
-            customType: "security-mode-changed",
-            content: lines.join("\n"),
-            display: { type: "content", content: lines.join("\n") },
-          });
-          return;
-        }
-
-        // Invalid mode value — provide autocomplete hints
-        ctx.ui.notify(`Invalid mode: "${value}". Use "basic" or "max".`, "error");
-        return;
+      // /security mode <TAB> — complete with basic|max
+      if (sub === "mode" && args.length === 2) {
+        return [
+          { value: "basic", label: "basic", description: "Relax to basic mode — only critical commands blocked" },
+          { value: "max",   label: "max",   description: "Full lockdown — all commands blocked (default)" },
+        ];
       }
 
-      // No subcommand — show usage
-      const lines: string[] = [branding];
-      lines.push(section("SECURITY COMMANDS"));
-      lines.push(info("/security mode        — show current security mode"));
-      lines.push(info("/security mode basic  — relax to basic mode"));
-      lines.push(info("/security mode max    — switch to max lockdown"));
-      lines.push(info("/security-audit       — show security audit report"));
-      lines.push(branding);
-
-      pi.sendMessage({
-        customType: "security-usage",
-        content: lines.join("\n"),
-        display: { type: "content", content: lines.join("\n") },
-      });
+      return [];
     },
-  });
+  } as any);
 
   // ── Tool call interceptor (BEFORE execution) ──────────────────────────
 
