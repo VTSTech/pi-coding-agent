@@ -8,8 +8,11 @@ This is an internal dependency — you don't need to install it directly. It's p
 
 | Module | Description |
 |--------|-------------|
+| `debug` | Conditional debug logging via `PI_EXTENSIONS_DEBUG=1` env var — `debugLog(module, message, ...args)` |
 | `format` | Section headers, indicators (ok/fail/warn/info), numeric formatters (bytes, ms, percentages), string utilities |
+| `model-test-utils` | Shared test utilities — `ChatFn` abstraction, unified test functions (tool usage, reasoning, instruction following), scoring helpers, tool support cache |
 | `ollama` | Ollama base URL resolution, models.json I/O with TTL cache, model family detection, provider detection, Ollama API helpers |
+| `react-parser` | Multi-dialect ReAct text parser — 4 dialects (react, function, tool, call), `parseReact()`, `detectReactDialect()`, `fuzzyMatchToolName()` |
 | `security` | Security mode toggle (`basic`/`max`), partitioned command blocklist (41 CRITICAL + 25 EXTENDED), mode-aware SSRF (19 + 7 patterns), path validation with symlink dereference, URL validation, command sanitization, audit logging with mode tracking (`AUDIT_LOG_PATH` exported) |
 | `types` | Type definitions (ToolSupportLevel, AuditEntry, etc.) |
 

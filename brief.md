@@ -1,6 +1,6 @@
 # Codebase Intelligence Brief: Pi Coding Agent Extensions (VTSTech)
 
-> Generated: 04-13-2026 | Auditor: Super-Z (GLM-5) | Commit: d0ccb66 | Version: 1.1.4-dev
+> Generated: 04-13-2026 | Auditor: Super-Z (GLM-5) | Commit: d0ccb66 | Version: 1.1.5
 
 ---
 
@@ -57,7 +57,7 @@ dist/             → npm pack tarball output (gitignored) — for offline testi
 | `extensions/model-test.ts` | 1,571 | Model benchmark (Ollama + cloud) | Largest extension. Imports shared ChatFn abstraction + scoring + unified tests. Still contains Ollama-specific test functions (testReasoning, testThinking, testToolUsage, testReactParsing, testToolSupport) and provider wrappers. ReAct parsing delegates to shared react-parser module. |
 | `extensions/status.ts` | 434 | Composable status bar via `ctx.ui.setStatus()` | Major rewrite in 1.1.3–1.1.4. Uses named slots (not footer overwrite). Detects local vs cloud provider to hide CPU/RAM. 11 event listeners. Pi version via `execSync("pi -v 2>&1")`. |
 | `extensions/api.ts` | 751 | Runtime API mode/URL/thinking/provider switcher | `readSettings()`/`writeSettings()` for settings.json. New `/api provider set|list` sub-command for default provider management. Tab completion for modes + providers. |
-| `shared/ollama.ts` | 601 | Ollama API helpers, models.json I/O, provider detection | Imported by ALL 8 extensions. TTL cache (2s), `EXTENSION_VERSION` (1.1.4-dev), `BUILTIN_PROVIDERS` (11 providers), `detectProvider()`, `fetchContextLengthsBatched()`. |
+| `shared/ollama.ts` | 601 | Ollama API helpers, models.json I/O, provider detection | Imported by ALL 8 extensions. TTL cache (2s), `EXTENSION_VERSION` (1.1.5), `BUILTIN_PROVIDERS` (11 providers), `detectProvider()`, `fetchContextLengthsBatched()`. |
 | `shared/security.ts` | 616 | Command blocklist (75+), SSRF (29 patterns), path validation, audit log | Imported by 3 extensions. `validatePath()` with `fs.realpathSync()` for symlink bypass prevention. Exported `checkBashToolInput()`, `checkFileToolInput()`, `checkHttpToolInput()`, `checkInjectionPatterns()`. `AUDIT_LOG_PATH` exported. |
 | `shared/react-parser.ts` | 534 | Multi-dialect ReAct text parser (extracted from react-fallback + model-test) | 4 dialects (react, function, tool, call), dynamic pattern builder, `parseReact()`, `parseReactWithPatterns()`, `detectReactDialect()`, `fuzzyMatchToolName()`, `normalizeArguments()`, `looksLikeSchemaDump()`, `extractToolFromJson()`. |
 | `extensions/diag.ts` | 534 | Full system diagnostic suite | `self_diagnostic` tool registration, 9 check categories, imports `AUDIT_LOG_PATH` from shared. Uses 3-tier provider detection. |
