@@ -329,15 +329,23 @@ Supports all 10 Pi API modes:
 
 ### 🔒 Security (`security.ts`)
 
-**Command, path, and network security layer for Pi's tool execution.**
+**Command, path, and network security layer for Pi's tool execution with a configurable security mode.**
 
-Automatically loaded — no commands needed. Protects against:
+Automatically loaded — protects against:
 
-- **65 blocked commands** — system modification, privilege escalation, network attacks, package management, process control, shell escapes
-- **SSRF protection** — 29 blocked hostname patterns (full `127.0.0.0/8` loopback range, RFC1918 private ranges, cloud metadata endpoints, IPv4-mapped IPv6 `::ffff:127.0.0.1` and `::ffff:0.0.0.0`)
+- **Partitioned command blocklist** — 41 CRITICAL commands (always blocked: system modification, privilege escalation, network attacks, shell escapes) + 25 EXTENDED commands (blocked in max mode: package management, process control, development tools)
+- **Mode-aware SSRF protection** — 19 ALWAYS_BLOCKED URL patterns (loopback, RFC1918 private ranges, cloud metadata endpoints) + 7 MAX_ONLY patterns (localhost by name, broadcast, link-local, current network) that are allowed in basic mode
+- **Security mode toggle** — switch between `basic` and `max` modes at runtime; persisted to `~/.pi/agent/security.json`
 - **Path validation** — prevents filesystem escape and access to critical system directories; symlinks are dereferenced via `fs.realpathSync()` to block `/tmp/evil → /etc/passwd` bypasses
 - **Shell injection detection** — regex patterns for command chaining, substitution, and redirection
-- **Audit logging** — JSON-lines audit log at `~/.pi/agent/audit.log` (path exported as `AUDIT_LOG_PATH` for cross-extension use)
+- **Audit logging** — JSON-lines audit log at `~/.pi/agent/audit.log` with security mode recorded per entry (path exported as `AUDIT_LOG_PATH`)
+
+```bash
+/security mode basic    # Relaxed mode — CRITICAL commands blocked, localhost URLs allowed
+/security mode max      # Full lockdown — all 66 commands blocked, strict SSRF
+```
+
+**Default mode: `max`** — if `security.json` doesn't exist, the extension starts in max mode and creates it on first use. The current mode is displayed in the status bar (`SEC:BASIC` or `SEC:MAX`).
 
 ### 🔄 ReAct Fallback (`react-fallback.ts`)
 
@@ -402,7 +410,7 @@ CPU/RAM/Swap are only shown when using a local Ollama provider (not for cloud/re
 - **RAM** — used/total via `os.totalmem()` / `os.freemem()` (local Ollama only)
 - **Swap** — used/total from `/proc/meminfo` (shown only when swap is active, local only)
 - **Generation params** — temperature, top_p, top_k, num_predict, context size, reasoning_effort (dimmed)
-- **SEC** — 3s flash on blocked tools + session-scoped blocked count (resets on shutdown)
+- **SEC** — security mode indicator (`SEC:BASIC` or `SEC:MAX`) + session-scoped blocked count + 3s flash on blocked tools (resets on shutdown)
 - **Active tool** — live elapsed timer with `>` indicator while a tool is running
 - **Prompt** — system prompt size as `chars chr tokens tok` displayed on agent start
 - **Pi version** — `pi:0.66.1` fetched once at `session_start` (dimmed, always last slot)
