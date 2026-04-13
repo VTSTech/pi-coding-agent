@@ -10,7 +10,7 @@ This is an internal dependency — you don't need to install it directly. It's p
 |--------|-------------|
 | `format` | Section headers, indicators (ok/fail/warn/info), numeric formatters (bytes, ms, percentages), string utilities |
 | `ollama` | Ollama base URL resolution, models.json I/O with TTL cache, model family detection, provider detection, Ollama API helpers |
-| `security` | Command blocklist (65), SSRF patterns (29), path validation with symlink dereference, URL validation, command sanitization, audit logging (`AUDIT_LOG_PATH` exported) |
+| `security` | Security mode toggle (`basic`/`max`), partitioned command blocklist (41 CRITICAL + 25 EXTENDED), mode-aware SSRF (19 + 7 patterns), path validation with symlink dereference, URL validation, command sanitization, audit logging with mode tracking (`AUDIT_LOG_PATH` exported) |
 | `types` | Type definitions (ToolSupportLevel, AuditEntry, etc.) |
 
 ## Usage

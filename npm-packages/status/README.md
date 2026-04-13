@@ -18,12 +18,12 @@ CPU/RAM/Swap are only shown when using a local Ollama provider (not for cloud/re
 
 **Example (local Ollama):**
 ```
-CtxMax:41k RespMax:16.4k Resp 2m3s CPU 12% RAM 2.2G/15.1G Prompt: 2840 chr 393 tok pi:0.66.1
+CtxMax:41k RespMax:16.4k Resp 2m3s CPU 12% RAM 2.2G/15.1G SEC:MAX Prompt: 2840 chr 393 tok pi:0.66.1
 ```
 
-**Example (cloud provider):**
+**Example (cloud provider, basic mode):**
 ```
-CtxMax:128k RespMax:16.4k Resp 1m22s Prompt: 2840 chr 393 tok pi:0.66.1
+CtxMax:128k RespMax:16.4k Resp 1m22s SEC:BASIC Prompt: 2840 chr 393 tok pi:0.66.1
 ```
 
 ## Status Slots
@@ -39,7 +39,7 @@ Slots are updated every 5 seconds (1 second for active tool timing). Render orde
 | **RAM** | Used/total system memory | Local Ollama only |
 | **Swap** | Used/total swap space | Local only, when active |
 | **Generation params** | Temperature, top_p, top_k, num_predict, context size, reasoning_effort (dimmed) | After first provider request |
-| **SEC** | Session-scoped blocked tool count + 3s flash on block event | When blocks occur |
+| **SEC** | Security mode indicator (`SEC:BASIC`/`SEC:MAX`) + session-scoped blocked count + 3s flash on block event | Always shown |
 | **Active tool** | Live elapsed timer with `>` indicator | While a tool is running |
 | **Prompt** | System prompt size as `chars chr tokens tok` | After first agent start |
 | **Pi version** | `pi:0.66.1` (dimmed, always last) | Always shown |
