@@ -1,3 +1,4 @@
+.env
 *.bak
 node_modules/
 .build-npm/
