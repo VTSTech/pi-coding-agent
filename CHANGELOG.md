@@ -5,6 +5,15 @@ All notable changes to the Pi Coding Agent Extensions (`@vtstech/pi-coding-agent
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.7-dev] - 2026-04-13
+
+### Changed
+
+- **Version bumped to 1.1.7-dev** (all version touchpoints)
+  - Source of truth: `shared/ollama.ts` (`EXTENSION_VERSION`), root `package.json`, `shared/package.json`.
+  - Documentation: root `README.md` (4 references: version badge, pin-to-tag, package format snippet, benchmark header).
+
+---
 ## [1.1.7] - 2026-04-13
 
 ### Changed
