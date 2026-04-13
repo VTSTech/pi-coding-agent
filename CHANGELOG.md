@@ -66,6 +66,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - CtxMax (`status-native-ctx`) and RespMax (`status-resp-max`) were separate slots that sorted apart alphabetically — `status-native-ctx` appeared near the beginning while `status-resp-max` appeared mid-bar, separated by `status-resp` and `status-params`.
   - Combined into a single `status-ctx` slot that renders both values as one unit: `CtxMax:33k RespMax:16.4k`. Both values are still independently computed and either can be absent without affecting the other.
 
+- **`sanitizeCommand()` only checked the first word against critical blocklist** (`shared/security.ts`)
+  - The function extracted `parts[0]` as the base command and checked it against CRITICAL_COMMANDS and EXTENDED_COMMANDS. Any subsequent words were ignored. This meant `sudo chmod 777 /etc/passwd` passed in basic mode because only `sudo` (extended, allowed in basic) was evaluated — `chmod` (critical, always blocked) was never checked.
+  - Changed to scan all words in the command against CRITICAL_COMMANDS. The extended blocklist still only checks the base command (first word) since extended commands like `rm` or `curl` are intentionally allowed as arguments/subcommands in basic mode.
+  - This also catches patterns like `exec dd if=/dev/zero of=/dev/sda`, `find / -exec shred {}`, etc. where the dangerous command appears after a benign first word.
+
 - **Diagnostic security tests assume max mode** (`extensions/diag.ts`)
   - `/diag` security validation tests had hardcoded expectations for max mode: `localhost` SSRF URLs were expected to be blocked, and `sudo`/`curl` commands were expected to be blocked. In basic mode these are all allowed, producing three `UNEXPECTED` failures on every run.
   - The command blocklist and SSRF pattern counts also reported the full (max-mode) totals regardless of the active mode.
@@ -79,10 +84,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `bump-version.sh` now writes the VERSION file first, then updates the derived locations (ollama.ts, package.json files). Build/publish scripts are no longer listed as touchpoints since they derive from VERSION at runtime.
   - `EXTENSION_VERSION` in `shared/ollama.ts` continues to be the runtime constant used by extensions, but the comment now directs users to run `bump-version.sh` rather than editing it manually.
 
+- **Pi version status slot uses green highlight** (`extensions/status.ts`)
+  - The `pi:0.66.1` slot in the footer was rendered entirely in dim text, inconsistent with every other slot which uses dim labels with green values.
+  - Now renders as dim `pi:` label + green version value, matching the `CtxMax:`, `RespMax:`, `Prompt:`, etc. convention.
+
 ### Security
 
 - **DNS rebinding protection** — see Added section above.
 - **Audit log rate limiting** — see Added section above.
+- **Command blocklist full-word scan** — see Fixed section above (`sanitizeCommand` now checks all words against CRITICAL_COMMANDS).
+
+### Testing
+
+- **Tests for retry logic** (`tests/ollama.test.ts`)
+  - 5 new tests covering `withRetry()`: success on first attempt, retry on transient errors, exhaustion of retries, non-retryable error passthrough, and `maxRetries: 0` no-retry mode.
+
+- **Tests for concurrent write protection** (`tests/ollama.test.ts`)
+  - 3 new tests covering `acquireModelsJsonLock()`: release function works, concurrent lock acquisition serializes in order, and `readModifyWriteModelsJson()` reads-modifies-writes under lock with null-abort support.
+
+- **Tests for audit log buffering** (`tests/security.test.ts`)
+  - 2 new tests covering `appendAuditEntry()` and `flushAuditBuffer()`: buffer-and-flush cycle completes without throwing, and multiple consecutive flushes are safe (idempotent).
+
+- **Tests for DNS rebinding protection** (`tests/security.test.ts`)
+  - 4 new tests covering `resolveAndCheckHostname()`: loopback blocking (when `blockPrivate=true`), public hostname allowance, graceful handling of unresolvable hostnames (returns `safe=true`), and `blockPrivate=false` mode. Tests verify return structure rather than specific DNS results for portability across environments.
+
 ---
 
 ## [1.1.6] - 04-13-2026 9:45:00 AM

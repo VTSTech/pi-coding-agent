@@ -46,7 +46,7 @@ pi update
 
 Pin to a specific tag:
 ```bash
-pi install git:github.com/VTSTech/pi-coding-agent@v1.1.7-dev-dev
+pi install git:github.com/VTSTech/pi-coding-agent@v1.1.7
 ```
 
 ### Individual npm packages
@@ -229,7 +229,7 @@ Sample output (cloud provider):
 ```
  [model-test-report]
 
-   ⚡ Pi Model Benchmark v1.1.7-dev-dev
+   ⚡ Pi Model Benchmark v1.1.7
    Written by VTSTech
    GitHub: https://github.com/VTSTech
    Website: www.vts-tech.org
