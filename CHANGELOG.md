@@ -8,12 +8,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.7-dev] - 04-13-2026 11:19:48 AM
 
+### Added
+
+- **Models.json write mutex — prevents concurrent read-modify-write races** (`shared/ollama.ts`)
+  - Two or more extensions calling `readModelsJson()` / `writeModelsJson()` in overlapping async cycles could interleave reads and writes, causing the last writer to clobber the first writer's changes. This race was observable when `/ollama-sync` and `/openrouter-sync` ran back-to-back, or when the status extension polled `models.json` during a sync.
+  - Added `acquireModelsJsonLock()` — an async mutex built on a promise chain. Callers `await` the lock, perform their read-modify-write, then call `release()`. Only one writer proceeds at a time; others queue in order.
+  - Added `readModifyWriteModelsJson(modifier)` — a convenience wrapper that acquires the lock, calls `readModelsJson()`, passes the result to the `modifier` callback, and writes the modified data back. The modifier can return `null` to abort without writing. Returns `true` if the write succeeded, `false` if aborted.
+  - Both functions are exported for use by any extension that needs to mutate `models.json`.
+
+- **Exponential backoff retry for Ollama HTTP calls** (`shared/ollama.ts`)
+  - `withRetry(fn, options)` wraps any async function with automatic retry on transient failures. Uses exponential backoff with ±25% jitter to avoid thundering herd.
+  - Retries on: `ECONNREFUSED`, `ECONNRESET`, `ENOTFOUND`, `ETIMEDOUT`, `fetch failed`, `network error`, `socket hang up`, `Empty response`, and `AbortError` (timeouts). Does NOT retry on HTTP-level errors (4xx/5xx status codes) or non-transient failures.
+  - Default configuration: 2 retries, 1s base delay, 10s max delay. All tunable via `RetryOptions` interface.
+  - `fetchOllamaModels()` now uses `withRetry` internally, so transient connection failures during model listing are automatically recovered without the caller handling retries.
+  - Debug logging on each retry attempt includes the delay and error message.
+
+- **DNS rebinding protection for SSRF** (`shared/security.ts`)
+  - Pattern-based URL blocking (`isSafeUrl()`) checks the URL string at validation time but does not verify what IP the hostname actually resolves to at request time. A DNS rebinding attack could configure a hostname to resolve to a public IP during validation, then to `127.0.0.1` or `169.254.169.254` when the request is sent.
+  - Added `resolveAndCheckHostname(hostname, blockPrivate)` — resolves the hostname via `dns.lookup()` (which respects `/etc/hosts` and system resolver) and checks all returned addresses against loopback, private RFC1918, and cloud metadata ranges. Returns `{ safe, error }` for the caller to act on.
+  - Added `isLoopbackIp(ip)` and `isPrivateIp(ip)` helper functions covering IPv4 (127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.169.254) and IPv6 (::1, ::ffff:127.0.0.0/104, fc00::/7, fe80::/10).
+  - This is an opt-in enhancement — callers that want DNS-level protection should call `resolveAndCheckHostname()` after `isSafeUrl()` passes. The pattern checks remain the primary defense for synchronous code paths.
+
+- **Audit log rate limiting via buffered writes** (`shared/security.ts`)
+  - `appendAuditEntry()` previously called `fs.appendFileSync()` on every single entry. Under heavy blocking activity (e.g., repeated blocked commands in a loop), this produced excessive synchronous disk I/O — one syscall per entry, each blocking the event loop.
+  - Replaced with an in-memory buffer that batches entries and flushes to disk on two triggers: (1) automatically every 500ms via `setInterval` (timer is `unref()`'d so it doesn't prevent process exit), or (2) immediately when the buffer reaches 50 entries.
+  - Added `flushAuditBuffer()` — exported function for explicit flush on shutdown or before critical operations. Called automatically by the timer.
+  - Buffer and timer are lazily initialized on first `appendAuditEntry()` call.
+
+- **Streaming Ollama chat for model tests** (`extensions/model-test.ts`)
+  - Added `ollamaChatStream()` — sends requests to Ollama `/api/chat` with `stream: true` and accumulates NDJSON response chunks via a `ReadableStream` reader. Accumulates both `message.content` and `message.thinking` fields across chunks.
+  - `makeOllamaChatFn()` now defaults to streaming (`useStreaming = true`). This provides earlier timeout detection (first token arrives quickly even if the full response takes a while) and reduced memory pressure for very long responses.
+  - Falls back to non-streaming when `useStreaming = false` is explicitly passed.
+
+- **Configurable test timeouts and parameters** (`shared/model-test-utils.ts`, `extensions/model-test.ts`)
+  - All `CONFIG` constants (timeouts, retry counts, delays, temperature, num_predict) can now be overridden by the user via `~/.pi/agent/model-test-config.json`. No config file means defaults are used.
+  - Added `ModelTestUserConfig` interface and `readTestConfig()` to read the JSON config file. Added `getEffectiveConfig()` to merge user overrides with `CONFIG` defaults, with user values taking precedence.
+  - `model-test.ts` now calls `getEffectiveConfig()` at load time instead of importing `CONFIG` directly, so all test functions use the merged configuration.
+
+- **Test history tracking with regression detection** (`shared/model-test-utils.ts`, `extensions/model-test.ts`)
+  - Added `TestHistoryEntry` interface recording timestamp, model, provider, individual test scores, elapsed time, total score, and recommendation per test run.
+  - `readTestHistory()` / `appendTestHistory()` — persistent history stored at `~/.pi/agent/cache/model-test-history.json`. Capped at 50 entries per model and 500 entries total, with oldest entries pruned on append.
+  - `detectRegression(current, previous)` — compares the latest test result against the previous run for the same model and returns a regression report if any test score degraded (e.g., STRONG → MODERATE, MODERATE → WEAK, or any pass → fail).
+  - Model test summary now shows the number of previous runs and flags regressions when detected.
+
+- **`bump-version.ps1` — Windows PowerShell version bump script** (`scripts/bump-version.ps1`)
+  - PowerShell script for bumping version across all touchpoints from Windows. Uses `[System.IO.File]` for guaranteed UTF-8 no-BOM writes on both PowerShell 5 and 7.
+  - Reads current version from `shared/ollama.ts`, shows plan with confirmation prompt, updates all 6 files (ollama.ts, package.json x2, README.md, VERSION, CHANGELOG.md), then commits and tags.
+  - Counterpart to the existing `bump-version.sh` for Linux/macOS.
+
 ### Changed
 
-- **Version bumped to 1.1.7** (all version touchpoints)
-  - Source of truth: `shared/ollama.ts` (`EXTENSION_VERSION`), root `package.json`, `shared/package.json`.
-  - Documentation: root `README.md` (4 references: version badge, pin-to-tag, package format snippet, benchmark header).
+- **Single source of truth for version — VERSION file** (`VERSION`, `scripts/build-packages.sh`, `scripts/publish-packages.sh`, `scripts/bump-version.sh`, `scripts/bump-version.ps1`)
+  - Added `VERSION` file at the repo root containing just the version string (e.g., `1.1.7`). This is now the single source of truth for the version number.
+  - `build-packages.sh` and `publish-packages.sh` now read the version from the VERSION file at runtime via `cat "$REPO_ROOT/VERSION"` instead of having a hardcoded `VERSION="..."` variable. This eliminates version drift between the build scripts and the rest of the codebase.
+  - `bump-version.sh` now writes the VERSION file first, then updates the derived locations (ollama.ts, package.json files). Build/publish scripts are no longer listed as touchpoints since they derive from VERSION at runtime.
+  - `EXTENSION_VERSION` in `shared/ollama.ts` continues to be the runtime constant used by extensions, but the comment now directs users to run `bump-version.sh` rather than editing it manually.
 
+### Security
+
+- **DNS rebinding protection** — see Added section above.
+- **Audit log rate limiting** — see Added section above.
 ---
 
 ## [1.1.6] - 04-13-2026 9:45:00 AM
