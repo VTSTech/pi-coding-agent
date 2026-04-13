@@ -3,12 +3,13 @@
  * Ported from AgentNova core/helpers.py — security layer.
  *
  * Provides comprehensive security controls including:
- * - Command blocklist validation
+ * - Security mode toggle (basic/max) persisted in security.json
+ * - Command blocklist validation (partitioned into critical/extended)
  * - Path validation (filesystem escape prevention)
- * - SSRF protection (internal IP blocking)
+ * - SSRF protection (mode-aware — allows localhost in basic)
  * - Shell injection detection
  * - URL validation
- * - Audit logging
+ * - Audit logging (enriched with security mode metadata)
  *
  * @module shared/security
  * @writtenby VTSTech — https://www.vts-tech.org
@@ -26,96 +27,224 @@ import { debugLog } from "./debug";
 export const SETTINGS_PATH = path.join(os.homedir(), ".pi", "agent", "settings.json");
 
 // ============================================================================
-// Command Blocklist
+// Security Mode Configuration
 // ============================================================================
 
 /**
- * Set of blocked shell commands that should never be executed.
+ * Security enforcement mode.
  *
- * Ported from AgentNova's `BLOCKED_COMMANDS` configuration.
- * Commands are blocked based on their base name (path prefixes are stripped).
+ * - `"max"`: Full lockdown. All commands blocked (critical + extended),
+ *   SSRF blocks localhost/private IPs/metadata. Default when no config exists.
+ * - `"basic"`: Relaxed mode. Only critical commands are blocked,
+ *   SSRF allows localhost/127.x for local development.
+ */
+export type SecurityMode = "basic" | "max";
+
+/** Path to the security mode configuration file. Stored separately from settings.json per project convention. */
+export const SECURITY_CONFIG_PATH = path.join(os.homedir(), ".pi", "agent", "security.json");
+
+/** Shape of the persisted security.json file. */
+interface SecurityConfig {
+  mode: SecurityMode;
+  lastUpdated: string;
+}
+
+/**
+ * Read the current security mode from ~/.pi/agent/security.json.
  *
- * Categories:
- * - **System modification**: rm, rmdir, format, fdisk, mkfs, dd, shred
- * - **Privilege escalation**: sudo, su, doas, pkexec
- * - **Network attacks**: nmap, nc, netcat, telnet
- * - **Package management**: apt, yum, dnf, pacman, pip, npm
- * - **Process control**: kill, killall, systemctl
- * - **User management**: useradd, userdel, passwd
- * - **Dangerous shell features**: exec, eval, source
- * - **Filesystem**: mount, umount, chown, chmod
- * - **Shell escapes**: vi, vim, nano, emacs, less, more
+ * If the file is missing, corrupt, or unreadable, defaults to `"max"`.
+ * This ensures fail-closed behavior — an absent config always means
+ * maximum security.
+ *
+ * @returns The current security mode ("basic" or "max")
  *
  * @example
  * ```typescript
- * if (BLOCKED_COMMANDS.has("rm")) {
- *   console.log("rm command is blocked");
+ * const mode = getSecurityMode();
+ * if (mode === "max") {
+ *   console.log("Running in maximum security mode");
  * }
  * ```
  */
-export const BLOCKED_COMMANDS: ReadonlySet<string> = new Set([
-  // System modification
-  "rm", "rmdir", "del", "format", "fdisk", "mkfs",
-  "dd", "shred", "wipe", "srm",
-  // Privilege escalation
-  "sudo", "su", "doas", "pkexec", "gksudo", "kdesu",
-  // Network attacks
-  "nmap", "nc", "netcat", "telnet", "wget", "curl",
+export function getSecurityMode(): SecurityMode {
+  try {
+    if (!fs.existsSync(SECURITY_CONFIG_PATH)) return "max";
+    const raw = fs.readFileSync(SECURITY_CONFIG_PATH, "utf-8");
+    const config = JSON.parse(raw) as SecurityConfig;
+    if (config.mode === "basic" || config.mode === "max") return config.mode;
+    return "max";
+  } catch (err) {
+    debugLog("security", `failed to read security config at ${SECURITY_CONFIG_PATH}`, err);
+    return "max";
+  }
+}
+
+/**
+ * Write the security mode to ~/.pi/agent/security.json.
+ *
+ * Creates the `~/.pi/agent/` directory if it does not already exist.
+ * The file is written atomically (writeFileSync) to prevent partial writes.
+ *
+ * @param mode - The security mode to persist ("basic" or "max")
+ *
+ * @example
+ * ```typescript
+ * setSecurityMode("basic");
+ * // ~/.pi/agent/security.json → { "mode": "basic", "lastUpdated": "2026-04-13T..." }
+ * ```
+ */
+export function setSecurityMode(mode: SecurityMode): void {
+  const configDir = path.dirname(SECURITY_CONFIG_PATH);
+  try {
+    if (!fs.existsSync(configDir)) {
+      fs.mkdirSync(configDir, { recursive: true });
+    }
+    const config: SecurityConfig = { mode, lastUpdated: new Date().toISOString() };
+    fs.writeFileSync(SECURITY_CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+    debugLog("security", `security mode set to ${mode}`, { path: SECURITY_CONFIG_PATH });
+  } catch (err) {
+    debugLog("security", `failed to write security config to ${SECURITY_CONFIG_PATH}`, err);
+  }
+}
+
+// ============================================================================
+// Command Blocklists — Partitioned by Security Mode
+// ============================================================================
+
+/**
+ * CRITICAL_COMMANDS — always blocked regardless of security mode.
+ *
+ * These commands are irreversibly destructive, provide privilege escalation,
+ * or enable remote/network attacks. Blocking them in basic mode would be
+ * dangerous, so they are ALWAYS enforced.
+ *
+ * Categories:
+ * - **Filesystem destruction**: mkfs, dd, shred, wipe, srm, format, fdisk
+ * - **Privilege escalation** (non-sudo): su, doas, pkexec, gksudo, kdesu
+ * - **Network attacks**: nmap, nc, netcat, telnet
+ * - **Remote access**: ssh, scp, sftp, rsync
+ * - **Process killing**: kill, killall, pkill, xkill
+ * - **User management**: useradd, userdel, usermod, passwd, adduser, deluser
+ * - **Dangerous shell features**: exec, eval, source, ., alias
+ * - **Filesystem control**: mount, umount, chattr, lsattr
+ * - **Permission modification**: chown, chmod
+ */
+export const CRITICAL_COMMANDS: ReadonlySet<string> = new Set([
+  // Filesystem destruction (irrecoverable)
+  "mkfs", "dd", "shred", "wipe", "srm", "format", "fdisk",
+  // Privilege escalation (non-sudo)
+  "su", "doas", "pkexec", "gksudo", "kdesu",
+  // Network attack tools
+  "nmap", "nc", "netcat", "telnet",
+  // Remote access
   "ssh", "scp", "sftp", "rsync",
-  // Package management
-  "apt", "apt-get", "yum", "dnf", "pacman", "pip", "npm", "yarn", "cargo",
-  // Process control
-  "kill", "killall", "pkill", "xkill", "systemctl", "service",
+  // Process killing
+  "kill", "killall", "pkill", "xkill",
   // User management
   "useradd", "userdel", "usermod", "passwd", "adduser", "deluser",
   // Dangerous shell features
   "exec", "eval", "source", ".", "alias",
-  // Filesystem
-  "mount", "umount", "chown", "chmod", "chattr", "lsattr",
-  // Shell escapes
+  // Filesystem control
+  "mount", "umount", "chattr", "lsattr",
+  // Permission modification
+  "chown", "chmod",
+]);
+
+/**
+ * EXTENDED_COMMANDS — blocked only when security mode is "max".
+ *
+ * These commands are useful for development workflows (package management,
+ * file operations, system services) but can be dangerous in untrusted
+ * contexts. In basic mode they are allowed to enable productivity in
+ * resource-constrained environments like Colab or budget VMs.
+ *
+ * Categories:
+ * - **File deletion**: rm, rmdir, del
+ * - **Privilege escalation**: sudo (needed for apt install, etc. in basic)
+ * - **Download tools**: wget, curl
+ * - **Package management**: apt, apt-get, yum, dnf, pacman, pip, npm, yarn, cargo
+ * - **System service control**: systemctl, service
+ * - **Interactive editors**: vi, vim, nano, emacs, less, more, man
+ * - **Version control**: git
+ */
+export const EXTENDED_COMMANDS: ReadonlySet<string> = new Set([
+  // File deletion
+  "rm", "rmdir", "del",
+  // Privilege escalation
+  "sudo",
+  // Download tools
+  "wget", "curl",
+  // Package management
+  "apt", "apt-get", "yum", "dnf", "pacman", "pip", "npm", "yarn", "cargo",
+  // System service control
+  "systemctl", "service",
+  // Interactive editors (shell escape risk)
   "vi", "vim", "nano", "emacs", "less", "more", "man",
+  // Version control
+  "git",
+]);
+
+/**
+ * Legacy full blocklist — union of CRITICAL_COMMANDS + EXTENDED_COMMANDS.
+ *
+ * Kept for backward compatibility with extensions that reference
+ * `BLOCKED_COMMANDS.size` in audit reports or diagnostics.
+ *
+ * In max mode, ALL of these are blocked.
+ * In basic mode, only CRITICAL_COMMANDS are enforced.
+ */
+export const BLOCKED_COMMANDS: ReadonlySet<string> = new Set([
+  ...CRITICAL_COMMANDS,
+  ...EXTENDED_COMMANDS,
 ]);
 
 // ============================================================================
-// SSRF Protection
+// SSRF Protection — Partitioned by Security Mode
 // ============================================================================
 
 /**
- * Set of blocked URL hostname patterns for SSRF protection.
+ * URL hostname patterns ALWAYS blocked for SSRF protection, regardless of mode.
  *
- * Ported from AgentNova's `BLOCKED_URL_PATTERNS` configuration.
- * These patterns are matched against URL hostnames to prevent
- * Server-Side Request Forgery attacks.
- *
- * Categories:
- * - **Loopback**: localhost, 127.0.0.1, 0.0.0.0, ::1
- * - **RFC1918 private ranges**: 10.x, 192.168.x, 172.16-31.x
+ * These are the critical patterns that must never be accessible:
  * - **Cloud metadata endpoints**: 169.254.169.254 (AWS, GCP, Azure)
- * - **Internal service patterns**: internal., local., private., intranet.
- *
- * @example
- * ```typescript
- * // Check if a URL hostname matches a blocked pattern
- * const hostname = "169.254.169.254";
- * for (const pattern of BLOCKED_URL_PATTERNS) {
- *   if (hostname === pattern || hostname.startsWith(pattern)) {
- *     console.log(`Blocked: matches ${pattern}`);
- *   }
- * }
- * ```
+ * - **RFC1918 private ranges**: 10.x, 192.168.x, 172.16-31.x
+ * - **Internal service patterns**: internal., private., intranet.
  */
-export const BLOCKED_URL_PATTERNS: ReadonlySet<string> = new Set([
-  // Loopback (full 127.0.0.0/8 range)
-  "localhost", "127.", "0.0.0.0", "::1", "::ffff:127.0.0.1", "::ffff:0.0.0.0",
+export const BLOCKED_URL_ALWAYS: ReadonlySet<string> = new Set([
+  // Cloud metadata endpoints
+  "169.254.169.254",
   // RFC1918 private ranges
   "10.", "192.168.",
   "172.16.", "172.17.", "172.18.", "172.19.", "172.20.", "172.21.",
   "172.22.", "172.23.", "172.24.", "172.25.", "172.26.", "172.27.",
   "172.28.", "172.29.", "172.30.", "172.31.",
-  // Cloud metadata endpoints
-  "169.254.169.254",
   // Internal service patterns
-  "internal.", "local.", "private.", "intranet.",
+  "internal.", "private.", "intranet.",
+]);
+
+/**
+ * URL hostname patterns blocked ONLY in max mode.
+ *
+ * In basic mode these are allowed to enable local development:
+ * - **Loopback addresses**: localhost, 127.x, 0.0.0.0, ::1, ::ffff variants
+ * - **Local patterns**: local. (note: also covers "localhost" via startsWith)
+ */
+export const BLOCKED_URL_MAX_ONLY: ReadonlySet<string> = new Set([
+  // Loopback addresses (full 127.0.0.0/8 range)
+  "localhost", "127.", "0.0.0.0", "::1", "::ffff:127.0.0.1", "::ffff:0.0.0.0",
+  // Local/internal patterns
+  "local.",
+]);
+
+/**
+ * Legacy full SSRF blocklist — union of ALWAYS + MAX_ONLY patterns.
+ *
+ * Kept for backward compatibility. Represents the effective blocklist
+ * when running in max mode.
+ */
+export const BLOCKED_URL_PATTERNS: ReadonlySet<string> = new Set([
+  ...BLOCKED_URL_ALWAYS,
+  ...BLOCKED_URL_MAX_ONLY,
 ]);
 
 // ============================================================================
@@ -202,6 +331,7 @@ export function validatePath(
     path.join(os.homedir(), ".ssh"),
     path.join(os.homedir(), ".gnupg"),
     SETTINGS_PATH,
+    SECURITY_CONFIG_PATH,
     // NOTE: models.json is intentionally excluded from sensitivePaths.
     // Extensions use readModelsJson()/writeModelsJson() from shared/ollama.ts
     // for direct file I/O — not via Pi's tool system — so blocking it here
@@ -234,7 +364,7 @@ export function validatePath(
 }
 
 // ============================================================================
-// URL Validation (SSRF Protection)
+// URL Validation (SSRF Protection — Mode-Aware)
 // ============================================================================
 
 /**
@@ -244,7 +374,9 @@ export function validatePath(
  * 1. Rejects empty URLs
  * 2. Validates URL format
  * 3. Only allows http and https schemes
- * 4. Blocks hostnames matching SSRF patterns
+ * 4. Always blocks Cloud Metadata IPs and RFC1918 private ranges
+ * 5. In max mode, additionally blocks loopback (localhost, 127.x)
+ * 6. In basic mode, allows localhost/127.x for local development
  *
  * @param url - The URL to validate
  * @param blockSsrf - Whether to apply SSRF blocking rules (default: true)
@@ -256,13 +388,14 @@ export function validatePath(
  * isSafeUrl("https://api.example.com/data");
  * // Returns: { safe: true, error: "" }
  *
- * // Blocked internal URL
- * isSafeUrl("http://localhost:8080/admin");
- * // Returns: { safe: false, error: "SSRF protection: blocked hostname pattern 'localhost'" }
- *
- * // Blocked cloud metadata endpoint
+ * // Blocked cloud metadata endpoint (always)
  * isSafeUrl("http://169.254.169.254/latest/meta-data/");
  * // Returns: { safe: false, error: "SSRF protection: blocked hostname pattern '169.254.169.254'" }
+ *
+ * // Blocked in max mode, allowed in basic mode
+ * isSafeUrl("http://localhost:8080/admin");
+ * // Max: { safe: false, error: "SSRF protection: blocked hostname pattern 'localhost'" }
+ * // Basic: { safe: true, error: "" }
  * ```
  */
 export function isSafeUrl(
@@ -303,9 +436,21 @@ export function isSafeUrl(
   }
 
   if (blockSsrf) {
-    for (const pattern of BLOCKED_URL_PATTERNS) {
+    const mode = getSecurityMode();
+
+    // ALWAYS block: cloud metadata, RFC1918, internal patterns
+    for (const pattern of BLOCKED_URL_ALWAYS) {
       if (normalized === pattern || normalized.endsWith("." + pattern) || normalized.startsWith(pattern)) {
         return { safe: false, error: `SSRF protection: blocked hostname pattern '${pattern}'` };
+      }
+    }
+
+    // MAX ONLY block: loopback addresses (allowed in basic mode)
+    if (mode === "max") {
+      for (const pattern of BLOCKED_URL_MAX_ONLY) {
+        if (normalized === pattern || normalized.endsWith("." + pattern) || normalized.startsWith(pattern)) {
+          return { safe: false, error: `SSRF protection: blocked hostname pattern '${pattern}' (max mode)` };
+        }
       }
     }
   }
@@ -314,7 +459,7 @@ export function isSafeUrl(
 }
 
 // ============================================================================
-// Command Sanitization & Injection Detection
+// Command Sanitization & Injection Detection (Mode-Aware)
 // ============================================================================
 
 /**
@@ -345,7 +490,9 @@ const INJECTION_PATTERNS: RegExp[] = [
  *
  * Performs comprehensive security checks on a command string:
  * 1. Rejects empty commands
- * 2. Extracts and checks the base command against blocklist
+ * 2. Extracts and checks the base command against blocklists
+ *    - CRITICAL_COMMANDS are always blocked
+ *    - EXTENDED_COMMANDS are blocked only in max mode
  * 3. Detects newline injection
  * 4. Checks for shell metacharacter injection patterns
  *
@@ -354,13 +501,18 @@ const INJECTION_PATTERNS: RegExp[] = [
  *
  * @example
  * ```typescript
- * // Safe command
+ * // Safe command (both modes)
  * sanitizeCommand("ls -la /home/user");
  * // Returns: { isSafe: true, error: "", command: "ls -la /home/user" }
  *
- * // Blocked command
- * sanitizeCommand("rm -rf /");
- * // Returns: { isSafe: false, error: "Blocked command: rm", command: "" }
+ * // Critical command — always blocked
+ * sanitizeCommand("dd if=/dev/zero of=/dev/sda");
+ * // Returns: { isSafe: false, error: "Blocked command: dd (critical)", command: "" }
+ *
+ * // Extended command — blocked only in max mode
+ * sanitizeCommand("npm install lodash");
+ * // Max: { isSafe: false, error: "Blocked command: npm (max mode)", command: "" }
+ * // Basic: { isSafe: true, error: "", command: "npm install lodash" }
  *
  * // Injection attempt
  * sanitizeCommand("ls; rm -rf /");
@@ -382,9 +534,15 @@ export function sanitizeCommand(
   if (baseCmd.includes("/")) baseCmd = baseCmd.split("/").pop()!;
   if (baseCmd.includes("\\")) baseCmd = baseCmd.split("\\").pop()!;
 
-  // Check against blocklist
-  if (BLOCKED_COMMANDS.has(baseCmd)) {
-    return { isSafe: false, error: `Blocked command: ${baseCmd}`, command: "" };
+  // Check against critical blocklist (always blocked)
+  if (CRITICAL_COMMANDS.has(baseCmd)) {
+    return { isSafe: false, error: `Blocked command: ${baseCmd} (critical)`, command: "" };
+  }
+
+  // Check against extended blocklist (mode-dependent)
+  const mode = getSecurityMode();
+  if (mode === "max" && EXTENDED_COMMANDS.has(baseCmd)) {
+    return { isSafe: false, error: `Blocked command: ${baseCmd} (max mode)`, command: "" };
   }
 
   // Check for newlines/carriage returns
@@ -404,7 +562,7 @@ export function sanitizeCommand(
 }
 
 // ============================================================================
-// Audit Logging
+// Audit Logging (Mode-Aware)
 // ============================================================================
 
 /** Default audit log directory. */
@@ -417,10 +575,11 @@ export const AUDIT_LOG_PATH = path.join(AUDIT_DIR, "audit.log");
  * Append an audit entry to the JSON-lines log file.
  *
  * Each entry is written as a single line of JSON, making the log
- * easy to parse and analyze. Log write failures are silently
+ * easy to parse and analyze. The current security mode is automatically
+ * injected into the entry metadata. Log write failures are silently
  * ignored since logging is non-critical.
  *
- * @param entry - The audit entry to write
+ * @param entry - The audit entry to write (enriched with securityMode)
  *
  * @example
  * ```typescript
@@ -429,8 +588,9 @@ export const AUDIT_LOG_PATH = path.join(AUDIT_DIR, "audit.log");
  *   toolName: "bash",
  *   action: "blocked",
  *   rule: "command_blocklist",
- *   detail: "Blocked command: rm",
+ *   detail: "Blocked command: rm (max mode)",
  * });
+ * // Written line includes: { ..., "securityMode": "max" }
  * ```
  */
 export function appendAuditEntry(entry: Record<string, unknown>): void {
@@ -438,7 +598,8 @@ export function appendAuditEntry(entry: Record<string, unknown>): void {
     if (!fs.existsSync(AUDIT_DIR)) {
       fs.mkdirSync(AUDIT_DIR, { recursive: true });
     }
-    const line = JSON.stringify(entry) + "\n";
+    const enriched = { ...entry, securityMode: getSecurityMode() };
+    const line = JSON.stringify(enriched) + "\n";
     fs.appendFileSync(AUDIT_LOG_PATH, line, "utf-8");
   } catch (err) { debugLog("security", "audit log write failure", err); }
 }
@@ -458,7 +619,7 @@ export function appendAuditEntry(entry: Record<string, unknown>): void {
  * const recent = readRecentAuditEntries(10);
  * for (const entry of recent) {
  *   if (entry.action === "blocked") {
- *     console.log(`Blocked: ${entry.toolName} - ${entry.detail}`);
+ *     console.log(`[${entry.securityMode}] Blocked: ${entry.toolName} - ${entry.detail}`);
  *   }
  * }
  * ```
@@ -550,7 +711,8 @@ export function checkFileToolInput(
  * Check an HTTP tool call for SSRF violations.
  *
  * Validates the URL against blocked hostname patterns to prevent
- * Server-Side Request Forgery attacks.
+ * Server-Side Request Forgery attacks. Respects the current security
+ * mode — in basic mode, localhost/127.x URLs are allowed.
  *
  * @param input - The tool input object containing a "url" or "uri" field
  * @returns Object with `safe`, `rule`, and `detail` fields
