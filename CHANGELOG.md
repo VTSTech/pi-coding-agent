@@ -6,6 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.1.8] - 04-13-2026 3:59:34 PM
+
+### Fixed
+
+- **openrouter-sync lacked mutex protection for models.json writes** (`extensions/openrouter-sync.ts`) — [SEC-01]
+  - `openrouter-sync.ts` performed inline read-modify-write cycles on `models.json` without using the `readModifyWriteModelsJson()` mutex wrapper that `ollama-sync.ts` already uses correctly. When both sync extensions ran concurrently, the non-atomic cycle could cause lost updates.
+  - Rewrote to use `readModifyWriteModelsJson()` for all `models.json` modifications. Extracted a shared `performSync()` function that acquires the lock, reads the current file, applies the provider diff, and writes back atomically.
+
+- **`rateLimitDelay()` ignored user config overrides** (`extensions/model-test.ts`) — [ROB-01]
+  - `rateLimitDelay()` read from the static `CONFIG.TEST_DELAY_MS` constant instead of the merged `effectiveConfig.TEST_DELAY_MS`. Users who set a custom delay in `model-test-config.json` observed no change in actual behavior.
+  - Changed to `effectiveConfig.TEST_DELAY_MS` so user overrides are respected.
+
+- **`testToolSupport()` used hardcoded timeout** (`extensions/model-test.ts`) — [ROB-02]
+  - The tool support detection function used a hardcoded `130000ms` timeout instead of reading `effectiveConfig.TOOL_SUPPORT_TIMEOUT_MS`, making the user-configurable setting a no-op.
+  - Replaced the hardcoded value with the effective config lookup.
+
+- **`fmtBytes()` returned "0K" for small byte values** (`shared/format.ts`) — [ROB-04]
+  - Values below 1024 bytes (e.g., `fmtBytes(512)`) computed `Math.floor(512 / 1024) = 0` and returned `"0K"` instead of `"512B"`. Particularly noticeable for processes using less than 1 MB of memory in the status bar.
+  - Added guard clause: `if (b < 1024) return \`${b}B\`;` before the kilobyte calculation.
+
+- **`execSync` blocked event loop in status.ts** (`extensions/status.ts`) — [ROB-05]
+  - Version detection used `execSync("pi -v 2>&1")`, blocking the event loop on every `session_start`. While the input is hardcoded and safe, this was inconsistent with the codebase's migration toward async patterns.
+  - Migrated to `promisify(exec)("pi -v 2>&1")` — a non-blocking async call that resolves identically.
+
+### Added
+
+- **Shared config I/O module** (`shared/config-io.ts`) — [MAINT-03]
+  - Extracted `readJsonConfig()`, `writeJsonConfig()`, `readSettings()`, and `writeSettings()` into a dedicated shared module. These functions implement the common pattern of reading/writing JSON files under `~/.pi/agent/` with atomic write-then-rename and directory auto-creation.
+  - `api.ts` updated to import from `shared/config-io` instead of maintaining its own local copies. Registered `"./config-io"` in `shared/package.json` exports map.
+
+- **Shared ReAct dialect detection** (`shared/react-parser.ts`) — [MAINT-04, MAINT-06]
+  - Extracted `detectReactDialect()` from `model-test.ts` into `shared/react-parser.ts`. The function checks a text sample against `ALL_DIALECT_PATTERNS` to identify which ReAct dialect a model is using.
+  - `testToolSupport()` now imports and calls `detectReactDialect()` instead of maintaining an 18-line inline `reactPatterns` array, eliminating a maintenance drift risk where new dialect patterns added to the canonical source would not propagate to the inline copy.
+
+- **Canonical `extractBraceJson()` in shared module** (`shared/react-parser.ts`) — [MAINT-05]
+  - Moved `extractBraceJson()` from `model-test.ts` into `shared/react-parser.ts` as the authoritative implementation. `model-test.ts` imports from the shared module, removing the duplicated brace-matching logic.
+
+### Changed
+
+- **Added `.npmignore` files to all 9 npm-packages/ subdirectories** — [ARCH-04]
+  - `npm-packages/` directories lacked `.npmignore` files, meaning published packages included test fixtures, internal scripts, and documentation. Added appropriate `.npmignore` to each package directory to reduce published package size and prevent shipping internal files to consumers.
+
+---
+
 ## [1.1.7] - 04-13-2026 11:19:48 AM
 
 ### Added
