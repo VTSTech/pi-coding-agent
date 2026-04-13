@@ -634,12 +634,19 @@ export function sanitizeCommand(
   if (baseCmd.includes("/")) baseCmd = baseCmd.split("/").pop()!;
   if (baseCmd.includes("\\")) baseCmd = baseCmd.split("\\").pop()!;
 
-  // Check against critical blocklist (always blocked)
-  if (CRITICAL_COMMANDS.has(baseCmd)) {
-    return { isSafe: false, error: `Blocked command: ${baseCmd} (critical)`, command: "" };
+  // Check against critical blocklist (always blocked) — scan ALL words,
+  // not just the first. This catches "sudo chmod" where sudo is extended
+  // but chmod is critical.
+  for (const raw of parts) {
+    let word = raw.toLowerCase();
+    if (word.includes("/")) word = word.split("/").pop()!;
+    if (word.includes("\\")) word = word.split("\\").pop()!;
+    if (CRITICAL_COMMANDS.has(word)) {
+      return { isSafe: false, error: `Blocked command: ${word} (critical)`, command: "" };
+    }
   }
 
-  // Check against extended blocklist (mode-dependent)
+  // Check base command against extended blocklist (mode-dependent)
   const mode = getSecurityMode();
   if (mode === "max" && EXTENDED_COMMANDS.has(baseCmd)) {
     return { isSafe: false, error: `Blocked command: ${baseCmd} (max mode)`, command: "" };

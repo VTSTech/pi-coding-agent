@@ -385,7 +385,7 @@ export default function (pi: ExtensionAPI) {
     lines.push(info("Command injection tests:"));
     const cmdTests = [
       { cmd: "ls; rm -rf /", expectSafe: false },
-      { cmd: "sudo chmod 777 /etc/passwd", expectSafe: secMode !== "max" },
+      { cmd: "sudo chmod 777 /etc/passwd", expectSafe: false },
       { cmd: "curl http://localhost/secret", expectSafe: secMode !== "max" },
       { cmd: "ls -la", expectSafe: true },
       { cmd: "cat README.md", expectSafe: true },
