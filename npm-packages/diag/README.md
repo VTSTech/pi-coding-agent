@@ -26,7 +26,7 @@ pi install "npm:@vtstech/pi-diag"
 - **Extensions** — Extension files found? Active tools?
 - **Themes** — Theme files? Valid JSON?
 - **Session** — Active model? API mode? Provider? Base URL? Context window? Context usage? Thinking level?
-- **Security** — Audit log status, blocked command count
+- **Security** — Active security mode, effective blocklist sizes (mode-aware), command/SSRF/path validation tests, audit log status
 
 Also registers a `self_diagnostic` tool so the AI agent can run diagnostics on command.
 

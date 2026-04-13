@@ -32,8 +32,7 @@ Slots are updated every 5 seconds (1 second for active tool timing). Render orde
 
 | Slot | Description | Condition |
 |------|-------------|-----------|
-| **CtxMax** | Native model context window from Ollama `/api/show` (k-notation) | Local or remote Ollama |
-| **RespMax** | Max response/completion tokens with k-notation (e.g., `16k`) | After first provider request |
+| **CtxMax + RespMax** | Combined: native model context window + max response tokens (e.g., `CtxMax:33k RespMax:16.4k`) | Ollama or after first provider request |
 | **Resp** | Agent loop duration (e.g., `2m3s`) | After first agent cycle |
 | **CPU%** | Per-core CPU usage delta | Local Ollama only |
 | **RAM** | Used/total system memory | Local Ollama only |
@@ -42,7 +41,7 @@ Slots are updated every 5 seconds (1 second for active tool timing). Render orde
 | **SEC** | Security mode indicator (`SEC:BASIC`/`SEC:MAX`) + session-scoped blocked count + 3s flash on block event | Always shown |
 | **Active tool** | Live elapsed timer with `>` indicator | While a tool is running |
 | **Prompt** | System prompt size as `chars chr tokens tok` | After first agent start |
-| **Pi version** | `pi:0.66.1` (dimmed, always last) | Always shown |
+| **Pi version** | `pi:0.66.1` (dim label + green value, always last) | Always shown |
 
 All slots are cleared on `session_shutdown`. Metrics that the framework already provides (model name, session tokens, context usage, thinking level) are intentionally omitted to avoid duplication.
 

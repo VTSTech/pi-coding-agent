@@ -44,8 +44,11 @@ pi install "npm:@vtstech/pi-model-test"
 
 - Auto-detects Ollama vs cloud provider (OpenRouter, Anthropic, Google, OpenAI, Groq, DeepSeek, Mistral, xAI, Together, Fireworks, Cohere)
 - Uses native `fetch()` for all HTTP communication (no shell subprocess or curl dependency)
+- **Streaming Ollama chat** — uses `/api/chat` with `stream: true` for earlier timeout detection and reduced memory
 - Automatic remote Ollama URL resolution (reads from `models.json` on every call — picks up config changes immediately)
-- Timeout resilience with auto-retry on empty responses
+- Timeout resilience with exponential backoff retry on connection failures
+- **Configurable test parameters** — override timeouts, delays, temperature via `~/.pi/agent/model-test-config.json`
+- **Test history with regression detection** — tracks results at `~/.pi/agent/cache/model-test-history.json`, flags score degradation
 - Rate limit delay between tests (configurable)
 - Thinking model fallback (retries with `think: true`)
 - Tool support cache (`~/.pi/agent/cache/tool_support.json`)

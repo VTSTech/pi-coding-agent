@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Pi Version](https://img.shields.io/badge/Pi-v0.66%2B-green.svg)](https://github.com/badlogic/pi-mono)
 [![Pi Package](https://img.shields.io/badge/Install-pi%20install%20git-blue.svg)](#installation)
-[![Version](https://img.shields.io/badge/Version-v1.1.6-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-v1.1.7-orange.svg)](CHANGELOG.md)
 
 <p>
   <a href="https://github.com/VTSTech"><strong>VTSTech</strong></a> •
@@ -167,7 +167,7 @@ Checks:
 - **Extensions** — Extension files found? Active tools?
 - **Themes** — Theme files? Valid JSON?
 - **Session** — Active model? API mode? Provider? Base URL? Context window? Context usage? Thinking level?
-- **Security** — Audit log status, blocked command count
+- **Security** — Active security mode, effective blocklist sizes (mode-aware), command/SSRF/path validation tests, audit log status
 
 Also registers a `self_diagnostic` tool so the AI agent can run diagnostics on command.
 
@@ -334,7 +334,7 @@ Supports all 10 Pi API modes:
 Automatically loaded — protects against:
 
 - **Partitioned command blocklist** — 41 CRITICAL commands (always blocked: system modification, privilege escalation, network attacks, shell escapes) + 25 EXTENDED commands (blocked in max mode: package management, process control, development tools)
-- **Mode-aware SSRF protection** — 19 ALWAYS_BLOCKED URL patterns (loopback, RFC1918 private ranges, cloud metadata endpoints) + 7 MAX_ONLY patterns (localhost by name, broadcast, link-local, current network) that are allowed in basic mode
+- **Mode-aware SSRF protection** — 22 ALWAYS_BLOCKED URL patterns (loopback, RFC1918 private ranges, cloud metadata endpoints) + 7 MAX_ONLY patterns (localhost by name, broadcast, link-local, current network) that are allowed in basic mode
 - **Security mode toggle** — switch between `basic` and `max` modes at runtime; persisted to `~/.pi/agent/security.json`
 - **Path validation** — prevents filesystem escape and access to critical system directories; symlinks are dereferenced via `fs.realpathSync()` to block `/tmp/evil → /etc/passwd` bypasses
 - **Shell injection detection** — regex patterns for command chaining, substitution, and redirection
@@ -403,8 +403,7 @@ Automatically loaded — no commands needed. When a model lacks native tool call
 CPU/RAM/Swap are only shown when using a local Ollama provider (not for cloud/remote). For cloud providers, system metrics are omitted. Model name, session tokens, and context usage are shown by the framework — not duplicated here. All labels use dimmed coloring; all values use green highlighting.
 
 **Status slots (updated every 5s, 1s for active tool):**
-- **CtxMax** — native model context window from Ollama `/api/show` (local and remote Ollama, cached per-model)
-- **RespMax** — max response/completion tokens with k-notation (e.g., `16k`) captured via `before_provider_request` interception
+- **CtxMax + RespMax** — combined slot showing native model context window and max response/completion tokens (e.g., `CtxMax:33k RespMax:16.4k`)
 - **Resp** — agent loop duration via `agent_start`/`agent_end` events
 - **CPU%** — per-core delta via `os.cpus()` (local Ollama only)
 - **RAM** — used/total via `os.totalmem()` / `os.freemem()` (local Ollama only)
@@ -413,7 +412,7 @@ CPU/RAM/Swap are only shown when using a local Ollama provider (not for cloud/re
 - **SEC** — security mode indicator (`SEC:BASIC` or `SEC:MAX`) + session-scoped blocked count + 3s flash on blocked tools (resets on shutdown)
 - **Active tool** — live elapsed timer with `>` indicator while a tool is running
 - **Prompt** — system prompt size as `chars chr tokens tok` displayed on agent start
-- **Pi version** — `pi:0.66.1` fetched once at `session_start` (dimmed, always last slot)
+- **Pi version** — `pi:0.66.1` fetched once at `session_start` (dim label + green value, always last slot)
 
 All slots are cleared on session shutdown. Metrics that the framework already provides (model name, session tokens, context usage, thinking level) are intentionally omitted to avoid duplication.
 
@@ -611,9 +610,12 @@ pi-coding-agent/
 │   ├── security.ts          # Command/path/SSRF protection
 │   └── status.ts            # System resource monitor & status bar
 ├── shared/
+│   ├── debug.ts             # Conditional debug logging
 │   ├── format.ts            # Shared formatting utilities
-│   ├── ollama.ts            # Ollama API helpers & provider detection
-│   ├── security.ts          # Security validation functions
+│   ├── model-test-utils.ts  # Shared test utilities, config, history
+│   ├── ollama.ts            # Ollama API helpers, provider detection, mutex, retry
+│   ├── react-parser.ts      # Multi-dialect ReAct text parser
+│   ├── security.ts          # Security validation, SSRF, DNS rebinding, audit log
 │   └── types.ts             # TypeScript types & error classes
 ├── themes/
 │   └── matrix.json          # Matrix movie theme
@@ -629,9 +631,12 @@ pi-coding-agent/
 │   └── status/              # @vtstech/pi-status
 ├── scripts/
 │   ├── build-packages.sh    # Build all npm packages (esbuild TS→ESM)
+│   ├── bump-version.sh      # Linux/macOS version bump script
+│   ├── bump-version.ps1     # Windows PowerShell version bump script
 │   └── publish-packages.sh  # Publish to npm (shared first, then extensions)
 ├── CHANGELOG.md             # Version history
 ├── TESTS.md                 # Model benchmark results
+├── VERSION                  # Single source of truth for version
 ├── package.json             # Pi package manifest
 ├── README.md
 └── LICENSE

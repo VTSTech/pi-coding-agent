@@ -13,11 +13,13 @@ pi install "npm:@vtstech/pi-security"
 ## Protection
 
 - **Partitioned command blocklist** — 41 CRITICAL commands (always blocked: system modification, privilege escalation, network attacks, shell escapes) + 25 EXTENDED commands (blocked in max mode: package management, process control, development tools)
-- **Mode-aware SSRF protection** — 19 ALWAYS_BLOCKED URL patterns (loopback, RFC1918 private ranges, cloud metadata endpoints) + 7 MAX_ONLY patterns (localhost by name, broadcast, link-local, current network) that are allowed in basic mode
+- **Mode-aware SSRF protection** — 22 ALWAYS_BLOCKED URL patterns (loopback, RFC1918 private ranges, cloud metadata endpoints) + 7 MAX_ONLY patterns (localhost by name, broadcast, link-local, current network) that are allowed in basic mode
 - **Security mode toggle** — switch between `basic` and `max` modes at runtime; persisted to `~/.pi/agent/security.json`
 - **Path validation** — prevents filesystem escape and access to critical system directories; symlinks are dereferenced via `fs.realpathSync()` to block `/tmp/evil → /etc/passwd` bypasses
 - **Shell injection detection** — regex patterns for command chaining, substitution, and redirection
-- **Audit logging** — JSON-lines audit log at `~/.pi/agent/audit.log` with security mode recorded per entry (path exported as `AUDIT_LOG_PATH`)
+- **Full-word command scanning** — all words in a command are checked against CRITICAL_COMMANDS (catches `sudo chmod`, `exec dd`, etc.)
+- **Audit logging** — JSON-lines audit log at `~/.pi/agent/audit.log` with security mode recorded per entry, buffered writes (path exported as `AUDIT_LOG_PATH`)
+- **DNS rebinding protection** — opt-in `resolveAndCheckHostname()` resolves hostnames via DNS and blocks loopback/private/cloud-metadata IPs
 
 ## Commands
 
