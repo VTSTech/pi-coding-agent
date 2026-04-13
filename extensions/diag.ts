@@ -11,6 +11,9 @@ import {
 import { MODELS_JSON_PATH, getOllamaBaseUrl, BUILTIN_PROVIDERS, readModelsJson, EXTENSION_VERSION } from "../shared/ollama";
 import {
   BLOCKED_COMMANDS, BLOCKED_URL_PATTERNS,
+  CRITICAL_COMMANDS, EXTENDED_COMMANDS,
+  BLOCKED_URL_ALWAYS, BLOCKED_URL_MAX_ONLY,
+  getSecurityMode,
   validatePath, isSafeUrl, sanitizeCommand, readRecentAuditEntries,
   AUDIT_LOG_PATH,
 } from "../shared/security";
@@ -305,9 +308,14 @@ export default function (pi: ExtensionAPI) {
     // ── SECURITY ──
     lines.push(section("SECURITY"));
 
-    // a. Command blocklist status
-    const blockedCmdList = Array.from(BLOCKED_COMMANDS).sort();
-    lines.push(info(`Command blocklist: ${blockedCmdList.length} commands blocked`));
+    const secMode = getSecurityMode();
+    lines.push(info(`Security mode: ${secMode.toUpperCase()}`));
+
+    // a. Command blocklist status (mode-aware)
+    const effectiveCmds = secMode === "max" ? BLOCKED_COMMANDS : CRITICAL_COMMANDS;
+    const blockedCmdList = Array.from(effectiveCmds).sort();
+    lines.push(info(`Command blocklist: ${blockedCmdList.length} commands blocked (${CRITICAL_COMMANDS.size} critical` +
+      (secMode === "max" ? ` + ${EXTENDED_COMMANDS.size} extended)` : ")")));
     const exampleCmds = blockedCmdList.filter(c => ["rm", "sudo", "chmod", "curl", "wget", "eval"].includes(c));
     if (exampleCmds.length > 0) {
       lines.push(info(`  Examples: ${exampleCmds.join(", ")}`));
@@ -316,9 +324,11 @@ export default function (pi: ExtensionAPI) {
       `Command blocklist active (${blockedCmdList.length} rules)`,
       `Command blocklist is EMPTY — security risk!`);
 
-    // b. SSRF protection
-    const blockedPatterns = Array.from(BLOCKED_URL_PATTERNS).sort();
-    lines.push(info(`SSRF protection: ${blockedPatterns.length} hostname patterns blocked`));
+    // b. SSRF protection (mode-aware)
+    const effectivePatterns = secMode === "max" ? BLOCKED_URL_PATTERNS : BLOCKED_URL_ALWAYS;
+    const blockedPatterns = Array.from(effectivePatterns).sort();
+    lines.push(info(`SSRF protection: ${blockedPatterns.length} hostname patterns blocked (${BLOCKED_URL_ALWAYS.size} always` +
+      (secMode === "max" ? ` + ${BLOCKED_URL_MAX_ONLY.size} max-only)` : ")")));
     const examplePatterns = blockedPatterns.filter(p =>
       ["localhost", "127.0.0.1", "169.254.169.254", "10.", "192.168.", "internal."].includes(p)
     );
@@ -332,7 +342,7 @@ export default function (pi: ExtensionAPI) {
     // Test SSRF with sample URLs
     lines.push(info("SSRF validation tests:"));
     const ssrfTests = [
-      { url: "http://localhost:8080/api", expectBlocked: true },
+      { url: "http://localhost:8080/api", expectBlocked: secMode === "max" },
       { url: "http://169.254.169.254/latest/meta-data/", expectBlocked: true },
       { url: "http://192.168.1.1/admin", expectBlocked: true },
       { url: "https://api.example.com/data", expectBlocked: false },
@@ -375,8 +385,8 @@ export default function (pi: ExtensionAPI) {
     lines.push(info("Command injection tests:"));
     const cmdTests = [
       { cmd: "ls; rm -rf /", expectSafe: false },
-      { cmd: "sudo chmod 777 /etc/passwd", expectSafe: false },
-      { cmd: "curl http://localhost/secret", expectSafe: false },
+      { cmd: "sudo chmod 777 /etc/passwd", expectSafe: secMode !== "max" },
+      { cmd: "curl http://localhost/secret", expectSafe: secMode !== "max" },
       { cmd: "ls -la", expectSafe: true },
       { cmd: "cat README.md", expectSafe: true },
       { cmd: "echo hello", expectSafe: true },

@@ -66,6 +66,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - CtxMax (`status-native-ctx`) and RespMax (`status-resp-max`) were separate slots that sorted apart alphabetically — `status-native-ctx` appeared near the beginning while `status-resp-max` appeared mid-bar, separated by `status-resp` and `status-params`.
   - Combined into a single `status-ctx` slot that renders both values as one unit: `CtxMax:33k RespMax:16.4k`. Both values are still independently computed and either can be absent without affecting the other.
 
+- **Diagnostic security tests assume max mode** (`extensions/diag.ts`)
+  - `/diag` security validation tests had hardcoded expectations for max mode: `localhost` SSRF URLs were expected to be blocked, and `sudo`/`curl` commands were expected to be blocked. In basic mode these are all allowed, producing three `UNEXPECTED` failures on every run.
+  - The command blocklist and SSRF pattern counts also reported the full (max-mode) totals regardless of the active mode.
+  - Fixed by reading the current security mode via `getSecurityMode()` and: (1) showing the mode in the SECURITY header, (2) reporting effective blocklist sizes with a breakdown (e.g., `41 commands blocked (41 critical)` in basic vs `66 commands blocked (41 critical + 25 extended)` in max), (3) adjusting SSRF and command test expectations so `localhost`, `sudo`, and `curl` are expected-allowed in basic mode and expected-blocked in max mode.
+
 ### Changed
 
 - **Single source of truth for version — VERSION file** (`VERSION`, `scripts/build-packages.sh`, `scripts/publish-packages.sh`, `scripts/bump-version.sh`, `scripts/bump-version.ps1`)
