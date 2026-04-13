@@ -103,9 +103,9 @@ Write-FileUtf8 "README.md" $c
 Write-Host "  [5/6] VERSION"
 Write-FileUtf8 "VERSION" "$NewVersion`n"
 
-# ── Update CHANGELOG.md ──────────────────────────────────────────
-Write-Host "  [6/6] CHANGELOG.md"
-$date = Get-Date -Format "yyyy-MM-dd"
+## ── Update CHANGELOG.md ──────────────────────────────────────────
+#Write-Host "  [6/6] CHANGELOG.md"
+#$date = Get-Date -Format "yyyy-MM-dd"
 
 $entry = @"
 ## [$NewVersion] - $date
@@ -114,38 +114,9 @@ $entry = @"
 
 - **Version bumped to $NewVersion** (all version touchpoints)
   - Source of truth: ``shared/ollama.ts`` (``EXTENSION_VERSION``), root ``package.json``, ``shared/package.json``.
-  - Documentation: root ``README.md`` (4 references: version badge, pin-to-tag, package format snippet, benchmark header).
-
 ---
 
 "@
-
-$cl = Read-FileUtf8 "CHANGELOG.md"
-$idx = [regex]::Match($cl, '(?m)^## \[').Index
-if ($idx -ge 0) {
-    $cl = $cl.Insert($idx, $entry)
-    Write-FileUtf8 "CHANGELOG.md" $cl
-}
-
-# ── Git commit and tag ───────────────────────────────────────────
-Write-Host ""
-Write-Host " -- Git commit and tag ---------------------------------------" -ForegroundColor DarkGray
-
-git add -A
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "ERROR: git add failed. Are you in the repo root?" -ForegroundColor Red
-    exit 1
-}
-
-$commitMsg = if ($Message) { "$NewVersion : $Message" } else { $NewVersion }
-git commit -m $commitMsg
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "ERROR: git commit failed." -ForegroundColor Red
-    exit 1
-}
-
-git tag -d "v$NewVersion" *>$null
-git tag -a "v$NewVersion" -m "v$NewVersion"
 
 Write-Host ""
 Write-Host " Done! $OldVersion -> $NewVersion" -ForegroundColor Green
