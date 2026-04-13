@@ -391,7 +391,8 @@ export default function (pi: ExtensionAPI) {
       { p: "/etc/shadow", expectValid: false },
       { p: "../../etc/hosts", expectValid: false },
       { p: "./test.txt", expectValid: true },
-      { p: "/tmp/output.log", expectValid: true },
+      { p: "/tmp/output.log", expectValid: false },
+      { p: path.join(os.homedir(), ".pi", "agent", "tmp", "output.log"), expectValid: true },
       { p: process.cwd(), expectValid: true },
     ];
     for (const test of pathTests) {
