@@ -37,6 +37,7 @@ import {
   setSecurityMode,
   SECURITY_CONFIG_PATH,
 } from "../shared/security";
+import { debugLog } from "../shared/debug";
 import { section, ok, fail, warn, info, bytesHuman } from "../shared/format";
 import { EXTENSION_VERSION } from "../shared/ollama";
 
@@ -118,7 +119,13 @@ export default function (pi: ExtensionAPI) {
             return;
           }
 
-          setSecurityMode(value as "basic" | "max");
+          const writeOk = setSecurityMode(value as "basic" | "max");
+          if (!writeOk) {
+            ctx.ui.notify(`FAILED to persist security mode: could not write ${SECURITY_CONFIG_PATH}`, "error");
+            debugLog("security", `/security mode ${value}: write failed`, { path: SECURITY_CONFIG_PATH });
+            return;
+          }
+
           ctx.ui.setStatus("status-sec", value.toUpperCase());
           ctx.ui.notify(`Security mode set to ${value.toUpperCase()}`, "success");
 
@@ -131,6 +138,7 @@ export default function (pi: ExtensionAPI) {
             detail: `Security mode changed to ${value.toUpperCase()}`,
           });
 
+          const totalCmds = CRITICAL_COMMANDS.size + EXTENDED_COMMANDS.size;
           const lines: string[] = [branding];
           lines.push(section("SECURITY MODE CHANGED"));
           lines.push(ok(`Mode: ${value.toUpperCase()}`));
@@ -142,7 +150,7 @@ export default function (pi: ExtensionAPI) {
             lines.push(warn("Localhost and 127.x URLs are now ALLOWED for SSRF"));
             lines.push(ok("Critical commands remain blocked: dd, mkfs, shred, fdisk, ssh, etc."));
           } else {
-            lines.push(ok("Full lockdown active — all ${CRITICAL_COMMANDS.size + EXTENDED_COMMANDS.size} commands blocked"));
+            lines.push(ok(`Full lockdown active — all ${totalCmds} commands blocked`));
             lines.push(ok("Full SSRF protection — localhost and private IPs blocked"));
           }
 

@@ -86,14 +86,18 @@ export function getSecurityMode(): SecurityMode {
  * The file is written atomically (writeFileSync) to prevent partial writes.
  *
  * @param mode - The security mode to persist ("basic" or "max")
+ * @returns `true` if the write succeeded, `false` if it failed
  *
  * @example
  * ```typescript
- * setSecurityMode("basic");
+ * const ok = setSecurityMode("basic");
+ * if (!ok) {
+ *   ctx.ui.notify("Failed to write security config", "error");
+ * }
  * // ~/.pi/agent/security.json → { "mode": "basic", "lastUpdated": "2026-04-13T..." }
  * ```
  */
-export function setSecurityMode(mode: SecurityMode): void {
+export function setSecurityMode(mode: SecurityMode): boolean {
   const configDir = path.dirname(SECURITY_CONFIG_PATH);
   try {
     if (!fs.existsSync(configDir)) {
@@ -101,9 +105,19 @@ export function setSecurityMode(mode: SecurityMode): void {
     }
     const config: SecurityConfig = { mode, lastUpdated: new Date().toISOString() };
     fs.writeFileSync(SECURITY_CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+
+    // Verify the write by reading it back
+    const verify = JSON.parse(fs.readFileSync(SECURITY_CONFIG_PATH, "utf-8"));
+    if (verify.mode !== mode) {
+      debugLog("security", `security config write verification failed: expected ${mode}, got ${verify.mode}`);
+      return false;
+    }
+
     debugLog("security", `security mode set to ${mode}`, { path: SECURITY_CONFIG_PATH });
+    return true;
   } catch (err) {
     debugLog("security", `failed to write security config to ${SECURITY_CONFIG_PATH}`, err);
+    return false;
   }
 }
 
