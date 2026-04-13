@@ -256,7 +256,7 @@ export default function (pi: ExtensionAPI) {
 
     // Versions — always last slot
     if (versionsText) {
-      ctxUi.setStatus("status-versions", dim(versionsText));
+      ctxUi.setStatus("status-versions", `${dim("pi:")}${green(versionsText.replace(/^pi:/, ""))}`);
     }
   }
 
