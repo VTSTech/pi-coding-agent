@@ -27,9 +27,17 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$RepoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-# If running from scripts/ dir, go up; if already at root, stay
-if (Test-Path "$RepoRoot\shared\ollama.ts") { $PrevDir = "" } else { $RepoRoot = Get-Location }
+
+# UTF-8 helpers — safe on both PowerShell 5 (no utf8NoBOM) and PowerShell 7
+function Read-FileUtf8 {
+    param([string]$Path)
+    return [System.IO.File]::ReadAllText((Resolve-Path $Path).Path)
+}
+
+function Write-FileUtf8 {
+    param([string]$Path, [string]$Content)
+    [System.IO.File]::WriteAllText((Resolve-Path $Path).Path, $Content, [System.Text.UTF8Encoding]::new($false))
+}
 
 # ── Read current version ─────────────────────────────────────────
 $ollamaTs = "shared\ollama.ts"
@@ -38,7 +46,7 @@ if (-not (Test-Path $ollamaTs)) {
     exit 1
 }
 
-$content = Get-Content $ollamaTs -Raw
+$content = Read-FileUtf8 $ollamaTs
 if ($content -match 'EXTENSION_VERSION\s*=\s*"([^"]+)"') {
     $OldVersion = $Matches[1]
 } else {
@@ -69,31 +77,31 @@ Write-Host " -- Updating files -------------------------------------------" -For
 
 Write-Host "  [1/6] shared\ollama.ts"
 $content = $content -replace '(EXTENSION_VERSION\s*=\s*)"[^"]+"', "`$1`"$NewVersion`""
-Set-Content -Path $ollamaTs -Value $content -NoNewline
+Write-FileUtf8 $ollamaTs $content
 
 # ── Update package.json (root) ───────────────────────────────────
 Write-Host "  [2/6] package.json"
-$c = Get-Content "package.json" -Raw
+$c = Read-FileUtf8 "package.json"
 $c = $c.Replace("`"version`": `"$OldVersion`"", "`"version`": `"$NewVersion`"")
-Set-Content -Path "package.json" -Value $c -NoNewline
+Write-FileUtf8 "package.json" $c
 
 # ── Update shared/package.json ───────────────────────────────────
 Write-Host "  [3/6] shared\package.json"
-$c = Get-Content "shared\package.json" -Raw
+$c = Read-FileUtf8 "shared\package.json"
 $c = $c.Replace("`"version`": `"$OldVersion`"", "`"version`": `"$NewVersion`"")
-Set-Content -Path "shared\package.json" -Value $c -NoNewline
+Write-FileUtf8 "shared\package.json" $c
 
 # ── Update README.md (4 references) ─────────────────────────────
 Write-Host "  [4/6] README.md"
-$c = Get-Content "README.md" -Raw
+$c = Read-FileUtf8 "README.md"
 $c = $c.Replace("v$OldVersion", "v$NewVersion")
 $c = $c.Replace("pi-coding-agent@v$OldVersion", "pi-coding-agent@v$NewVersion")
 $c = $c.Replace("Benchmark v$OldVersion", "Benchmark v$NewVersion")
-Set-Content -Path "README.md" -Value $c -NoNewline
+Write-FileUtf8 "README.md" $c
 
 # ── Update VERSION file ──────────────────────────────────────────
 Write-Host "  [5/6] VERSION"
-Set-Content -Path "VERSION" -Value $NewVersion -NoNewline
+Write-FileUtf8 "VERSION" "$NewVersion`n"
 
 # ── Update CHANGELOG.md ──────────────────────────────────────────
 Write-Host "  [6/6] CHANGELOG.md"
@@ -112,11 +120,11 @@ $entry = @"
 
 "@
 
-$cl = Get-Content "CHANGELOG.md" -Raw
+$cl = Read-FileUtf8 "CHANGELOG.md"
 $idx = [regex]::Match($cl, '(?m)^## \[').Index
 if ($idx -ge 0) {
     $cl = $cl.Insert($idx, $entry)
-    Set-Content -Path "CHANGELOG.md" -Value $cl -NoNewline
+    Write-FileUtf8 "CHANGELOG.md" $cl
 }
 
 # ── Git commit and tag ───────────────────────────────────────────
@@ -136,7 +144,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-git tag -d "v$NewVersion" 2>$null
+git tag -d "v$NewVersion" *>$null
 git tag -a "v$NewVersion" -m "v$NewVersion"
 
 Write-Host ""
