@@ -43,7 +43,7 @@ SHARED_SRC="$REPO_ROOT/shared"
 EXT_SRC="$REPO_ROOT/extensions"
 BUILD_DIR="$REPO_ROOT/.build-npm"
 
-VERSION="1.1.4-dev"
+VERSION="1.1.5"
 
 # Colors
 GREEN='\033[0;32m'
