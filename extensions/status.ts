@@ -20,6 +20,7 @@ import os from "node:os";
 import { EXTENSION_VERSION, getOllamaBaseUrl, fetchModelContextLength, readModelsJson } from "../shared/ollama";
 import { fmtBytes, fmtDur } from "../shared/format";
 import { debugLog } from "../shared/debug";
+import { getSecurityMode } from "../shared/security";
 
 // ── Configuration ──────────────────────────────────────────────────────────
 
@@ -237,14 +238,15 @@ export default function (pi: ExtensionAPI) {
       ctxUi.setStatus("status-params", undefined);
     }
 
-    // Security: flash indicator (3s window) + persistent counter
+    // Security: flash indicator (3s window) + persistent counter + mode
+    const secMode = getSecurityMode();
     const now = Date.now();
     if (securityFlashTool && now < securityFlashUntil) {
-      ctxUi.setStatus("status-sec", `${dim("SEC:")}${green(String(blockedCount))} ${dim("(blocked: " + securityFlashTool + ")")}`);
+      ctxUi.setStatus("status-sec", `${dim("SEC:")}${green(String(blockedCount))} ${dim("(" + secMode.toUpperCase() + ")")} ${dim("(blocked: " + securityFlashTool + ")")}`);
     } else if (blockedCount > 0) {
-      ctxUi.setStatus("status-sec", `${dim("SEC:")}${green(String(blockedCount))}`);
+      ctxUi.setStatus("status-sec", `${dim("SEC:")}${green(String(blockedCount))} ${dim("(" + secMode.toUpperCase() + ")")}`);
     } else {
-      ctxUi.setStatus("status-sec", undefined);
+      ctxUi.setStatus("status-sec", `${dim("SEC:")}${green(secMode.toUpperCase())}`);
     }
 
     // Active tool timing (updated by a fast 1s interval while tool is running)
