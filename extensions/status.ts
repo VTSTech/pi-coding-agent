@@ -351,16 +351,53 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("before_provider_request", (event) => {
     lastPayload = event.payload as Record<string, any>;
+    measurePromptFromPayload(lastPayload);
   });
+
+  /**
+   * Extract the system prompt text from a provider request payload and
+   * cache the formatted size string. Works with any Pi version because
+   * it reads the messages array that is always present in the payload.
+   */
+  function measurePromptFromPayload(payload: Record<string, any> | null) {
+    if (!payload || cachedPromptText) return; // already measured
+    const theme = ctxTheme;
+    const dim = (s: string) => theme?.fg?.("dim", s) ?? s;
+    const green = (s: string) => theme?.fg?.("success", s) ?? s;
+    try {
+      const messages = payload.messages as Array<{ role: string; content: string }> | undefined;
+      if (!messages?.length) return;
+      // System prompt is typically the first message
+      const sysMsg = messages.find((m) => m.role === "system") ?? messages[0];
+      if (!sysMsg?.content) return;
+      const chr = sysMsg.content.length;
+      const tok = sysMsg.content.split(/\s+/).filter(Boolean).length;
+      cachedPromptText = `${dim("Prompt:")} ${green(`${chr} chr ${tok} tok`)}`;
+      debugLog("status", `system prompt measured from payload: ${chr} chars, ~${tok} words`);
+      flushStatus();
+    } catch (err) {
+      debugLog("status", "failed to measure prompt from payload", err);
+    }
+  }
 
   pi.on("agent_start", async (_event, ctx) => {
     agentStartTime = performance.now();
+    // Try ctx.getSystemPrompt() first (preferred, if available)
     try {
       const prompt = ctx.getSystemPrompt();
-      const chr = prompt.length;
-      const tok = prompt.split(/\s+/).filter(Boolean).length;
-      cachedPromptText = `${dim("Prompt:")} ${green(`${chr} chr ${tok} tok`)}`;
-    } catch { /* getSystemPrompt not available */ }
+      if (prompt) {
+        const chr = prompt.length;
+        const tok = prompt.split(/\s+/).filter(Boolean).length;
+        cachedPromptText = `${dim("Prompt:")} ${green(`${chr} chr ${tok} tok`)}`;
+        debugLog("status", `system prompt measured via getSystemPrompt(): ${chr} chars, ~${tok} words`);
+      }
+    } catch (err) {
+      debugLog("status", "getSystemPrompt() not available, will measure from payload", err);
+    }
+    // Fallback: if getSystemPrompt() didn't work, try the last payload
+    if (!cachedPromptText && lastPayload) {
+      measurePromptFromPayload(lastPayload);
+    }
     flushStatus();
   });
 
