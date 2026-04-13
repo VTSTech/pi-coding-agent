@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.5] - 04-13-2026 12:15:32 AM
+
+### Added
+
+- **Security mode toggle — basic/max with persistent storage** (`shared/security.ts`, `extensions/security.ts`)
+  - New `SecurityMode` type (`"basic" | "max"`) and `SECURITY_CONFIG_PATH` pointing to `~/.pi/agent/security.json`. The mode is read at runtime by `getSecurityMode()` and written by `setSecurityMode()`, which creates the directory if missing, writes atomically via `writeFileSync`, and verifies the write by reading it back. An absent or corrupt config always defaults to `"max"` (fail-closed).
+  - `/security mode` command displays the current mode, effective blocklist sizes, and mode differences. `/security mode basic` and `/security mode max` switch modes with confirmation output showing which commands and SSRF patterns are affected.
+
+- **Mode-aware command blocklist partitioning** (`shared/security.ts`)
+  - The monolithic 65-command `BLOCKED_COMMANDS` set was split into two tiered sets:
+    - `CRITICAL_COMMANDS` (41 commands) — always blocked regardless of mode: filesystem destruction (`mkfs`, `dd`, `shred`, `wipe`, `srm`, `format`, `fdisk`), privilege escalation (`su`, `doas`, `pkexec`, `gksudo`, `kdesu`), network attacks (`nmap`, `nc`, `netcat`, `telnet`), remote access (`ssh`, `scp`, `sftp`, `rsync`), process killing (`kill`, `killall`, `pkill`, `xkill`), user management (`useradd`, `userdel`, `usermod`, `passwd`, `adduser`, `deluser`), dangerous shell features (`exec`, `eval`, `source`, `.`, `alias`), filesystem control (`mount`, `umount`, `chattr`, `lsattr`), and permission modification (`chown`, `chmod`).
+    - `EXTENDED_COMMANDS` (25 commands) — blocked only in max mode: file deletion (`rm`, `rmdir`, `del`), `sudo`, download tools (`wget`, `curl`), package management (`apt`, `apt-get`, `yum`, `dnf`, `pacman`, `pip`, `npm`, `yarn`, `cargo`), system services (`systemctl`, `service`), interactive editors (`vi`, `vim`, `nano`, `emacs`, `less`, `more`, `man`), and `git`.
+  - `sanitizeCommand()` checks CRITICAL_COMMANDS unconditionally, then checks EXTENDED_COMMANDS only when `getSecurityMode()` returns `"max"`.
+  - Legacy `BLOCKED_COMMANDS` export retained as the union of both sets for backward compatibility.
+
+- **Mode-aware SSRF protection** (`shared/security.ts`)
+  - The monolithic `BLOCKED_URL_PATTERNS` set was split into two tiered sets:
+    - `BLOCKED_URL_ALWAYS` (19 patterns) — always blocked: cloud metadata endpoint (`169.254.169.254`), full RFC1918 private ranges (`10.`, `192.168.`, `172.16.`–`172.31.`), and internal service patterns (`internal.`, `private.`, `intranet.`).
+    - `BLOCKED_URL_MAX_ONLY` (7 patterns) — blocked only in max mode: loopback addresses (`localhost`, `127.`, `0.0.0.0`, `::1`, `::ffff:127.0.0.1`, `::ffff:0.0.0.0`, `local.`).
+  - `isSafeUrl()` checks `BLOCKED_URL_ALWAYS` unconditionally, then checks `BLOCKED_URL_MAX_ONLY` only in max mode. In basic mode, localhost and 127.x URLs are allowed for local development workflows.
+  - Legacy `BLOCKED_URL_PATTERNS` export retained as the union of both sets for backward compatibility.
+
+- **Tab completion for `/security mode basic|max`** (`extensions/security.ts`)
+  - Uses `pi.registerCompletion()` (separate from `registerCommand`) for depth-aware multi-level tab completion, matching the `/api` command pattern. `getCompletions()` returns the `mode` sub-command; `getArgumentCompletions(args[])` returns `basic` and `max` when `args.length === 2`.
+
+- **Security mode in audit log entries** (`shared/security.ts`)
+  - `appendAuditEntry()` now injects `securityMode` into every audit entry, automatically reading the current mode via `getSecurityMode()`. This provides post-incident forensic context — blocked operations can be correlated with the enforcement level that was active at the time.
+
+- **Security mode in audit report** (`extensions/security.ts`)
+  - `/security-audit` and the `security_audit` tool now display the current mode, effective blocklist sizes (critical-only in basic vs. full in max), and effective SSRF pattern counts. Recent audit log entries include the mode tag in their output.
+
+- **Status bar integration for mode toggle** (`extensions/security.ts`)
+  - `/security mode basic|max` calls `ctx.ui.setStatus("status-sec", mode.toUpperCase())` to update the existing SEC status slot with the current enforcement level (BASIC or MAX).
+
+### Fixed
+
+- **`/security mode basic` argument silently dropped by command system** (`extensions/security.ts`)
+  - `getArgumentCompletions` on `registerCommand` only supports a single argument level. When the user typed `/security mode basic`, the command system resolved "mode" via completions but silently dropped "basic" because it had no matching completion entry. The handler received `args = "mode"` instead of `args = "mode basic"`, causing it to display the info panel instead of switching modes.
+  - Removed `getArgumentCompletions` from `registerCommand` and added a separate `pi.registerCompletion()` call with depth-aware `getArgumentCompletions(args: string[])` that provides completions at each argument position, matching the `/api` command pattern.
+
+- **`setSecurityMode()` return value not checked** (`extensions/security.ts`)
+  - The handler called `setSecurityMode()` but discarded the boolean return value. If the write failed (permissions, disk full, etc.), the command would still display "Security mode set to BASIC" and update the status bar, giving false confidence that the mode had persisted.
+  - Now checks the return value and displays an error notification with the config path on failure before returning early.
+
+- **Template literal in max lockdown message** (`extensions/security.ts`)
+  - The max mode confirmation used a template literal inside a regular string: `"Full lockdown active — all ${CRITICAL_COMMANDS.size + ...} commands blocked"`. The `${}` was not interpolated, producing a literal `${...}` in the output.
+  - Pre-computed the total into a `totalCmds` constant and used a proper template literal: `` `Full lockdown active — all ${totalCmds} commands blocked` ``.
+
+- **Unhandled exceptions in `/security` command handler** (`extensions/security.ts`)
+  - The handler had no top-level try/catch. Any unexpected throw (e.g., from `getSecurityMode()` if `debugLog` failed) would silently swallow the error with no user-visible output.
+  - Wrapped the entire handler body in a try/catch that reports the error message via `ctx.ui.notify()` and logs it via `debugLog()`.
+
+### Changed
+
+- **Security audit report shows mode-aware blocklist sizes** (`extensions/security.ts`)
+  - The audit report now displays "Effective blocked commands" as either `CRITICAL_COMMANDS.size` (basic) or `CRITICAL_COMMANDS.size + EXTENDED_COMMANDS.size` (max), and similarly for URL patterns. This makes it clear which enforcement tier is active without needing to run `/security mode` separately.
+
+- **`validatePath()` blocks access to `security.json`** (`shared/security.ts`)
+  - `SECURITY_CONFIG_PATH` added to the sensitive paths list, preventing tool-based file operations from reading or writing the security mode configuration. Only `getSecurityMode()` and `setSecurityMode()` (which use direct `fs` calls, not the tool system) can interact with the file.
+
+- **`/security` command handler imports `debugLog`** (`extensions/security.ts`)
+  - Added `import { debugLog } from "../shared/debug"` to enable error logging from the command handler, matching the pattern used by other extensions.
+
+---
+
 ## [1.1.4] - 04-12-2026 6:55:41 PM
 
 ### Fixed
