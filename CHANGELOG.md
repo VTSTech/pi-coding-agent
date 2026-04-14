@@ -44,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Missing `debugLog` import in model-test.ts** (`extensions/model-test.ts`) — [ROB-01]
-  - `model-test.ts` called `debugLog("model-test", ...)` in 8 catch blocks but never imported `debugLog` from `../shared/debug`. When `PI_EXTENSIONS_DEBUG=1` was set to debug an issue, every catch block threw `ReferenceError: debugLog is not defined`, masking the original error and crashing the extension. This was likely introduced during the v1.1.8 ROB-03 fix that replaced empty catch blocks with `debugLog()` calls across the codebase.
+  - `model-test.ts` called `debugLog("model-test", ...)` in 8 catch blocks but never imported `debugLog` from `../shared/debug`. When `PI_EXTENSIONS_DEBUG=1` was set to debug an issue, every catch block threw `ReferenceError: debugLog is not defined`, masking the original error and crashing the extension. This was likely introduced during the v1.8 ROB-03 fix that replaced empty catch blocks with `debugLog()` calls across the codebase.
   - Added `import { debugLog } from "../shared/debug";` at line 9.
 
 - **`fetchModelContextLength` debug log referenced undefined variable** (`shared/ollama.ts`) — [ROB-03]
@@ -52,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Changed `${model}` to `${modelName}` in the debug log template literal.
 
 - **Unused `writeModelsJson` import in model-test.ts** (`extensions/model-test.ts`) — [MAINT-05]
-  - `model-test.ts` imported `writeModelsJson` from `shared/ollama` but never called it. The extension only uses `readModifyWriteModelsJson()` for atomic writes (for `updateModelsJsonReasoning`). The unused import was left behind after the v1.1.8 ARCH-06 fix that migrated to the mutex-protected pattern. Dead imports add noise and can cause false positives in bundler tree-shaking analysis.
+  - `model-test.ts` imported `writeModelsJson` from `shared/ollama` but never called it. The extension only uses `readModifyWriteModelsJson()` for atomic writes (for `updateModelsJsonReasoning`). The unused import was left behind after the v1.8 ARCH-06 fix that migrated to the mutex-protected pattern. Dead imports add noise and can cause false positives in bundler tree-shaking analysis.
   - Removed `writeModelsJson` from the import statement; only `readModifyWriteModelsJson` is imported.
 
 - **`TimeoutError` in errors.ts conflicts with global ES2022 `TimeoutError`** (`shared/errors.ts`) — [MAINT-06]
@@ -62,6 +62,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`config-io.ts` manually checked env var instead of using `debugLog`** (`shared/config-io.ts`) — [MAINT-07]
   - The `readJsonConfig()` catch block manually checked `process.env.PI_EXTENSIONS_DEBUG === "1"` and called `console.debug()` directly, instead of using the `debugLog()` function from `shared/debug.ts`. Every other module in the codebase uses `debugLog()` for debug output. The manual check meant the debug output format was inconsistent and lacked the module name prefix that `debugLog()` provides.
   - Replaced the manual check with `debugLog("config-io", ...)` imported from `./debug`, consistent with all other modules.
+
+- **Score-reporting pattern deduplicated in model-test.ts** (`extensions/model-test.ts`) — [MAINT-01, ARCH-01]
+  - The `testModelOllama()` and `testModelProvider()` functions contained nearly identical score-reporting blocks for reasoning, tool usage, and instruction-following tests. Each block repeated a 5-line if/else chain mapping score levels (STRONG/MODERATE/WEAK/FAIL) to `ok()`/`warn()`/`fail()` calls with test-specific description strings. With 4 test categories duplicated across 2 functions, this totaled ~90 lines of duplication.
+  - Extracted 4 score-reporting helpers: `reportScore()` (generic formatter), `reportReasoningScore()`, `reportInstructionScore()`, and `reportToolScore()`. The helpers encapsulate the score-to-formatting logic, allowing each test's score reporting to be a single-line call. This reduces model-test.ts by ~90 lines and eliminates a maintenance synchronization point — if scoring labels change, only the description maps need updating.
+
+- **Provider existence check deduplicated in api.ts** (`extensions/api.ts`) — [MAINT-02]
+  - Four functions in api.ts (`setMode`, `setUrl`, `setThink`, `handleCompat`) repeated a pattern of reading models.json, looking up the provider, checking for null, and notifying the user if not found. In `handleCompat`, two additional inline readModelsJson() + null-check patterns duplicated this logic for the "show all flags" and "show single flag" paths.
+  - Extracted `findProvider(providerName)` helper that reads models.json and returns the provider config or null. Used in both show paths of `handleCompat()`, replacing the duplicate read-lookup-check pattern.
+
+- **Path constants consolidated from config-io.ts as single source of truth** (`shared/security.ts`) — [MAINT-03]
+  - `shared/security.ts` defined its own `SETTINGS_PATH` and `SECURITY_CONFIG_PATH` constants, while `shared/config-io.ts` defined identical paths as `SETTINGS_PATH` and `SECURITY_PATH`. If someone changed one but not the other, extensions would silently reference different paths — a silent drift risk.
+  - Removed the local path definitions in security.ts and replaced them with imports from `config-io.ts`. Both constants are now derived from the canonical source in config-io.ts, eliminating path constant duplication.
+
+- **`diag.ts` reads settings.json via centralized readSettings()** (`extensions/diag.ts`) — [MAINT-04]
+  - `diag.ts` opened `settings.json` directly with `fs.existsSync()` + `fs.readFileSync()` + `JSON.parse()`, duplicating the centralized `readSettings()` function from `config-io.ts` that every other module uses. The inline path construction (`path.join(agentDir, "settings.json")`) was also fragile — it would break if the settings directory changed.
+  - Replaced the inline file I/O with `readSettings()` imported from `shared/config-io`. The settings section now uses the same centralized reader, and error handling was aligned with the existing try/catch pattern.
+
+- **`sanitizeInputForLog` now redacts API keys in security audit logs** (`extensions/security.ts`) — [SEC-02]
+  - The security extension's `sanitizeInputForLog()` function truncated values longer than 500 characters but did not redact sensitive values like API keys. When tool call arguments containing API keys were logged, the keys appeared in full plaintext in audit log entries.
+  - Added `SECRET_KEY_PATTERNS` array with regexes matching `key`, `token`, `secret`, `password`, `credential`, `auth`, `apikey`, `api_key`. The function now checks non-string values early (pass-through) and redacts any string value whose key matches a sensitive pattern before applying the truncation logic. The redaction produces `[REDACTED]` regardless of value length.
+
+- **Bridge tool self-reference guard prevents infinite loops** (`extensions/react-fallback.ts`) — [ROB-04]
+  - The `tool_call` bridge tool could fuzzy-match to itself if a model sent `tool_call(name="tool_call", args={...})`, creating an infinite loop where the bridge tells the model to call itself.
+  - Added an explicit self-reference guard at line 148: `if (targetToolName === "tool_call")` returns an error result explaining the infinite loop risk and instructing the model to call the real tool directly.
+
+- **`status.ts` reads `/proc/meminfo` asynchronously** (`extensions/status.ts`) — [ROB-05]
+  - `getSwap()` was using `fs.readFileSync("/proc/meminfo")` which blocks the event loop during every 5-second metrics polling cycle.
+  - Migrated `getSwap()` to `fs.promises.readFile("/proc/meminfo")` and made both `getSwap()` and `updateMetrics()` async. The synchronous blocking call was the only one remaining in the metrics polling path.
+
+- **Audit log reader uses reverse line reader** (`shared/security.ts`) — [PERF-01]
+  - `readRecentAuditEntries()` previously read the entire audit log file into memory then sliced the last N entries — O(n) memory for large logs.
+  - Reimplemented with a reverse line reader that opens the file, seeks backwards in 8KB chunks, and collects complete lines until `count` entries are found or the beginning is reached. Memory usage is now O(count * avg_line_size) regardless of log file size.
+
+- **Audit log rotation at 5MB** (`shared/security.ts`) — [SEC-03]
+  - The audit log could grow unbounded with no rotation mechanism.
+  - Added rotation logic at the top of `appendAuditEntry()`: if the audit log exceeds 5MB, it reads the last 1000 entries via `readRecentAuditEntries()` and rewrites the file with only those entries. Rotation failures are caught and logged via `debugLog()` without blocking normal audit writes.
+
+- **`isSafeUrl` anchors IP patterns to prevent false positives** (`shared/security.ts`) — [SEC-04]
+  - RFC1918 prefix patterns like `"10."` could match hostnames like `10.example.com`.
+  - Added anchoring logic in both the `BLOCKED_URL_ALWAYS` and `BLOCKED_URL_MAX_ONLY` loops: for patterns starting with a digit or `::`, the code now checks the next character after the match. If it is not `/`, `:`, or another digit, the match is skipped via `continue`. This prevents `"10."` from matching `"10.example.com"` while still blocking `"10.0.0.1"` and `"10.0.0.1:8080"`.
+
+- **Shared `isLocalProvider()` extracted for consolidated local-provider detection** (`shared/ollama.ts`, `extensions/api.ts`, `extensions/status.ts`, `extensions/diag.ts`) — [ARCH-02]
+  - Three extensions independently implemented "is this provider local?" checks: `api.ts` had `getLocalProvider()`, `status.ts` had `detectLocalProvider()` with an inline `isLocalUrl()`, and `diag.ts` had an inline localhost/127.0.0.1 check. Each used slightly different heuristics (`0.0.0.0` check was missing from some).
+  - Extracted `isLocalProvider(baseUrl, providerName?)` to `shared/ollama.ts` with a unified heuristic (localhost, 127.0.0.1, 0.0.0.0, or provider name "ollama"). Updated all three consumers to import and use the shared function.
+
+- **bump-version.ps1 aligned with bump-version.sh** (`scripts/bump-version.ps1`) — [ROB-06]
+  - The PowerShell script read version from `shared/ollama.ts` (EXTENSION_VERSION) while the bash script read from the VERSION file (the documented single source of truth). The PowerShell script also had dead CHANGELOG.md code with a dangling `$date` variable.
+  - Changed source of truth to VERSION file, matching the bash script. Added version format validation. Removed dead CHANGELOG.md code. Updated file count from [1/6] to [1/5].
 
 ### Testing
 
