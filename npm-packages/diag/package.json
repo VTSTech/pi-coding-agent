@@ -1,6 +1,6 @@
 {
   "name": "@vtstech/pi-diag",
-  "version": "1.1.5",
+  "version": "1.1.9",
   "description": "Diagnostics extension for Pi Coding Agent",
   "main": "diag.js",
   "keywords": ["pi-extensions"],
@@ -14,7 +14,7 @@
     "url": "https://github.com/VTSTech/pi-coding-agent"
   },
   "dependencies": {
-    "@vtstech/pi-shared": "1.1.5"
+    "@vtstech/pi-shared": "1.1.9"
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": ">=0.66"
