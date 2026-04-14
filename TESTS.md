@@ -54,6 +54,7 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 | `nvidia/nemotron-3-nano-30b-a3b:free` | OpenRouter | ✅ 449ms | ✅ MODERATE | ✅ STRONG | ✅ STRONG | **4/4** |
 | `nvidia/nemotron-nano-9b-v2:free` | OpenRouter | ✅ | ✅ | ✅ | ✅ | **3/4** |
 | `z-ai/glm-4.5-air:free` | OpenRouter | ✅ 1.1s | ❌ ERROR | ✅ STRONG | ✅ STRONG | **3/4** |
+| `zai/glm-4.5-flash` | ZAI | ✅ 1.9s | ❌ ERROR | ✅ STRONG | ✅ STRONG | **3/4** |
 | `liquid/lfm-2.5-1.2b-thinking:free` | OpenRouter | ✅ 633ms | ❌ ERROR | ✅ STRONG | ❌ ERROR | **2/4** |
 
 > Cloud provider tests use the 4-test suite (connectivity, reasoning, instructions, tool usage). Ollama-specific tests are skipped.
@@ -61,6 +62,7 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 > **Notes:**
 > - `liquid/lfm-2.5-1.2b-thinking:free` — reasoning returns empty response; tool usage fails (no OpenRouter endpoints support tools for this model).
 > - `z-ai/glm-4.5-air:free` — reasoning returns empty response from provider.
+> - `zai/glm-4.5-flash` — reasoning returns empty response; instructions and tool usage work correctly (direct ZAI provider).
 
 ---
 
@@ -165,6 +167,70 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 
  ── RECOMMENDATION ──────────────────────────────────────────
    ✅ minimax/minimax-m2.5:free is a STRONG model via openrouter — full capability
+```
+
+### Sample Report — `zai/glm-4.5-flash` via ZAI
+
+```
+ [model-test-report]
+
+   ⚡ Pi Model Benchmark v1.1.8-dev
+   Written by VTSTech
+   GitHub: https://github.com/VTSTech
+   Website: www.vts-tech.org
+
+── MODEL: glm-4.5-flash ────────────────────────────────────
+   ℹ️  Provider: zai (built-in)
+   ℹ️  API: openai-completions
+   ℹ️  Base URL: https://open.bigmodel.cn/api/paas/v4
+   ℹ️  API Key: ****9C6W
+   ℹ️  Context: 128.0k tokens
+
+── CONNECTIVITY TEST ───────────────────────────────────────
+   ℹ️  Sending minimal request to verify API reachability and key validity...
+   ℹ️  Time: 1.9s
+   ✅ API reachable and authenticated
+
+── REASONING TEST ──────────────────────────────────────────
+   ℹ️  Prompt: A snail climbs 3ft up a wall each day, slides 2ft back each night. Wall is 10ft. How many days?
+   ℹ️  Testing...
+   ℹ️  Waiting 10.0s to avoid rate limiting...
+   ℹ️  Time: 21.8s
+   ❌ Error: Empty response
+   ℹ️  Response: Empty response
+
+── INSTRUCTION FOLLOWING TEST ──────────────────────────────
+   ℹ️  Prompt: Respond with ONLY a JSON object with keys: name, can_count, sum (15+27), language
+   ℹ️  Testing...
+   ℹ️  Waiting 10.0s to avoid rate limiting...
+   ℹ️  Time: 7.8s
+   ✅ JSON output valid with correct values (STRONG)
+   ℹ️  Output: {"name":"GPT-4","can_count":true,"sum":42,"language":"English"}
+
+── TOOL USAGE TEST ─────────────────────────────────────────
+   ℹ️  Prompt: "What's the weather in Paris?" (with get_weather tool available)
+   ℹ️  Testing...
+   ℹ️  Waiting 10.0s to avoid rate limiting...
+   ℹ️  Time: 3.8s
+   ✅ Tool call: get_weather({"location":"Paris"}) (STRONG)
+   ℹ️  Raw response: I'll get the current weather in Paris for you.
+
+── SKIPPED TESTS (OLLAMA-ONLY) ─────────────────────────────
+   ⚠️  Thinking test — Ollama-specific think:true option and message.thinking field
+   ⚠️  ReAct parsing test — only relevant for Ollama models without native tool calling
+   ⚠️  Tool support detection — Ollama-specific tool support cache
+   ⚠️  Model metadata — Ollama-specific /api/tags endpoint
+
+── SUMMARY ─────────────────────────────────────────────────
+   ✅ Connectivity: OK
+   ❌ Reasoning: ERROR
+   ✅ Instructions: STRONG
+   ✅ Tool Usage: STRONG
+   ℹ️  Total time: 1.1m
+   ℹ️  Score: 3/4 tests passed
+
+── RECOMMENDATION ──────────────────────────────────────────
+   ✅ glm-4.5-flash is a GOOD model via zai — most capabilities work
 ```
 
 ### Sample Report — `z-ai/glm-4.5-air:free` via OpenRouter
