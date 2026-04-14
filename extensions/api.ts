@@ -85,15 +85,29 @@ function getLocalProvider(config: ReturnType<typeof readModelsJson>): { name: st
   return { name: first || "ollama", isLocal: false };
 }
 
-/** Resolve the provider to operate on. If explicit, use that; otherwise auto-detect local. */
+/** Resolve the provider to operate on. If explicit, use that; otherwise use current session provider. */
 function resolveProvider(
   config: ReturnType<typeof readModelsJson>,
   explicit?: string,
+  currentProvider?: string,
 ): { name: string; config: any } | null {
-  const target = explicit || getLocalProvider(config).name;
-  const provider = config.providers[target];
+  // If explicit provider specified, use that
+  if (explicit) {
+    const provider = config.providers[explicit];
+    if (!provider) return null;
+    return { name: explicit, config: provider };
+  }
+  
+  // If current session provider is available and valid, use that
+  if (currentProvider && config.providers[currentProvider]) {
+    return { name: currentProvider, config: config.providers[currentProvider] };
+  }
+  
+  // Fall back to local provider
+  const local = getLocalProvider(config);
+  const provider = config.providers[local.name];
   if (!provider) return null;
-  return { name: target, config: provider };
+  return { name: local.name, config: provider };
 }
 
 // ============================================================================
@@ -121,7 +135,9 @@ export default function (pi: ExtensionAPI) {
 
       // Provider sub-command handles its own empty-state display — skip the guard
       if (sub !== "provider" && sub !== "providers") {
-        const provider = resolveProvider(config);
+        // Get current session provider if available
+        const currentProvider = getCurrentSessionProvider(ctx);
+        const provider = resolveProvider(config, undefined, currentProvider);
         if (!provider) {
           ctx.ui.notify("No providers found in models.json", "error");
           return;
@@ -129,7 +145,7 @@ export default function (pi: ExtensionAPI) {
         switch (sub) {
         case "":
         case "show":
-          return showConfig(provider);
+          return showConfig(provider, currentProvider);
         case "mode":
           return setMode(ctx, provider.name, rest);
         case "url":
@@ -156,15 +172,16 @@ export default function (pi: ExtensionAPI) {
 
   // ── Sub-command implementations ──────────────────────────────────────
 
-  function showConfig(provider: { name: string; config: any }) {
+  function showConfig(provider: { name: string; config: any }, currentProvider?: string) {
     const p = provider.config;
     const compat = p.compat || {};
     const modelCount = p.models?.length || 0;
     const firstModel = p.models?.[0]?.id || "none";
+    const isCurrent = currentProvider === provider.name;
 
     const lines: string[] = [branding];
     lines.push(section("CURRENT PROVIDER CONFIG"));
-    lines.push(info(`Provider: ${provider.name}`));
+    lines.push(info(`Provider: ${provider.name}${isCurrent ? " ◀ current" : ""}`));
     lines.push(info(`API mode: ${p.api || "(not set)"}`));
     lines.push(info(`Base URL: ${p.baseUrl || "(not set)"}`));
     lines.push(info(`API key: ${p.apiKey ? "••••" + String(p.apiKey).slice(-4) : "(not set)"}`));
@@ -181,6 +198,12 @@ export default function (pi: ExtensionAPI) {
     lines.push(section("RESOLVED"));
     lines.push(info(`Ollama base: ${ollamaBase}`));
     lines.push(info(`(strip /v1 → ${ollamaBase})`));
+    
+    if (currentProvider && currentProvider !== provider.name) {
+      lines.push(section("NOTE"));
+      lines.push(info(`Current session is using: ${currentProvider}`));
+      lines.push(info(`Use /api provider set ${provider.name} to switch to this provider`));
+    }
 
     pi.sendMessage({
       customType: "api-config",
@@ -473,7 +496,8 @@ export default function (pi: ExtensionAPI) {
     lines.push(section("SUPPORTED API MODES"));
 
     const config = readModelsJson();
-    const provider = resolveProvider(config);
+    const currentProvider = getCurrentSessionProvider(ctx);
+    const provider = resolveProvider(config, undefined, currentProvider);
     const currentMode = provider?.config?.api || "(not set)";
 
     for (const [mode, description] of Object.entries(API_MODES)) {
@@ -650,6 +674,24 @@ export default function (pi: ExtensionAPI) {
     }
 
     ctx.ui.notify(`Unknown sub-command: "${sub}". Use: show, set, list, or a provider name`, "error");
+  }
+
+  /** Get the current session provider from context */
+  function getCurrentSessionProvider(ctx: any): string | undefined {
+    // Try to get current provider from session state
+    if (ctx.session?.state?.provider) {
+      return ctx.session.state.provider;
+    }
+    if (ctx.state?.provider) {
+      return ctx.state.provider;
+    }
+    // Try to get from settings as fallback
+    try {
+      const settings = readSettings();
+      return settings.defaultProvider;
+    } catch {
+      return undefined;
+    }
   }
 
   // ── Tab completion for /api sub-commands and arguments ──────────────────
