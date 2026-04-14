@@ -41,11 +41,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `sanitizeCommand()` performed NFKC Unicode normalization to defeat homoglyph bypass attacks (e.g., fullwidth `ｒｍ` → ASCII `rm`). The JSDoc explicitly stated "Reject if normalization changed the command — indicates obfuscation attempt," but the code only logged a `debugLog` warning and continued processing the normalized command. This comment-to-code mismatch was a maintenance hazard where a future developer reading the comment would assume rejection happens.
   - Changed the `debugLog` call to an actual rejection: returns `{ isSafe: false, error: "Command rejected: Unicode normalization variance detected (possible homoglyph bypass)" }`. The normalized command is no longer processed further when a mismatch is detected.
 
+### Fixed
+
+- **Missing `debugLog` import in model-test.ts** (`extensions/model-test.ts`) — [ROB-01]
+  - `model-test.ts` called `debugLog("model-test", ...)` in 8 catch blocks but never imported `debugLog` from `../shared/debug`. When `PI_EXTENSIONS_DEBUG=1` was set to debug an issue, every catch block threw `ReferenceError: debugLog is not defined`, masking the original error and crashing the extension. This was likely introduced during the v1.1.8 ROB-03 fix that replaced empty catch blocks with `debugLog()` calls across the codebase.
+  - Added `import { debugLog } from "../shared/debug";` at line 9.
+
+- **`fetchModelContextLength` debug log referenced undefined variable** (`shared/ollama.ts`) — [ROB-03]
+  - The function parameter is named `modelName`, but the debug log statement used `${model}` — an undefined variable. When debugging was enabled, the log showed `"failed to fetch context length for undefined"` instead of the actual model name, making it useless for diagnosing context length fetch failures.
+  - Changed `${model}` to `${modelName}` in the debug log template literal.
+
+- **Unused `writeModelsJson` import in model-test.ts** (`extensions/model-test.ts`) — [MAINT-05]
+  - `model-test.ts` imported `writeModelsJson` from `shared/ollama` but never called it. The extension only uses `readModifyWriteModelsJson()` for atomic writes (for `updateModelsJsonReasoning`). The unused import was left behind after the v1.1.8 ARCH-06 fix that migrated to the mutex-protected pattern. Dead imports add noise and can cause false positives in bundler tree-shaking analysis.
+  - Removed `writeModelsJson` from the import statement; only `readModifyWriteModelsJson` is imported.
+
+- **`TimeoutError` in errors.ts conflicts with global ES2022 `TimeoutError`** (`shared/errors.ts`) — [MAINT-06]
+  - TypeScript's ES2022 lib includes `globalThis.TimeoutError`. The custom `TimeoutError` in `shared/errors.ts` extended `ExtensionError` (not the global `Error`), so `instanceof globalThis.TimeoutError` would return `false` for instances of the custom class. This name collision could confuse developers who expect standard behavior, and it shadows the built-in class in the module scope.
+  - Renamed to `ExtensionTimeoutError` with the same constructor signature and error code. Updated the test in `tests/shared-utils.test.ts` to import and test the renamed class.
+
+- **`config-io.ts` manually checked env var instead of using `debugLog`** (`shared/config-io.ts`) — [MAINT-07]
+  - The `readJsonConfig()` catch block manually checked `process.env.PI_EXTENSIONS_DEBUG === "1"` and called `console.debug()` directly, instead of using the `debugLog()` function from `shared/debug.ts`. Every other module in the codebase uses `debugLog()` for debug output. The manual check meant the debug output format was inconsistent and lacked the module name prefix that `debugLog()` provides.
+  - Replaced the manual check with `debugLog("config-io", ...)` imported from `./debug`, consistent with all other modules.
+
 ### Testing
 
 - **Updated security tests for command chaining refactor** (`tests/security.test.ts`)
   - Updated the semicolon injection test (`rejects dangerous injection patterns (; rm -rf)`) to verify the mode-independent `;` blocking still works correctly after the refactor.
   - Existing pipe and AND-chain tests (`rejects pipe injection to dangerous commands`, `rejects AND-chain injection`) continue to pass unchanged — both already accepted blocklist-based error messages alongside injection-pattern messages.
+
+- **Updated tests for `ExtensionTimeoutError` rename** (`tests/shared-utils.test.ts`)
+  - Updated import from `TimeoutError` to `ExtensionTimeoutError`. All 4 existing tests for the timeout error class (constructor, properties, inheritance) continue to pass under the new name.
 
 ---
 
