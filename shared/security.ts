@@ -595,36 +595,92 @@ export function isSafeUrl(
 /**
  * Regex patterns for detecting shell injection attempts.
  *
- * These patterns detect common shell metacharacter sequences that
- * could be used to inject additional commands.
+ * These patterns detect truly dangerous constructs that cannot be safely
+ * handled by per-command blocklist checking (e.g. command substitution,
+ * sensitive variable expansion).
+ *
+ * NOTE: Command chaining operators (&&, ||, ;, |) are NOT blanket-blocked
+ * here. Instead, sanitizeCommand() splits chained commands and checks each
+ * sub-command individually against the blocklists. This allows safe chains
+ * like "npm test && npm run build" while still blocking "ls && sudo rm -rf /"
+ * (because the second sub-command fails the blocklist check).
  */
 const INJECTION_PATTERNS: RegExp[] = [
-  // Command chaining with dangerous commands only
-  /;\s*(rm|sudo|chmod|chown|mkfs|dd|shred|kill|pkill)\b/i,
-  // Piping to dangerous commands
-  /\|\s*(rm|sudo|chmod|chown|shred|mkfs)\b/i,
-  // AND chaining with dangerous commands
-  /&&\s*(rm|sudo|chmod|chown|mkfs|dd|shred|kill)\b/i,
   // Command substitution (backticks) — still dangerous
   /`[^`]+`/,
   // Command substitution ($()) — still dangerous
   /\$\([^)]+\)/,
   // Variable expansion targeting sensitive env vars
   /\$\{?(?:HOME|USER|PATH|SHELL|PWD|SSH|GPG|API_KEY|TOKEN|SECRET|PASSWORD)\}?/i,
-  // Bare pipe without space (likely injection, not intentional piping)
-  /\|(?=[^\s|])/,
 ];
+
+/**
+ * Check a single command (no chaining operators) against the blocklists.
+ *
+ * This is the core blocklist check used for each sub-command when
+ * command chaining is detected. It also handles SEC-01: rejects
+ * commands where Unicode normalization changed the input.
+ *
+ * @param command - A single command string (no &&, ||, ;, | operators)
+ * @param mode - Current security mode
+ * @returns Object with `isSafe`, `error`, and `command`
+ */
+function checkSingleCommand(
+  command: string,
+  mode: SecurityMode,
+): { isSafe: boolean; error: string; command: string } {
+  const trimmed = command.trim();
+  if (!trimmed) return { isSafe: true, error: "", command: "" };
+
+  const parts = trimmed.split(/\s+/);
+
+  let baseCmd = parts[0].toLowerCase();
+  // Remove path prefixes (e.g. /usr/bin/rm → rm, C:\Windows\System32\cmd → cmd)
+  if (baseCmd.includes("/")) baseCmd = baseCmd.split("/").pop()!;
+  if (baseCmd.includes("\\")) baseCmd = baseCmd.split("\\").pop()!;
+
+  // Check against critical blocklist (always blocked) — scan ALL words,
+  // not just the first. This catches "sudo chmod" where sudo is extended
+  // but chmod is critical.
+  for (const raw of parts) {
+    let word = raw.toLowerCase();
+    if (word.includes("/")) word = word.split("/").pop()!;
+    if (word.includes("\\")) word = word.split("\\").pop()!;
+    if (CRITICAL_COMMANDS.has(word)) {
+      return { isSafe: false, error: `Blocked command: ${word} (critical)`, command: "" };
+    }
+  }
+
+  // Check base command against extended blocklist (mode-dependent)
+  if (mode === "max" && EXTENDED_COMMANDS.has(baseCmd)) {
+    return { isSafe: false, error: `Blocked command: ${baseCmd} (max mode)`, command: "" };
+  }
+
+  // Check for injection patterns in this sub-command
+  for (const pattern of INJECTION_PATTERNS) {
+    if (pattern.test(trimmed)) {
+      return { isSafe: false, error: `Potential injection pattern detected in: ${trimmed}`, command: "" };
+    }
+  }
+
+  return { isSafe: true, error: "", command: trimmed };
+}
 
 /**
  * Sanitize and validate a shell command.
  *
  * Performs comprehensive security checks on a command string:
  * 1. Rejects empty commands
- * 2. Extracts and checks the base command against blocklists
- *    - CRITICAL_COMMANDS are always blocked
- *    - EXTENDED_COMMANDS are blocked only in max mode
- * 3. Detects newline injection
- * 4. Checks for shell metacharacter injection patterns
+ * 2. Normalizes Unicode and strips control characters
+ * 3. Rejects Unicode normalization variance (SEC-01 — obfuscation detection)
+ * 4. Detects newline injection
+ * 5. Splits on command chaining operators (&&, ||, ;, |) and checks
+ *    each sub-command individually against the blocklists
+ *
+ * Chaining operators (&&, ||, ;, |) are NOT blanket-blocked. Instead, each
+ * sub-command is validated independently. This allows safe chains like
+ * "npm test && npm run build" or "cat file | grep foo" while still blocking
+ * "ls && sudo rm -rf /" (the second sub-command fails the blocklist check).
  *
  * @param command - The command string to validate
  * @returns Object with `isSafe`, `error`, and sanitized `command`
@@ -635,6 +691,10 @@ const INJECTION_PATTERNS: RegExp[] = [
  * sanitizeCommand("ls -la /home/user");
  * // Returns: { isSafe: true, error: "", command: "ls -la /home/user" }
  *
+ * // Safe chained command (both modes)
+ * sanitizeCommand("echo hello && ls");
+ * // Returns: { isSafe: true, error: "", command: "echo hello && ls" }
+ *
  * // Critical command — always blocked
  * sanitizeCommand("dd if=/dev/zero of=/dev/sda");
  * // Returns: { isSafe: false, error: "Blocked command: dd (critical)", command: "" }
@@ -644,9 +704,13 @@ const INJECTION_PATTERNS: RegExp[] = [
  * // Max: { isSafe: false, error: "Blocked command: npm (max mode)", command: "" }
  * // Basic: { isSafe: true, error: "", command: "npm install lodash" }
  *
- * // Injection attempt
- * sanitizeCommand("ls; rm -rf /");
- * // Returns: { isSafe: false, error: "Potential injection pattern detected", command: "" }
+ * // Chained command with blocked sub-command
+ * sanitizeCommand("ls && sudo rm -rf /");
+ * // Returns: { isSafe: false, error: "Blocked command: sudo (critical)", command: "" }
+ *
+ * // Safe pipe
+ * sanitizeCommand("cat file.txt | grep pattern");
+ * // Returns: { isSafe: true, error: "", command: "cat file.txt | grep pattern" }
  * ```
  */
 export function sanitizeCommand(
@@ -668,52 +732,50 @@ export function sanitizeCommand(
   normalizedCmd = normalizedCmd.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\ufeff\u2060-\u2069]/g, "");
 
   // Reject if normalization changed the command — indicates obfuscation attempt
-  if (normalizedCmd !== command.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\ufeff\u2060-\u2069]/g, "").normalize("NFKC")) {
-    debugLog("security", "command contained Unicode normalization variance (possible homoglyph bypass)", { original: command });
+  // (SEC-01 fix: changed from debugLog to actual rejection)
+  const strippedForCompare = command.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\ufeff\u2060-\u2069]/g, "").normalize("NFKC");
+  if (normalizedCmd !== strippedForCompare) {
+    return { isSafe: false, error: `Command rejected: Unicode normalization variance detected (possible homoglyph bypass)`, command: "" };
   }
 
   // Use normalized command for all subsequent checks
   command = normalizedCmd;
 
-  // Parse base command
   const trimmed = command.trim();
   if (!trimmed) return { isSafe: false, error: "Command cannot be empty", command: "" };
-  const parts = trimmed.split(/\s+/);
-
-  let baseCmd = parts[0].toLowerCase();
-
-  // Remove path prefixes
-  if (baseCmd.includes("/")) baseCmd = baseCmd.split("/").pop()!;
-  if (baseCmd.includes("\\")) baseCmd = baseCmd.split("\\").pop()!;
-
-  // Check against critical blocklist (always blocked) — scan ALL words,
-  // not just the first. This catches "sudo chmod" where sudo is extended
-  // but chmod is critical.
-  for (const raw of parts) {
-    let word = raw.toLowerCase();
-    if (word.includes("/")) word = word.split("/").pop()!;
-    if (word.includes("\\")) word = word.split("\\").pop()!;
-    if (CRITICAL_COMMANDS.has(word)) {
-      return { isSafe: false, error: `Blocked command: ${word} (critical)`, command: "" };
-    }
-  }
-
-  // Check base command against extended blocklist (mode-dependent)
-  const mode = getSecurityMode();
-  if (mode === "max" && EXTENDED_COMMANDS.has(baseCmd)) {
-    return { isSafe: false, error: `Blocked command: ${baseCmd} (max mode)`, command: "" };
-  }
 
   // Check for newlines/carriage returns
-  const stripped = command.replace(/\n/g, " ").replace(/\r/g, " ");
-  if (stripped !== command) {
+  const newlineStripped = command.replace(/\n/g, " ").replace(/\r/g, " ");
+  if (newlineStripped !== command) {
     return { isSafe: false, error: "Newline characters detected: potential command injection", command: "" };
   }
 
-  // Check for injection patterns
-  for (const pattern of INJECTION_PATTERNS) {
-    if (pattern.test(command)) {
-      return { isSafe: false, error: `Potential injection pattern detected`, command: "" };
+  // ── Split on command chaining operators and check each sub-command ──
+  // We split on && || ; | but carefully handle || vs | to avoid
+  // splitting "||" into two separate "|" tokens.
+  const subCommands: string[] = [];
+  let remaining = trimmed;
+
+  // Use a regex that matches &&, ||, ;, or | (in that priority order)
+  // to split while preserving the operator structure.
+  const chainRegex = /&&|\|\||;|(?<!\|)\|(?!\|)/g;
+  let match;
+  let lastIndex = 0;
+  while ((match = chainRegex.exec(remaining)) !== null) {
+    // Push the sub-command before this operator
+    subCommands.push(remaining.slice(lastIndex, match.index));
+    lastIndex = match.index + match[0].length;
+  }
+  // Push the final sub-command after the last operator
+  subCommands.push(remaining.slice(lastIndex));
+
+  const mode = getSecurityMode();
+
+  // Check each sub-command against the blocklists
+  for (const subCmd of subCommands) {
+    const result = checkSingleCommand(subCmd, mode);
+    if (!result.isSafe) {
+      return { isSafe: false, error: result.error, command: "" };
     }
   }
 

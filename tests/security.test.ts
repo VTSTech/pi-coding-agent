@@ -305,9 +305,11 @@ describe("sanitizeCommand", () => {
   });
 
   it("rejects dangerous injection patterns (; rm -rf)", () => {
+    // Command is split on ';' — each sub-command checked individually.
+    // "rm" is blocked by the blocklist, not the injection pattern.
     const result = sanitizeCommand("echo hello; rm -rf /");
     assert.equal(result.isSafe, false);
-    assert.ok(result.error.includes("injection"));
+    assert.ok(result.error.includes("rm"));
   });
 
   it("rejects pipe injection to dangerous commands", () => {
