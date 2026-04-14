@@ -12,6 +12,7 @@ import {
   EXTENSION_VERSION,
 } from "../shared/ollama";
 import { mergeModels } from "../shared/provider-sync";
+import { getEffectiveConfig } from "../shared/model-test-utils";
 import { section, ok, fail, warn, info, bytesHuman, estimateMemory } from "../shared/format";
 
 // ── Branding ──────────────────────────────────────────────────────────────
@@ -113,10 +114,12 @@ async function performSync(overrideUrl?: string): Promise<SyncResult> {
     // Sort by size ascending
     const sorted = [...models].sort((a, b) => a.size - b.size);
 
-    // Fetch context lengths in batches (3 concurrent to avoid overwhelming tunnels)
+    // Fetch context lengths in batches (configurable concurrency)
+    const testConfig = getEffectiveConfig();
     const contextMap = await fetchContextLengthsBatched(
       ollamaBaseUrl,
-      sorted.map((m) => m.name)
+      sorted.map((m) => m.name),
+      testConfig.CONTEXT_BATCH_SIZE
     );
 
     // Build model entries with metadata

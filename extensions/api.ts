@@ -17,11 +17,9 @@
  * Written by VTSTech — https://www.vts-tech.org
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import os from "node:os";
 import { section, ok, fail, info, warn } from "../shared/format";
 import { readModelsJson, writeModelsJson, getOllamaBaseUrl, BUILTIN_PROVIDERS, EXTENSION_VERSION } from "../shared/ollama";
 import { SETTINGS_PATH, readSettings, writeSettings } from "../shared/config-io";
-import { ConfigError } from "../shared/errors";
 
 // ============================================================================
 // Constants

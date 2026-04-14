@@ -34,20 +34,34 @@ export function readJsonConfig<T = Record<string, any>>(
     if (fs.existsSync(filePath)) {
       return JSON.parse(fs.readFileSync(filePath, "utf-8")) as T;
     }
-  } catch (err) { /* read failure is non-critical — caller receives defaultValue */ }
+  } catch (err) {
+    // read failure is non-critical — caller receives defaultValue
+    if (typeof process !== "undefined" && process.env.PI_EXTENSIONS_DEBUG === "1") {
+      console.debug(`[config-io] Failed to read config: ${filePath}`, err);
+    }
+  }
   return defaultValue;
 }
 
 /**
  * Write a JSON configuration file atomically.
  * Creates the parent directory if it doesn't exist.
- * Uses write-then-rename for crash safety on supported platforms.
+ * Uses write-then-rename for crash safety: writes to a .tmp file first,
+ * then renames to the target path. If rename fails (e.g., cross-device),
+ * falls back to direct write.
  */
 export function writeJsonConfig(filePath: string, data: unknown): void {
   const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const content = JSON.stringify(data, null, 2) + "\n";
-  fs.writeFileSync(filePath, content, "utf-8");
+  const tmpPath = filePath + ".tmp";
+  try {
+    fs.writeFileSync(tmpPath, content, "utf-8");
+    fs.renameSync(tmpPath, filePath);
+  } catch {
+    // rename may fail across filesystems — fall back to direct write
+    fs.writeFileSync(filePath, content, "utf-8");
+  }
 }
 
 // ── Pre-defined paths ─────────────────────────────────────────────────────

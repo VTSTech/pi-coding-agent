@@ -24,7 +24,6 @@ import {
   type PiModelsJson,
   MODELS_JSON_PATH as MODELS_FILE,
   readModelsJson,
-  writeModelsJson,
   readModifyWriteModelsJson,
   BUILTIN_PROVIDERS,
   EXTENSION_VERSION,

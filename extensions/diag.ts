@@ -6,7 +6,7 @@ import * as path from "node:path";
 // ── Shared utilities (eliminate duplication) ──────────────────────────────
 import {
   section, ok, fail, warn, info,
-  bytesHuman, msHuman, pct, padRight,
+  bytesHuman, msHuman, pct,
 } from "../shared/format";
 import { MODELS_JSON_PATH, getOllamaBaseUrl, BUILTIN_PROVIDERS, readModelsJson, EXTENSION_VERSION } from "../shared/ollama";
 import {

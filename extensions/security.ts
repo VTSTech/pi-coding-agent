@@ -38,9 +38,8 @@ import {
   SECURITY_CONFIG_PATH,
 } from "../shared/security";
 import { debugLog } from "../shared/debug";
-import { section, ok, fail, warn, info, bytesHuman } from "../shared/format";
+import { section, ok, fail, warn, info } from "../shared/format";
 import { EXTENSION_VERSION } from "../shared/ollama";
-import { SecurityError } from "../shared/errors";
 
 // ── Types ────────────────────────────────────────────────────────────────
 

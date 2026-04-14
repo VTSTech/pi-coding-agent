@@ -108,9 +108,9 @@ export function formatRecommendation(
 
   if (passed === total) {
     lines.push(ok(`${model} is a STRONG model${suffix} — full capability`));
-  } else if (passed >= total - 1) {
+  } else if (passed > 0 && passed >= total - 1) {
     lines.push(ok(`${model} is a GOOD model${suffix} — most capabilities work`));
-  } else if (passed >= total - 2) {
+  } else if (passed > 0 && passed >= total - 2) {
     lines.push(warn(`${model} is USABLE${suffix} — some capabilities are limited`));
   } else {
     lines.push(fail(`${model} is WEAK${suffix} — limited capabilities for agent use`));

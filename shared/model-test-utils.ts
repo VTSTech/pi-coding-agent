@@ -55,6 +55,9 @@ export const CONFIG = {
   PROVIDER_TIMEOUT_MS: 999999,       // Effectively unlimited for cloud provider API calls
   PROVIDER_TOOL_TIMEOUT_MS: 120000,   // 120 seconds for tool usage tests on providers
 
+  // Context length fetching
+  CONTEXT_BATCH_SIZE: 3,             // Concurrent requests when fetching model context lengths
+
   // Rate limiting
   TEST_DELAY_MS: 10000,              // 10 seconds between tests to avoid rate limiting
 } as const;
@@ -78,6 +81,7 @@ export interface ModelTestUserConfig {
   providerToolTimeoutMs?: number;
   numPredict?: number;
   temperature?: number;
+  contextBatchSize?: number;
 }
 
 /**
@@ -110,6 +114,7 @@ export function getEffectiveConfig(): typeof CONFIG {
     TOOL_TEST_TIMEOUT_MS: (userConfig.toolTestTimeoutMs ?? CONFIG.TOOL_TEST_TIMEOUT_MS) as typeof CONFIG.TOOL_TEST_TIMEOUT_MS,
     PROVIDER_TIMEOUT_MS: (userConfig.providerTimeoutMs ?? CONFIG.PROVIDER_TIMEOUT_MS) as typeof CONFIG.PROVIDER_TIMEOUT_MS,
     PROVIDER_TOOL_TIMEOUT_MS: (userConfig.providerToolTimeoutMs ?? CONFIG.PROVIDER_TOOL_TIMEOUT_MS) as typeof CONFIG.PROVIDER_TOOL_TIMEOUT_MS,
+    CONTEXT_BATCH_SIZE: (userConfig.contextBatchSize ?? CONFIG.CONTEXT_BATCH_SIZE) as typeof CONFIG.CONTEXT_BATCH_SIZE,
     NUM_PREDICT: (userConfig.numPredict ?? CONFIG.NUM_PREDICT) as typeof CONFIG.NUM_PREDICT,
     TEMPERATURE: (userConfig.temperature ?? CONFIG.TEMPERATURE) as typeof CONFIG.TEMPERATURE,
   };

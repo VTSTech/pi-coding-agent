@@ -5,7 +5,7 @@ import {
   section, ok, fail, warn, info,
   msHuman, truncate, sanitizeForReport,
 } from "../shared/format";
-import { getOllamaBaseUrl, MODELS_JSON_PATH, detectModelFamily, readModelsJson, writeModelsJson, BUILTIN_PROVIDERS, fetchModelContextLength, EXTENSION_VERSION, detectProvider, type ProviderInfo } from "../shared/ollama";
+import { getOllamaBaseUrl, MODELS_JSON_PATH, detectModelFamily, readModelsJson, writeModelsJson, readModifyWriteModelsJson, BUILTIN_PROVIDERS, fetchModelContextLength, EXTENSION_VERSION, detectProvider, type ProviderInfo } from "../shared/ollama";
 import type { ToolSupportLevel } from "../shared/types";
 import {
   ALL_DIALECT_PATTERNS,
@@ -1002,32 +1002,38 @@ export default function (pi: ExtensionAPI) {
    */
   function updateModelsJsonReasoning(model: string, hasReasoning: boolean): { updated: boolean; message: string } {
     try {
-      const config = readModelsJson();
+      const written = readModifyWriteModelsJson((config) => {
+        for (const provider of Object.values(config.providers || {}) as any[]) {
+          const models: any[] = provider.models || [];
+          for (const m of models) {
+            if (m.id === model) {
+              const current = m.reasoning;
+              if (current === hasReasoning) {
+                return null; // abort — no change
+              }
+              m.reasoning = hasReasoning;
+              return config; // commit
+            }
+          }
+        }
+        return null; // model not found — abort
+      });
 
-      let updated = false;
+      if (!written) {
+        return { updated: false, message: `${model} not found in models.json — skipped` };
+      }
+      // Check if it was a no-change abort (model found but value unchanged)
+      const config = readModelsJson();
       for (const provider of Object.values(config.providers || {}) as any[]) {
         const models: any[] = provider.models || [];
         for (const m of models) {
-          if (m.id === model) {
-            const current = m.reasoning;
-            if (current === hasReasoning) {
-              return { updated: false, message: `reasoning already "${hasReasoning}" for ${model} — no change` };
-            }
-            m.reasoning = hasReasoning;
-            updated = true;
-            break;
+          if (m.id === model && m.reasoning === hasReasoning) {
+            return { updated: false, message: `reasoning already "${hasReasoning}" for ${model} — no change` };
           }
         }
-        if (updated) break;
       }
-
-      if (!updated) {
-        return { updated: false, message: `${model} not found in models.json — skipped` };
-      }
-
-      writeModelsJson(config);
       const action = hasReasoning ? "set reasoning: true" : "set reasoning: false";
-      return { updated: true, message: `✅ Updated ${model}: ${action}` };
+      return { updated: true, message: `Updated ${model}: ${action}` };
     } catch (e: any) {
       return { updated: false, message: `Failed to update models.json: ${e.message}` };
     }

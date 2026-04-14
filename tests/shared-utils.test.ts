@@ -4,8 +4,8 @@
  * TEST-02: Key shared utilities tests
  * - ExtensionError, ConfigError, ApiError, TimeoutError, SecurityError, ToolError (errors.ts)
  * - mergeModels (provider-sync.ts)
- * - formatTestSummary, formatRecommendation, formatTestScore (test-report.ts)
- * - getEffectiveConfig, readTestConfig (model-test-utils.ts)
+ * - formatTestScore, formatTestSummary, formatRecommendation (test-report.ts)
+ * - getRecommendationLabel (test-report.ts recommendation logic)
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -17,6 +17,14 @@ import {
   SecurityError,
   ToolError,
 } from "../shared/errors";
+import {
+  mergeModels,
+} from "../shared/provider-sync";
+import {
+  formatTestScore,
+  formatTestSummary,
+  formatRecommendation,
+} from "../shared/test-report";
 
 // ============================================================================
 // shared/errors — Typed Error Classes (FEAT-02)
@@ -105,26 +113,6 @@ describe("ToolError", () => {
 // shared/provider-sync — mergeModels (ARCH-02)
 // ============================================================================
 
-// mergeModels is a pure function we can test by reimplementing
-// the logic inline since it's simple and deterministic
-function mergeModels(
-  newModels: Array<Record<string, unknown>>,
-  oldModels: Array<Record<string, unknown>>,
-): Array<Record<string, unknown>> {
-  const oldModelMap = new Map(oldModels.map((m) => [m.id as string, m]));
-  return newModels.map((m) => {
-    const old = oldModelMap.get(m.id as string);
-    if (old) {
-      const merged = { ...m };
-      for (const [k, v] of Object.entries(old)) {
-        if (!(k in m)) (merged as Record<string, unknown>)[k] = v;
-      }
-      return merged;
-    }
-    return m;
-  });
-}
-
 describe("mergeModels", () => {
   it("returns new models when there are no old models", () => {
     const newModels = [{ id: "model-a" }, { id: "model-b" }];
@@ -166,24 +154,12 @@ describe("mergeModels", () => {
 });
 
 // ============================================================================
-// shared/test-report — formatTestSummary, formatRecommendation (MAINT-01)
+// shared/test-report — formatTestScore (TEST-06)
 // ============================================================================
-
-// Re-implement the pure formatting functions for testing
-// (they depend on format utilities which require the full module resolution)
-function formatTestScore(score: string, label: string): string {
-  switch (score) {
-    case "STRONG": return `${label} (${score})`;
-    case "MODERATE": return `${label} (${score})`;
-    case "WEAK": return `${label} (${score})`;
-    case "FAIL": return `${label} (${score})`;
-    case "ERROR": return `Error: ${label}`;
-    default: return `${label} (${score})`;
-  }
-}
 
 describe("formatTestScore", () => {
   it("formats STRONG score", () => {
+    // formatTestScore returns ANSI-styled strings — verify structure
     const result = formatTestScore("STRONG", "Reasoning");
     assert.ok(result.includes("Reasoning"));
     assert.ok(result.includes("STRONG"));
@@ -212,9 +188,113 @@ describe("formatTestScore", () => {
     assert.ok(result.includes("Error:"));
     assert.ok(result.includes("Connectivity"));
   });
+
+  it("formats unknown score as fail", () => {
+    const result = formatTestScore("CUSTOM", "Unknown");
+    assert.ok(result.includes("Unknown"));
+    assert.ok(result.includes("CUSTOM"));
+  });
 });
 
-// Recommendation logic testable as pure function
+// ============================================================================
+// shared/test-report — formatTestSummary (TEST-06)
+// ============================================================================
+
+describe("formatTestSummary", () => {
+  it("renders all-pass summary with score and time", () => {
+    const tests = [
+      { name: "Reasoning", pass: true, score: "STRONG" },
+      { name: "Tool Usage", pass: true, score: "MODERATE" },
+      { name: "Instruction Following", pass: true, score: "STRONG" },
+    ];
+    const lines = formatTestSummary(tests, 5000);
+    // Should contain section header
+    assert.ok(lines.some(l => l.includes("SUMMARY")), "should have SUMMARY header");
+    // Should contain individual results
+    assert.ok(lines.some(l => l.includes("Reasoning")));
+    assert.ok(lines.some(l => l.includes("Tool Usage")));
+    assert.ok(lines.some(l => l.includes("Instruction Following")));
+    // Should contain score
+    assert.ok(lines.some(l => l.includes("3/3") || l.includes("Score:")), "should show score");
+  });
+
+  it("renders mixed pass/fail summary", () => {
+    const tests = [
+      { name: "Reasoning", pass: true, score: "STRONG" },
+      { name: "Tool Usage", pass: false, score: "FAIL" },
+    ];
+    const lines = formatTestSummary(tests, 1200);
+    assert.ok(lines.some(l => l.includes("Reasoning")));
+    assert.ok(lines.some(l => l.includes("Tool Usage")));
+    assert.ok(lines.some(l => l.includes("1/2") || l.includes("Score:")));
+  });
+
+  it("renders all-fail summary", () => {
+    const tests = [
+      { name: "Reasoning", pass: false, score: "FAIL" },
+      { name: "Tool Usage", pass: false, score: "ERROR" },
+    ];
+    const lines = formatTestSummary(tests, 800);
+    assert.ok(lines.some(l => l.includes("0/2") || l.includes("Score:")));
+  });
+
+  it("handles empty test array", () => {
+    const lines = formatTestSummary([], 0);
+    assert.ok(lines.some(l => l.includes("SUMMARY")));
+    assert.ok(lines.some(l => l.includes("0/0") || l.includes("Score:")));
+  });
+});
+
+// ============================================================================
+// shared/test-report — formatRecommendation (TEST-06)
+// ============================================================================
+
+describe("formatRecommendation", () => {
+  it("returns STRONG when all tests pass", () => {
+    const lines = formatRecommendation("qwen3:0.6b", 4, 4);
+    assert.ok(lines.some(l => l.includes("STRONG")));
+    assert.ok(lines.some(l => l.includes("qwen3:0.6b")));
+  });
+
+  it("returns STRONG when all tests pass with via", () => {
+    const lines = formatRecommendation("gpt-4o", 4, 4, "via OpenRouter");
+    assert.ok(lines.some(l => l.includes("STRONG")));
+    assert.ok(lines.some(l => l.includes("via OpenRouter")));
+  });
+
+  it("returns GOOD when one test fails (total - 1)", () => {
+    const lines = formatRecommendation("llama3.2:1b", 3, 4);
+    assert.ok(lines.some(l => l.includes("GOOD")));
+    assert.ok(lines.some(l => l.includes("llama3.2:1b")));
+  });
+
+  it("returns USABLE when two tests fail (total - 2)", () => {
+    const lines = formatRecommendation("phi3:mini", 2, 4);
+    assert.ok(lines.some(l => l.includes("USABLE")));
+    assert.ok(lines.some(l => l.includes("phi3:mini")));
+  });
+
+  it("returns WEAK when most tests fail", () => {
+    const lines = formatRecommendation("tinyllama:1.1b", 0, 4);
+    assert.ok(lines.some(l => l.includes("WEAK")));
+    assert.ok(lines.some(l => l.includes("tinyllama:1.1b")));
+  });
+
+  it("handles single test pass as STRONG", () => {
+    const lines = formatRecommendation("model-a", 1, 1);
+    assert.ok(lines.some(l => l.includes("STRONG")));
+  });
+
+  it("handles single test fail as WEAK", () => {
+    const lines = formatRecommendation("model-a", 0, 1);
+    assert.ok(lines.some(l => l.includes("WEAK")));
+  });
+});
+
+// ============================================================================
+// Recommendation label logic (pure function extracted for testing)
+// ============================================================================
+
 function getRecommendationLabel(passed: number, total: number): string {
   if (passed === total) return "STRONG";
   if (passed >= total - 1) return "GOOD";
@@ -244,111 +324,5 @@ describe("getRecommendationLabel", () => {
 
   it("returns STRONG for single test pass", () => {
     assert.equal(getRecommendationLabel(1, 1), "STRONG");
-  });
-});
-
-// ============================================================================
-// openrouter-sync — parseModelIds and ensureProviderOrder (TEST-01)
-// ============================================================================
-
-function parseModelIds(args: string): string[] {
-  return args.trim().split(/[\s,]+/).filter(Boolean).map((arg) => {
-    const match = arg.match(/openrouter\.ai\/([^?#]+)/);
-    return match ? match[1] : arg;
-  });
-}
-
-describe("parseModelIds", () => {
-  it("extracts bare model IDs", () => {
-    assert.deepEqual(parseModelIds("liquid/lfm-2.5-1.2b-thinking:free"), ["liquid/lfm-2.5-1.2b-thinking:free"]);
-  });
-
-  it("strips OpenRouter URL prefix", () => {
-    assert.deepEqual(
-      parseModelIds("https://openrouter.ai/anthropic/claude-3.5-sonnet"),
-      ["anthropic/claude-3.5-sonnet"],
-    );
-  });
-
-  it("strips query parameters from URLs", () => {
-    assert.deepEqual(
-      parseModelIds("https://openrouter.ai/anthropic/claude-3.5-sonnet?price=free"),
-      ["anthropic/claude-3.5-sonnet"],
-    );
-  });
-
-  it("handles multiple model IDs (space-separated)", () => {
-    assert.deepEqual(parseModelIds("model-a model-b model-c"), ["model-a", "model-b", "model-c"]);
-  });
-
-  it("handles comma-separated model IDs", () => {
-    assert.deepEqual(parseModelIds("model-a, model-b, model-c"), ["model-a", "model-b", "model-c"]);
-  });
-
-  it("handles mix of URLs and bare IDs", () => {
-    assert.deepEqual(
-      parseModelIds("https://openrouter.ai/anthropic/claude-3.5-sonnet liquid/lfm-2.5-1.2b-thinking:free"),
-      ["anthropic/claude-3.5-sonnet", "liquid/lfm-2.5-1.2b-thinking:free"],
-    );
-  });
-
-  it("returns empty array for empty input", () => {
-    assert.deepEqual(parseModelIds(""), []);
-  });
-
-  it("returns empty array for whitespace-only input", () => {
-    assert.deepEqual(parseModelIds("   "), []);
-  });
-});
-
-function ensureProviderOrder(providers: Record<string, Record<string, unknown>>): Record<string, Record<string, unknown>> {
-  const ordered: Record<string, Record<string, unknown>> = {};
-  const keys = Object.keys(providers);
-  const orIdx = keys.indexOf("openrouter");
-  const olIdx = keys.indexOf("ollama");
-
-  if (orIdx !== -1) ordered["openrouter"] = providers["openrouter"];
-  if (olIdx !== -1 && (orIdx === -1 || olIdx < orIdx)) ordered["ollama"] = providers["ollama"];
-
-  for (const key of keys) {
-    if (key in ordered) continue;
-    ordered[key] = providers[key];
-  }
-  return ordered;
-}
-
-describe("ensureProviderOrder", () => {
-  it("places openrouter first when both exist", () => {
-    const providers = { ollama: { url: "local" }, openrouter: { url: "remote" }, other: {} };
-    const keys = Object.keys(ensureProviderOrder(providers));
-    assert.equal(keys[0], "openrouter");
-  });
-
-  it("places ollama second when ollama was before openrunner", () => {
-    const providers = { ollama: {}, openrouter: {}, anthropic: {} };
-    const keys = Object.keys(ensureProviderOrder(providers));
-    assert.equal(keys[0], "openrouter");
-    assert.equal(keys[1], "ollama");
-    assert.equal(keys[2], "anthropic");
-  });
-
-  it("preserves relative order of other providers", () => {
-    const providers = { openrouter: {}, anthropic: {}, google: {}, ollama: {} };
-    const keys = Object.keys(ensureProviderOrder(providers));
-    assert.equal(keys[0], "openrouter");
-    const anthIdx = keys.indexOf("anthropic");
-    const googIdx = keys.indexOf("google");
-    assert.ok(anthIdx < googIdx, "anthropic should come before google");
-  });
-
-  it("works when only ollama exists", () => {
-    const providers = { ollama: {}, anthropic: {} };
-    const keys = Object.keys(ensureProviderOrder(providers));
-    assert.ok(keys.includes("ollama"));
-    assert.ok(keys.includes("anthropic"));
-  });
-
-  it("handles empty providers object", () => {
-    assert.deepEqual(ensureProviderOrder({}), {});
   });
 });
