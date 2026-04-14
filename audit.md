@@ -1,10 +1,10 @@
 # Improvement & Enhancement Audit
 
-**Pi Coding Agent Extensions v1.1.8-dev**
+**Pi Coding Agent Extensions v1.1.9**
 
-**Repository:** github.com/VTSTech/pi-coding-agent
-**Author:** VTSTech | **License:** MIT | **Date:** April 14, 2026
-15 Findings | 6 Categories | Maintainability, Architecture, Performance, New Features, Testing, Robustness
+**Repository:** https://github.com/VTSTech/pi-coding-agent
+**Author:** VTSTech (Nigel Todman) | **License:** MIT | **Date:** 2026-04-15
+23 Findings | 6 Categories | Security, Robustness, Maintainability, Performance, Architecture, Testing
 
 ---
 
@@ -13,12 +13,12 @@
 - [Executive Summary](#executive-summary)
 - [Findings Summary](#findings-summary)
 - [Detailed Findings](#detailed-findings)
-  - [Maintainability](#maintainability)
-  - [Architecture](#architecture)
-  - [Performance](#performance)
-  - [New Features](#new-features)
-  - [Testing](#testing)
+  - [Security](#security)
   - [Robustness](#robustness)
+  - [Maintainability](#maintainability)
+  - [Performance](#performance)
+  - [Architecture](#architecture)
+  - [Testing](#testing)
 - [Priority Matrix](#priority-matrix)
 - [Architecture Strengths](#architecture-strengths)
 
@@ -26,9 +26,9 @@
 
 ## Executive Summary
 
-This audit covers the Pi Coding Agent Extensions repository at commit `b87ca27` (v1.1.8-dev), which represents significant progress since the v1.1.7 audit. The previous audit identified 26 findings across 7 categories; this refresh evaluates the current state after the v1.1.8 release, which addressed 22 of those findings. The most impactful previous findings — mutex protection for openrouter-sync (SEC-01), rateLimitDelay config bug (ROB-01), crash-safe audit logging (SEC-02), IPv6 SSRF bypass (SEC-03), secret redaction (SEC-05), Unicode normalization (SEC-06), fmtBytes off-by-one (ROB-04), execSync blocking (ROB-05), empty catch blocks (ROB-03), and inter-extension communication (ARCH-01) — have all been resolved.
+This audit covers the Pi Coding Agent Extensions codebase at commit `6e9db45` (v1.1.9), spanning 12,354 lines across 8 extension modules, 11 shared utility modules, 6 test files, and build scripts. The project provides a comprehensive suite of Pi framework extensions including model benchmarking, Ollama and OpenRouter sync, security enforcement, status monitoring, diagnostics, API configuration, and a ReAct text-based tool calling bridge.
 
-The remaining 15 findings in this audit reflect the natural evolution of a maturing codebase: duplicated path constants, a non-atomic config writer whose docstring claims otherwise, an untested config merge function, test files that re-implement source logic instead of importing, and the absence of CI/CD. No High-severity findings remain. The distribution is 1 Medium and 14 Low, indicating the codebase has moved from a remediation phase into a polish phase.
+The audit identified 23 findings across 6 categories: 4 High severity, 12 Medium severity, and 7 Low severity. The most critical finding is a missing `debugLog` import in `model-test.ts` that causes runtime crashes when debug logging is enabled — a regression likely introduced during v1.1.8's empty catch block fixes. The second most impactful cluster involves `api.ts` bypassing the models.json mutex in 4 places, creating race conditions with other extensions. On the positive side, the codebase demonstrates excellent security engineering (partitioned blocklists, Unicode normalization, DNS rebinding protection, crash-safe audit logging), clean module extraction patterns, and comprehensive test coverage for the security and format modules (111 tests). However, two critical shared modules — `config-io.ts` and `model-test-utils.ts` — have zero test coverage despite containing core infrastructure logic.
 
 ---
 
@@ -36,277 +36,405 @@ The remaining 15 findings in this audit reflect the natural evolution of a matur
 
 | ID | Severity | Category | Title |
 |----|----------|----------|-------|
-| MAINT-07 | Medium | Maintainability | config-io.ts writeJsonConfig Not Atomic Despite Docstring |
-| ARCH-05 | Low | Architecture | Duplicated Path Constants Across 4+ Shared Modules |
-| MAINT-08 | Low | Maintainability | Unused Imports Across 5 Extension Files |
-| MAINT-09 | Low | Maintainability | model-test.ts Still at 1,640 Lines |
-| ARCH-06 | Low | Architecture | updateModelsJsonReasoning Bypasses Mutex |
-| TEST-04 | Low | Testing | Test Files Re-Implement Source Logic Instead of Importing |
-| TEST-05 | Low | Testing | getEffectiveConfig and readTestConfig Have No Dedicated Tests |
-| TEST-06 | Low | Testing | formatTestSummary and formatRecommendation Untested |
-| ROB-06 | Low | Robustness | config-io.ts readJsonConfig Has Empty Catch Without debugLog |
-| FEAT-04 | Low | New Feature | No JSON Schema Validation for Configuration Files |
-| FEAT-05 | Low | New Feature | No CI/CD Pipeline |
-| ARCH-07 | Low | Architecture | ollama.ts Still Monolithic at 765 Lines |
-| PERF-04 | Low | Performance | models.json 2s TTL Cache Can Cause Stale Reads |
-| ARCH-08 | Low | Architecture | Duplicate Tests for parseModelIds and ensureProviderOrder |
-| PERF-05 | Low | Performance | Batched Context Length Fetching Not Configurable |
-
-No findings in: **Security** (all previous findings resolved; SEC-04 temp directory fix was intentionally reverted per user request).
+| SEC-01 | **High** | Security | `sanitizeCommand` logs but doesn't reject Unicode normalization variance |
+| SEC-02 | Medium | Security | `sanitizeInputForLog` truncates but doesn't redact API keys |
+| SEC-03 | Low | Security | Audit log grows unbounded — no rotation mechanism |
+| SEC-04 | Low | Security | `isSafeUrl` prefix matching can false-positive on hostnames like `10.example.com` |
+| ROB-01 | **High** | Robustness | Missing `debugLog` import in model-test.ts — ReferenceError when debugging enabled |
+| ROB-02 | **High** | Robustness | `api.ts` uses non-atomic `writeModelsJson()` in 4 places — race condition with mutex |
+| ROB-03 | Medium | Robustness | `fetchModelContextLength` debug log references undefined `model` variable |
+| ROB-04 | Medium | Robustness | `react-fallback.ts` bridge tool has no self-reference guard — infinite loop risk |
+| ROB-05 | Medium | Robustness | `status.ts` reads `/proc/meminfo` synchronously every 5 seconds — blocks event loop |
+| ROB-06 | Low | Robustness | `bump-version.sh` and `bump-version.ps1` are inconsistent — different file lists |
+| MAINT-01 | **High** | Maintainability | Score-reporting pattern duplicated ~12 times in model-test.ts |
+| MAINT-02 | Medium | Maintainability | Provider existence check duplicated 4 times in api.ts |
+| MAINT-03 | Medium | Maintainability | Duplicated path constants across config-io.ts and security.ts |
+| MAINT-04 | Medium | Maintainability | `diag.ts` reads settings.json directly — bypasses config-io.ts abstraction |
+| MAINT-05 | Medium | Maintainability | `model-test.ts` imports unused `writeModelsJson` |
+| MAINT-06 | Low | Maintainability | `TimeoutError` in errors.ts conflicts with global ES2022 `TimeoutError` |
+| MAINT-07 | Low | Maintainability | `config-io.ts` `readJsonConfig` manually checks env var instead of using `debugLog` |
+| PERF-01 | Medium | Performance | Audit log `readRecentAuditEntries` reads entire file then slices — O(n) memory |
+| ARCH-01 | Medium | Architecture | `model-test.ts` at 1,646 lines — single file with 5+ responsibilities |
+| ARCH-02 | Medium | Architecture | `api.ts` `/api show` and `diag.ts` both duplicate local-provider detection |
+| ARCH-03 | Low | Architecture | Branding array duplicated identically across all 8 extension files |
+| TEST-01 | **High** | Testing | Zero test coverage for `config-io.ts` — atomic I/O untested |
+| TEST-02 | **High** | Testing | Zero test coverage for `model-test-utils.ts` — scoring/caching untested |
 
 ---
 
 ## Detailed Findings
 
-### Maintainability
+### Security
 
-#### MAINT-07: config-io.ts writeJsonConfig Not Atomic Despite Docstring
+#### SEC-01: `sanitizeCommand` logs but doesn't reject Unicode normalization variance
+
+| Property | Value |
+|----------|-------|
+| **Severity** | High |
+| **Category** | Security |
+| **File(s)** | `shared/security.ts` (lines ~671–673) |
+
+The `sanitizeCommand()` function performs NFKC Unicode normalization before pattern matching to defeat homoglyph bypass attacks (e.g., fullwidth Latin, Cyrillic lookalikes). The JSDoc comment explicitly states: "Reject if normalization changed the command — indicates obfuscation attempt." However, the actual code only logs a `debugLog` warning and continues processing the normalized command.
+
+In practice, the practical impact is partially mitigated because the normalized command still passes through the standard CRITICAL_COMMANDS check, so a homoglyph `ｒｍ -rf /` would be normalized to `rm -rf /` and blocked. However, the comment-to-code mismatch is a maintenance hazard: a future developer reading the comment would assume rejection happens, and the logging-only behavior could mask sophisticated multi-stage obfuscation attempts that combine normalization with other bypass techniques.
+
+The fix is straightforward: change the `debugLog` call to throw a `SecurityError` (or at minimum, return a blocked result from `sanitizeCommand`). The caller already handles rejection from the command blocklist, so the rejection path is well-established.
+
+**Impact:** Closing the comment/code gap prevents future bypass attempts that combine Unicode normalization with other techniques.
+
+#### SEC-02: `sanitizeInputForLog` truncates but doesn't redact API keys
 
 | Property | Value |
 |----------|-------|
 | **Severity** | Medium |
-| **Category** | Maintainability |
-| **File(s)** | `shared/config-io.ts`, lines 44–47 |
+| **Category** | Security |
+| **File(s)** | `extensions/security.ts` (lines ~481–491) |
 
-The `writeJsonConfig()` function's docstring states "Uses write-then-rename for crash safety" but the implementation simply calls `fs.writeFileSync(filePath, JSON.stringify(data, null, 2))` with no temporary file or rename step. This means any crash or interruption during the write can leave the config file in a corrupted (partial) state. The `writeModelsJson()` function in `shared/ollama.ts` correctly implements atomic write-then-rename (write to `.tmp` then rename), but `writeJsonConfig()` does not follow this established pattern despite its documentation claiming it does. This is the single Medium-severity finding because a developer trusting the docstring would assume crash safety that does not exist, potentially leading to corrupted configuration files on crash.
+The `sanitizeInputForLog()` function in the security extension truncates values longer than 500 characters but does not apply secret redaction. Contrast this with `diag.ts`'s `redactValue()` function which checks key names against secret patterns (`key`, `token`, `secret`, `password`, `auth`, `apikey`, `api_key`) and replaces matching values with `[REDACTED]`, plus truncates long alphanumeric strings that look like API keys.
 
-Implement actual atomic write-then-rename: write to `${filePath}.tmp`, then `fs.rename()` to the target path. This matches the pattern already used in `writeModelsJson()` and is a straightforward fix.
+When the security extension logs tool call arguments (via the `tool_result` event handler), any API key shorter than 500 characters passed as a tool argument is logged in full plaintext. The audit log entries in `shared/security.ts` use `appendAuditEntry()` which stores the full tool name and arguments without redaction.
 
-**Impact:** Prevents config file corruption from partial writes during crashes or interruptions.
+The fix is to import and apply `redactValue()` from `diag.ts` (or extract it to `shared/security.ts` or `shared/format.ts`) and apply it in `sanitizeInputForLog()` before truncation.
 
----
+**Impact:** Prevents API key leakage in security audit logs and tool call logging.
 
-#### MAINT-08: Unused Imports Across 5 Extension Files
-
-| Property | Value |
-|----------|-------|
-| **Severity** | Low |
-| **Category** | Maintainability |
-| **File(s)** | `extensions/api.ts` (`ConfigError`), `extensions/security.ts` (`SecurityError`, `bytesHuman`), `extensions/diag.ts` (`padRight`), `extensions/openrouter-sync.ts` (`writeModelsJson`) |
-
-Five unused imports were introduced or left behind during refactoring. `ConfigError` was imported into `api.ts` when the typed error classes were added (FEAT-02) but is never referenced. `SecurityError` was similarly imported into `security.ts` but the extension uses `debugLog` and `ctx.ui.notify` for error handling instead of throwing. `bytesHuman` and `padRight` are unused formatter imports in `security.ts` and `diag.ts` respectively. `writeModelsJson` is a dead import in `openrouter-sync.ts` after the migration to `readModifyWriteModelsJson()`. Unused imports add noise, confuse readers about dependencies, and can cause false positives in bundler tree-shaking analysis.
-
-Remove all five unused imports.
-
-**Impact:** Cleans up dead code and reduces confusion about actual module dependencies.
-
----
-
-#### MAINT-09: model-test.ts Still at 1,640 Lines
+#### SEC-03: Audit log grows unbounded — no rotation mechanism
 
 | Property | Value |
 |----------|-------|
 | **Severity** | Low |
-| **Category** | Maintainability |
-| **File(s)** | `extensions/model-test.ts` |
+| **Category** | Security |
+| **File(s)** | `shared/security.ts` (`appendAuditEntry`, `readRecentAuditEntries`) |
 
-The v1.1.8 release extracted `formatTestSummary()`, `formatRecommendation()`, and branding into `shared/test-report.ts` (MAINT-01 from previous audit), reducing model-test.ts from 1,735 to 1,640 lines — a reduction of only 95 lines (~5%). The file remains the largest in the codebase by a significant margin (the next largest is `shared/security.ts` at 1,011 lines). It still contains test orchestration, two full ChatFn wrapper factories (Ollama streaming/non-streaming + provider), display/reporting, and configuration management in a single module. Further extraction opportunities include: `chatfn-wrappers.ts` (ChatFn factory for Ollama and provider), `test-functions.ts` (individual test functions), and `display.ts` (report formatting and output).
+`appendAuditEntry()` appends JSON entries to `~/.pi/agent/audit.log` indefinitely. `readRecentAuditEntries()` reads the entire file into memory, splits by newlines, then slices the last N entries. Over time, with heavy tool usage (every blocked command, every tool result), the audit log can grow to megabytes. The O(n) memory consumption of `readRecentAuditEntries` compounds this — reading a 10MB audit log just to get the last 50 entries allocates and garbage-collects a large string array.
 
-Continue the extraction pattern established in 1.1.8 by splitting out the ChatFn factory functions and individual test functions into focused modules.
+The fix is to add a maximum file size (e.g., 5MB) check in `appendAuditEntry()`: when exceeded, read the last N entries, write them to a new file, and replace. Alternatively, use a structured logging library with built-in rotation.
 
-**Impact:** Further reduces the largest file into navigable, testable modules.
+**Impact:** Prevents unbounded disk usage and O(n) memory spikes in audit log readers.
 
----
-
-### Architecture
-
-#### ARCH-05: Duplicated Path Constants Across 4+ Shared Modules
+#### SEC-04: `isSafeUrl` prefix matching can false-positive on hostnames
 
 | Property | Value |
 |----------|-------|
 | **Severity** | Low |
-| **Category** | Architecture |
-| **File(s)** | `shared/config-io.ts` (lines 56–62), `shared/security.ts` (lines 28–45), `shared/model-test-utils.ts`, `shared/ollama.ts` |
+| **Category** | Security |
+| **File(s)** | `shared/security.ts` (line ~573) |
 
-The `~/.pi/agent` base directory path is independently constructed via `path.join(os.homedir(), ".pi", "agent", ...)` in at least four shared modules. Specific constants are duplicated: `SETTINGS_PATH` is defined in both `shared/config-io.ts` (line 56) and `shared/security.ts` (line 28) with identical values. `SECURITY_CONFIG_PATH` appears in both `shared/config-io.ts` (line 59) and `shared/security.ts` (line 45). `MODEL_TEST_CONFIG_PATH` is defined in both `shared/config-io.ts` (line 62) and `shared/model-test-utils.ts`. This creates a drift risk: if the config directory location ever changes, all four files must be updated in lockstep. The `shared/config-io.ts` module was specifically created to centralize config path management, but the other modules continue to define their own copies.
+`isSafeUrl()` uses `normalized.startsWith(pattern)` for RFC1918 private range patterns like `"10."`, `"192.168."`, `"172.16."`–`"172.31."`. The `"10."` pattern would match a hostname like `10.example.com` even though it's a public domain. Similarly, `"192.168."` would match `192.168.example.com`.
 
-Define a single `AGENT_DIR` constant in `shared/config-io.ts` (e.g., `path.join(os.homedir(), ".pi", "agent")`) and export all path constants from there. Update `shared/security.ts`, `shared/model-test-utils.ts`, and `shared/ollama.ts` to import from `shared/config-io` instead of constructing paths independently.
+In practice, hostnames containing IP-like prefixes are extremely rare, and the SSRF protection also includes `resolveAndCheckHostname()` for DNS-level verification. The false positive would only cause a legitimate request to be blocked (conservative behavior), not allowed. However, if a user encounters this, there's no override mechanism in the URL blocklist.
 
-**Impact:** Eliminates path constant duplication and prevents drift if the config directory ever moves.
+The fix is to anchor the IP patterns more precisely — e.g., check that the character after the pattern is a `/`, `:`, or end-of-string — or switch to IP address parsing before comparison.
 
----
-
-#### ARCH-06: updateModelsJsonReasoning Bypasses Mutex
-
-| Property | Value |
-|----------|-------|
-| **Severity** | Low |
-| **Category** | Architecture |
-| **File(s)** | `extensions/model-test.ts`, function `updateModelsJsonReasoning` |
-
-While both sync extensions (`ollama-sync.ts` and `openrouter-sync.ts`) were fixed in v1.1.8 to use `readModifyWriteModelsJson()` for mutex-protected writes (SEC-01), the `updateModelsJsonReasoning()` function in `model-test.ts` still uses the lower-level `readModelsJson()`/`writeModelsJson()` pair without mutex protection. During a model test run that updates the reasoning field, a concurrent sync operation could interleave with the read-modify-write, causing the reasoning update to be lost or the sync's model list to be partially overwritten. The risk is low because reasoning updates are infrequent (only when test results change) and typically don't overlap with sync operations, but it violates the established pattern.
-
-Replace `readModelsJson()`/`writeModelsJson()` in `updateModelsJsonReasoning()` with `readModifyWriteModelsJson()`.
-
-**Impact:** Ensures all models.json mutations use consistent mutex protection.
-
----
-
-#### ARCH-07: ollama.ts Still Monolithic at 765 Lines
-
-| Property | Value |
-|----------|-------|
-| **Severity** | Low |
-| **Category** | Architecture |
-| **File(s)** | `shared/ollama.ts` |
-
-The `ollama.ts` module handles multiple distinct responsibilities: models.json I/O with caching and atomic writes, in-memory mutex for concurrent access, retry logic with exponential backoff, Ollama API helpers, model family detection, provider registry, and provider detection. At 765 lines, it combines 6+ concerns that would benefit from separation. Splitting into focused modules (e.g., `ollama-io.ts` for fetch helpers, `provider-registry.ts` for detection and built-in providers, `cache.ts` for TTL cache and atomic writes, `retry.ts` already partially exists conceptually within `withRetry`) would improve testability and navigation. However, since this module is stable and well-tested, this is strictly a maintainability improvement with no correctness impact.
-
-Consider splitting during the next major refactoring cycle. Priority: mutex/cache logic first (most complex), then provider detection.
-
-**Impact:** Improves separation of concerns and testability of the core Ollama integration module.
-
----
-
-#### ARCH-08: Duplicate Tests for parseModelIds and ensureProviderOrder
-
-| Property | Value |
-|----------|-------|
-| **Severity** | Low |
-| **Category** | Architecture |
-| **File(s)** | `tests/openrouter-sync.test.ts`, `tests/shared-utils.test.ts` |
-
-Both `tests/openrouter-sync.test.ts` and `tests/shared-utils.test.ts` contain inline re-implementations of `parseModelIds` (7 and 8 tests respectively) and `ensureProviderOrder` (6 and 5 tests respectively). The test logic is duplicated rather than importing the actual functions from source, and both files test the same behavior with nearly identical test cases. This duplication doubles the maintenance surface and means any bug fix to the source function must be manually synchronized in both test copies — a process that is error-prone and unlikely to be followed.
-
-Consolidate the duplicate tests into `shared-utils.test.ts` by importing `parseModelIds` and `ensureProviderOrder` from their actual source modules. Remove the re-implemented copies and duplicated tests from `openrouter-sync.test.ts`.
-
-**Impact:** Eliminates test duplication and ensures tests validate actual production code rather than inline copies.
-
----
-
-### Performance
-
-#### PERF-04: models.json 2s TTL Cache Can Cause Stale Reads
-
-| Property | Value |
-|----------|-------|
-| **Severity** | Low |
-| **Category** | Performance |
-| **File(s)** | `shared/ollama.ts`, TTL cache implementation |
-
-The `models.json` cache uses a 2-second TTL to avoid excessive file reads. While the cache is correctly invalidated on writes (set to null), the 2-second window between a write from one extension and a read from another can still produce stale data if both operations happen within the same TTL window. In practice, this rarely causes issues because the mutex serializes write operations, but read-only consumers that don't participate in the mutex (e.g., status bar polling) can see stale data for up to 2 seconds after a write. For most use cases this is acceptable, but for scenarios where real-time consistency matters (e.g., displaying newly synced models immediately), this gap is noticeable.
-
-Consider using `fs.watch` or tracking file mtime to invalidate the cache on external changes, or reduce the TTL for read-heavy scenarios.
-
-**Impact:** Reduces the stale data window from 2 seconds to near-zero for read-only consumers.
-
----
-
-#### PERF-05: Batched Context Length Fetching Not Configurable
-
-| Property | Value |
-|----------|-------|
-| **Severity** | Low |
-| **Category** | Performance |
-| **File(s)** | `shared/ollama.ts`, `fetchContextLengthsBatched()` |
-
-Context length fetching uses a hardcoded batch size of 3 concurrent requests. Under high-latency network conditions (e.g., tunneled remote Ollama over Cloudflare Tunnel), a smaller batch might avoid timeouts, while a larger batch could improve throughput on fast connections. The value is not configurable via `model-test-config.json` or any other mechanism. This is a minor optimization opportunity — the current default works well for most scenarios, but power users on constrained networks may benefit from tuning.
-
-Make the concurrency level configurable via `model-test-config.json` with the current 3 as default.
-
-**Impact:** Allows users with constrained network conditions to tune fetch parallelism.
-
----
-
-### New Features
-
-#### FEAT-04: No JSON Schema Validation for Configuration Files
-
-| Property | Value |
-|----------|-------|
-| **Severity** | Low |
-| **Category** | New Feature |
-| **File(s)** | `shared/config-io.ts`, `extensions/model-test.ts`, `extensions/api.ts` |
-
-No validation is performed when reading configuration files (`models.json`, `settings.json`, `model-test-config.json`, `security.json`, `react-mode.json`). Malformed or unexpected configuration silently falls back to defaults via `readJsonConfig()`'s empty catch block, producing no error message. While the v1.1.8 release added typed error classes and centralized config I/O, no schema validation layer was added. Integrating a lightweight validation library (e.g., `zod` or manual schema checks) would provide clear error messages for invalid input. The previous audit rated this Medium (FEAT-01), but since the centralized config I/O module now exists and the most critical config bugs (ROB-01, ROB-02) have been fixed, the urgency is reduced.
-
-Add basic shape validation to `readJsonConfig<T>()` that checks for required keys and value types, returning specific error messages when validation fails.
-
-**Impact:** Provides actionable error messages when configuration files are malformed instead of silent fallback.
-
----
-
-#### FEAT-05: No CI/CD Pipeline
-
-| Property | Value |
-|----------|-------|
-| **Severity** | Low |
-| **Category** | New Feature |
-| **File(s)** | Project root |
-
-The project still lacks automated testing, linting, or publishing workflows. There is no GitHub Actions configuration, no pre-commit hooks, and no automated quality gates. The existing 6 test files with ~353 test cases provide solid unit coverage, but they must be run manually. The previous audit rated this Medium (FEAT-03), but since the test suite has been significantly expanded in v1.1.8, the baseline is stronger. Adding GitHub Actions for TypeScript type checking, unit test execution, build verification, and publish dry-runs would catch regressions automatically.
-
-Add a GitHub Actions workflow that runs on push/PR: `npm run typecheck`, `npm test`, `./scripts/build-packages.sh all`.
-
-**Impact:** Catches regressions automatically and provides confidence that changes don't break existing functionality.
-
----
-
-### Testing
-
-#### TEST-04: Test Files Re-Implement Source Logic Instead of Importing
-
-| Property | Value |
-|----------|-------|
-| **Severity** | Low |
-| **Category** | Testing |
-| **File(s)** | `tests/openrouter-sync.test.ts`, `tests/shared-utils.test.ts` |
-
-Both test files contain inline re-implementations of production functions rather than importing from source. `tests/openrouter-sync.test.ts` re-implements `parseModelIds` (URL/model ID extraction) and `ensureProviderOrder` (provider key reordering). `tests/shared-utils.test.ts` re-implements the same two functions plus `mergeModels`, `formatTestScore`, and `getRecommendationLabel`. This means the tests validate the test author's understanding of the logic, not the actual production code. If the source implementation changes but the test copy isn't updated, the test will pass despite the production code being different — a false sense of security.
-
-Refactor tests to import functions from their actual source modules. For `parseModelIds` and `ensureProviderOrder`, this may require extracting them from the extension files into `shared/` or making them exported. For `mergeModels`, `formatTestScore`, and `getRecommendationLabel`, they are already in shared modules and can be imported directly.
-
-**Impact:** Ensures tests validate actual production code rather than inline copies that may drift.
-
----
-
-#### TEST-05: getEffectiveConfig and readTestConfig Have No Dedicated Tests
-
-| Property | Value |
-|----------|-------|
-| **Severity** | Low |
-| **Category** | Testing |
-| **File(s)** | `shared/model-test-utils.ts` (functions `readTestConfig`, `getEffectiveConfig`) |
-
-The `getEffectiveConfig()` function merges user overrides from `model-test-config.json` with the frozen `CONFIG` defaults, and was the root cause of the ROB-01 bug (rateLimitDelay ignoring user config). Despite this, the function has no dedicated test coverage. `readTestConfig()` — which reads and parses the JSON config file — is also untested. Both functions are declared in the `shared-utils.test.ts` header comment as planned tests but were never implemented. Adding tests for these functions would directly validate the config merge logic and prevent regression of the ROB-01 class of bugs.
-
-Add tests for: config file not found (returns defaults), valid config file (overrides applied), partial config file (missing keys get defaults), invalid JSON (falls back to defaults), and type mismatch handling (string where number expected).
-
-**Impact:** Validates the config merge logic that caused the ROB-01 bug and prevents similar regressions.
-
----
-
-#### TEST-06: formatTestSummary and formatRecommendation Untested
-
-| Property | Value |
-|----------|-------|
-| **Severity** | Low |
-| **Category** | Testing |
-| **File(s)** | `shared/test-report.ts` (functions `formatTestSummary`, `formatRecommendation`) |
-
-The `formatTestSummary()` and `formatRecommendation()` functions were extracted from `model-test.ts` into `shared/test-report.ts` in v1.1.8, but no tests were written for them. These functions produce the terminal output for the benchmark summary and recommendation sections, and handle edge cases like all-pass, all-fail, and mixed results. While they are pure formatting functions with no side effects (low risk), their untested status means any refactoring of the formatting logic could introduce visual regressions that go unnoticed. The `formatTestScore` function IS tested in `shared-utils.test.ts`, but the higher-level summary and recommendation formatters are not.
-
-Add tests for `formatTestSummary` and `formatRecommendation` covering: all tests passed, all failed, mixed results, empty test array, and the recommendation label logic for each tier (STRONG/GOOD/USABLE/WEAK).
-
-**Impact:** Ensures benchmark report formatting remains correct after refactoring.
+**Impact:** Prevents false-positive blocking of legitimate hostnames that start with IP-like prefixes.
 
 ---
 
 ### Robustness
 
-#### ROB-06: config-io.ts readJsonConfig Has Empty Catch Without debugLog
+#### ROB-01: Missing `debugLog` import in model-test.ts — ReferenceError when debugging enabled
+
+| Property | Value |
+|----------|-------|
+| **Severity** | High |
+| **Category** | Robustness |
+| **File(s)** | `extensions/model-test.ts` (lines 306, 899, 983, 1107, 1325, 1504, 1534, 1558) |
+
+`model-test.ts` calls `debugLog("model-test", ...)` in 8 catch blocks but never imports `debugLog` from `../shared/debug`. When `PI_EXTENSIONS_DEBUG` is not set, this is harmless because `debugLog` is never called at runtime (the env var check in `shared/debug.ts` gates the function body). However, when a developer or user sets `PI_EXTENSIONS_DEBUG=1` to debug an issue, every catch block in model-test.ts will throw `ReferenceError: debugLog is not defined`, masking the original error and crashing the extension.
+
+This was likely introduced during the v1.1.8 ROB-03 fix that replaced empty catch blocks with `debugLog()` calls across the codebase — the agent performing the fix added the calls but missed the import in model-test.ts.
+
+The fix is a one-line addition: `import { debugLog } from "../shared/debug";` at the top of the file.
+
+**Impact:** Prevents runtime crashes when debug logging is enabled, allowing developers to actually debug model-test issues.
+
+#### ROB-02: `api.ts` uses non-atomic `writeModelsJson()` in 4 places — race condition with mutex
+
+| Property | Value |
+|----------|-------|
+| **Severity** | High |
+| **Category** | Robustness |
+| **File(s)** | `extensions/api.ts` (lines 21, 241, 292, 359, 458) |
+
+`api.ts` imports `writeModelsJson` from `shared/ollama` and uses it directly in 4 functions: `setMode()`, `setUrl()`, `setThink()`, and `handleCompat()`. Each of these functions performs a read-modify-write cycle: `readModelsJson()` → modify in memory → `writeModelsJson()`. This pattern is not protected by the mutex that `readModifyWriteModelsJson()` provides.
+
+Every other extension that writes to `models.json` uses the atomic `readModifyWriteModelsJson()` wrapper: `ollama-sync.ts`, `openrouter-sync.ts`, and `model-test.ts` (for `updateModelsJsonReasoning`). If `/api mode openai` runs concurrently with `/ollama-sync`, the api.ts write can clobber the sync's changes (or vice versa).
+
+The fix is to replace all 4 occurrences of the `readModelsJson → modify → writeModelsJson` pattern with `readModifyWriteModelsJson((config) => { ... return modifiedConfig; })`. The `writeModelsJson` import can then be removed as it's otherwise unused.
+
+**Impact:** Prevents lost configuration changes during concurrent operations on models.json.
+
+#### ROB-03: `fetchModelContextLength` debug log references undefined `model` variable
+
+| Property | Value |
+|----------|-------|
+| **Severity** | Medium |
+| **Category** | Robustness |
+| **File(s)** | `shared/ollama.ts` (line 513) |
+
+The `fetchModelContextLength(baseUrl, modelName)` function has a debug log statement: `debugLog("ollama", \`failed to fetch context length for ${model}\`, err)`. The parameter name is `modelName`, not `model`, so when debugging is enabled, the log message shows `"failed to fetch context length for undefined"` — not helpful for identifying which model failed.
+
+This is a one-word fix: change `${model}` to `${modelName}`.
+
+**Impact:** Produces meaningful debug output for diagnosing context length fetch failures.
+
+#### ROB-04: `react-fallback.ts` bridge tool has no self-reference guard — infinite loop risk
+
+| Property | Value |
+|----------|-------|
+| **Severity** | Medium |
+| **Category** | Robustness |
+| **File(s)** | `extensions/react-fallback.ts` (lines ~147–160) |
+
+The `tool_call` bridge tool accepts arbitrary tool names and uses `fuzzyMatchToolName()` to resolve them against registered tools. If a model sends `tool_call(name="tool_call", args={...})`, the bridge will fuzzy-match to itself (since "tool_call" is its own registered name) and return a message telling the model to "call the real tool" — which is itself, creating a potential infinite loop.
+
+The security extension's `tool_call` interceptor may catch this in max mode (since `tool_call` is a known tool name), but in basic mode or if the model uses a variant name that fuzzy-matches to `tool_call`, the loop can occur.
+
+The fix is to add an early return in the bridge tool handler: if the resolved tool name equals `"tool_call"` (or whatever the bridge tool is named), return an error message instead of the retry instruction.
+
+**Impact:** Prevents infinite tool call loops when a model inadvertently calls the bridge tool recursively.
+
+#### ROB-05: `status.ts` reads `/proc/meminfo` synchronously every 5 seconds — blocks event loop
+
+| Property | Value |
+|----------|-------|
+| **Severity** | Medium |
+| **Category** | Robustness |
+| **File(s)** | `extensions/status.ts` (line ~117, `getSwap()`) |
+
+The `getSwap()` function uses `fs.readFileSync("/proc/meminfo", "utf-8")` to read swap usage on Linux. This is called inside `updateMetrics()` which runs every 5 seconds via `setInterval`. While `/proc/meminfo` is a virtual filesystem (no disk I/O), the synchronous read still blocks the event loop during the read syscall. On a system under memory pressure, procfs reads can take longer than expected.
+
+The fix is to migrate to `fs.promises.readFile("/proc/meminfo", "utf-8")` and make `getSwap()` async, updating `updateMetrics()` to `await` it. The `flushStatus()` caller already handles async operations.
+
+**Impact:** Eliminates event loop blocking from swap metrics polling.
+
+#### ROB-06: `bump-version.sh` and `bump-version.ps1` are inconsistent
 
 | Property | Value |
 |----------|-------|
 | **Severity** | Low |
 | **Category** | Robustness |
-| **File(s)** | `shared/config-io.ts`, line 37 |
+| **File(s)** | `scripts/bump-version.sh`, `scripts/bump-version.ps1` |
 
-The v1.1.8 release replaced ~20 empty catch blocks across the codebase with `debugLog()` calls (ROB-03), but missed one: `readJsonConfig()` in `shared/config-io.ts` has `catch { /* read failure is non-critical */ }` with no `debugLog()` call. This is the centralized config reader used by all extensions that import from `config-io`. While the comment explains why suppression is acceptable (the caller receives a defaultValue), the lack of logging means that config file read failures are completely invisible even in debug mode. A corrupted `settings.json` or permission-denied error on `security.json` would be silently swallowed with no diagnostic output.
+The two version-bump scripts produce different results. The Bash script updates 4 files (VERSION, shared/ollama.ts, root package.json, shared/package.json) and reads VERSION as the source of truth. The PowerShell script updates 6 files (same 4 + README.md + CHANGELOG.md) and reads `EXTENSION_VERSION` from `shared/ollama.ts` as the source of truth. The CHANGELOG update in the PowerShell script is commented out (dead code). This means a version bump on Linux misses README.md and CHANGELOG.md updates, while a version bump on Windows reads from a different source.
 
-Add `debugLog("config-io", "Failed to read config: " + filePath, error)` to the catch block, consistent with the pattern established across the rest of the codebase in v1.1.8.
+The fix is to align both scripts to the same file list and source-of-truth detection. Given that VERSION is documented as the single source of truth, the Bash script's approach is correct; the PowerShell script should be updated to match.
 
-**Impact:** Provides debug-mode visibility into config file read failures that are currently completely invisible.
+**Impact:** Ensures consistent version bumps across platforms.
+
+---
+
+### Maintainability
+
+#### MAINT-01: Score-reporting pattern duplicated ~12 times in model-test.ts
+
+| Property | Value |
+|----------|-------|
+| **Severity** | High |
+| **Category** | Maintainability |
+| **File(s)** | `extensions/model-test.ts` (lines in `testModelOllama` and `testModelProvider`) |
+
+Both `testModelOllama()` (~200 lines) and `testModelProvider()` (~200 lines) contain nearly identical score-reporting blocks for each test category (reasoning, tool usage, ReAct parsing, instruction following). Each block follows this pattern:
+
+```typescript
+if (reasoning.score === "STRONG") { lines.push(ok(`...`)); }
+else if (reasoning.score === "MODERATE") { lines.push(ok(`...`)); }
+else if (reasoning.score === "WEAK") { lines.push(fail(`...`)); }
+else if (reasoning.score === "FAIL") { lines.push(fail(`...`)); }
+else { lines.push(warn(`...`)); }
+```
+
+This 5-line pattern repeats for 4 test categories in each function, totaling ~40 lines of duplication. If the scoring labels change or a new tier is added, 8 locations must be updated. The `formatTestScore()` function in `shared/test-report.ts` already provides per-score formatting — using it here would eliminate most of the duplication.
+
+The fix is to extract a `reportScore(lines, testName, result)` helper that formats the score line using `formatTestScore()`, then call it for each test in both functions.
+
+**Impact:** Reduces model-test.ts by ~40 lines and eliminates a maintenance synchronization point.
+
+#### MAINT-02: Provider existence check duplicated 4 times in api.ts
+
+| Property | Value |
+|----------|-------|
+| **Severity** | Medium |
+| **Category** | Maintainability |
+| **File(s)** | `extensions/api.ts` (`setMode`, `setUrl`, `setThink`, `handleCompat`) |
+
+Four functions in api.ts repeat the same pattern: look up the provider in `config.providers[name]`, check if it's null, and if so, call `ctx.ui.notify("Provider not found: ...", "error")` and return. Each copy is 3–4 lines. If the error message or notification behavior changes, all 4 must be updated.
+
+The fix is to extract a `requireProvider(config, name, ctx)` helper that returns the provider config or sends the error notification and returns null.
+
+**Impact:** Reduces api.ts by ~12 lines and centralizes provider validation logic.
+
+#### MAINT-03: Duplicated path constants across config-io.ts and security.ts
+
+| Property | Value |
+|----------|-------|
+| **Severity** | Medium |
+| **Category** | Maintainability |
+| **File(s)** | `shared/config-io.ts` (lines 70, 59), `shared/security.ts` (lines 28, 45) |
+
+`SETTINGS_PATH` is defined in both `config-io.ts` (as `SETTINGS_PATH`) and `security.ts` (also as `SETTINGS_PATH`). `SECURITY_PATH` in `config-io.ts` and `SECURITY_CONFIG_PATH` in `security.ts` point to the same file (`~/.pi/agent/security.json`) but use different names. `MODEL_TEST_CONFIG_PATH` is in both `config-io.ts` and `model-test-utils.ts`.
+
+While the values are currently identical, if someone changes one but not the other, extensions would silently reference different paths. The fix is to have `config-io.ts` be the single source of truth for all `~/.pi/agent/` paths, and have other modules import from it.
+
+**Impact:** Eliminates path constant duplication, preventing silent path drift.
+
+#### MAINT-04: `diag.ts` reads settings.json directly — bypasses config-io.ts abstraction
+
+| Property | Value |
+|----------|-------|
+| **Severity** | Medium |
+| **Category** | Maintainability |
+| **File(s)** | `extensions/diag.ts` (line 272) |
+
+`diag.ts` reads `settings.json` via `JSON.parse(fs.readFileSync(settingsPath, "utf-8"))` instead of using `readSettings()` from `shared/config-io.ts`. This bypasses the centralized config I/O layer that other extensions use. If `readSettings()` is later enhanced (e.g., adding validation, caching, or migration logic), the diagnostic's direct read would miss those improvements.
+
+The fix is to replace the direct read with `import { readSettings } from "../shared/config-io"` and use `readSettings()`.
+
+**Impact:** Ensures diagnostic uses the same config reading path as all other extensions.
+
+#### MAINT-05: `model-test.ts` imports unused `writeModelsJson`
+
+| Property | Value |
+|----------|-------|
+| **Severity** | Medium |
+| **Category** | Maintainability |
+| **File(s)** | `extensions/model-test.ts` (line 8) |
+
+`model-test.ts` imports `writeModelsJson` from `shared/ollama` but never calls it. The extension only uses `readModifyWriteModelsJson()` for atomic writes (for `updateModelsJsonReasoning`). The unused import was likely left behind after the ARCH-06 fix in v1.1.8 that migrated to the mutex-protected pattern.
+
+The fix is to remove `writeModelsJson` from the import statement.
+
+**Impact:** Removes dead import that could cause false positives in bundler tree-shaking analysis.
+
+#### MAINT-06: `TimeoutError` in errors.ts conflicts with global ES2022 `TimeoutError`
+
+| Property | Value |
+|----------|-------|
+| **Severity** | Low |
+| **Category** | Maintainability |
+| **File(s)** | `shared/errors.ts` |
+
+TypeScript's ES2022 lib includes `globalThis.TimeoutError`. The custom `TimeoutError` in `shared/errors.ts` extends `ExtensionError` (not the global `Error`), so `instanceof globalThis.TimeoutError` would return `false` for instances of the custom class. This name collision could confuse developers who expect standard behavior.
+
+The fix is to rename to `ExtensionTimeoutError` to avoid the collision.
+
+**Impact:** Eliminates naming confusion with the built-in `TimeoutError`.
+
+#### MAINT-07: `config-io.ts` `readJsonConfig` manually checks env var instead of using `debugLog`
+
+| Property | Value |
+|----------|-------|
+| **Severity** | Low |
+| **Category** | Maintainability |
+| **File(s)** | `shared/config-io.ts` (lines 39–41) |
+
+The `readJsonConfig()` catch block manually checks `process.env.PI_EXTENSIONS_DEBUG === "1"` and calls `console.debug()` directly, instead of using the `debugLog()` function from `shared/debug.ts`. Every other module in the codebase uses `debugLog()` for debug output. The manual check means the debug output format is inconsistent and won't include the module name prefix that `debugLog()` provides.
+
+The fix is to import `debugLog` from `./debug` and use it in the catch block.
+
+**Impact:** Ensures consistent debug logging format across all modules.
+
+---
+
+### Performance
+
+#### PERF-01: Audit log `readRecentAuditEntries` reads entire file then slices
+
+| Property | Value |
+|----------|-------|
+| **Severity** | Medium |
+| **Category** | Performance |
+| **File(s)** | `shared/security.ts` (`readRecentAuditEntries`) |
+
+`readRecentAuditEntries(count)` reads the entire audit log file into memory, splits by newlines into an array, then slices the last `count` entries. For a large audit log (e.g., 5MB = ~50,000 entries), this allocates a ~5MB string, splits it into ~50,000 substrings, then discards ~49,950 of them. The memory spike is proportional to the file size, not the requested entry count.
+
+The fix is to use a reverse line reader that seeks to the end of the file and reads backwards, stopping after `count` entries. Node.js doesn't have a built-in reverse line reader, but a simple implementation using `fs.open` + `fs.read` with a seek-to-end approach would work. Alternatively, use a write-ahead log format with fixed-size entries and indexed offsets.
+
+**Impact:** Reduces memory consumption for audit log reading from O(file_size) to O(requested_entries).
+
+---
+
+### Architecture
+
+#### ARCH-01: `model-test.ts` at 1,646 lines — single file with 5+ responsibilities
+
+| Property | Value |
+|----------|-------|
+| **Severity** | Medium |
+| **Category** | Architecture |
+| **File(s)** | `extensions/model-test.ts` |
+
+`model-test.ts` is the largest file in the codebase by a wide margin (next largest is `api.ts` at 773 lines). It contains 5 distinct responsibilities: (1) Ollama HTTP chat client (with streaming), (2) provider HTTP chat client, (3) 10+ test function implementations, (4) model metadata management (context length, reasoning flags), and (5) command/tool registration and score reporting. The v1.1.8 extraction of `test-report.ts`, `model-test-utils.ts`, and `react-parser.ts` reduced it from ~1,735 lines but the file is still too large.
+
+The fix is to split into at least 3 modules: a chat client module (Ollama + provider HTTP wrappers), a test runner module (test functions), and the main module (command/tool registration + score reporting). The chat clients could potentially be further extracted to `shared/` since `ollama-sync.ts` has its own `fetchOllamaModels()` that duplicates some HTTP patterns.
+
+**Impact:** Improves maintainability by giving each module a single responsibility.
+
+#### ARCH-02: `api.ts` `/api show` and `diag.ts` both duplicate local-provider detection
+
+| Property | Value |
+|----------|-------|
+| **Severity** | Medium |
+| **Category** | Architecture |
+| **File(s)** | `extensions/api.ts` (`getLocalProvider`), `extensions/diag.ts` (provider detection in diagnostics) |
+
+Both `api.ts` and `diag.ts` independently implement logic to detect whether the current provider is "local" (Ollama) or "cloud." `api.ts` has `getLocalProvider(config)` which checks if the first provider's `baseUrl` contains `localhost` or `127.0.0.1`. `diag.ts` has its own inline version that checks the current provider's base URL against similar patterns. `status.ts` also has `detectLocalProvider()` with a third implementation.
+
+Three independent implementations of "is this provider local?" creates a maintenance risk — if the heuristic changes (e.g., adding `0.0.0.0` or `[::1]`), all three must be updated.
+
+The fix is to extract `isLocalProvider(providerConfig)` to `shared/ollama.ts` alongside `detectProvider()` and import it in all three extensions.
+
+**Impact:** Consolidates local-provider detection logic, preventing heuristic drift.
+
+#### ARCH-03: Branding array duplicated identically across all 8 extension files
+
+| Property | Value |
+|----------|-------|
+| **Severity** | Low |
+| **Category** | Architecture |
+| **File(s)** | All 8 extension files |
+
+Every extension builds the same branding array: `[section("Pi Coding Agent Extensions"), info(`v${EXTENSION_VERSION}`)]`. This 2-line pattern appears in `api.ts`, `diag.ts`, `model-test.ts`, `ollama-sync.ts`, `openrouter-sync.ts`, `react-fallback.ts`, `security.ts`, and `status.ts`. The `test-report.ts` module exports a `branding` constant that some files import, but the format differs (it includes GitHub and website URLs).
+
+The fix is to export a `getBranding()` function from `shared/format.ts` that returns the standard 2-element branding array. Extensions that need the extended version (with URLs) can import `branding` from `test-report.ts`.
+
+**Impact:** Eliminates 8 copies of the same branding code.
+
+---
+
+### Testing
+
+#### TEST-01: Zero test coverage for `config-io.ts` — atomic I/O untested
+
+| Property | Value |
+|----------|-------|
+| **Severity** | High |
+| **Category** | Testing |
+| **File(s)** | `shared/config-io.ts` (all exports untested) |
+
+`config-io.ts` exports 4 functions (`readJsonConfig`, `writeJsonConfig`, `readSettings`, `writeSettings`) and 4 path constants. It implements the atomic write-then-rename pattern that was specifically fixed in v1.1.8 (MAINT-07) because the previous non-atomic implementation was a crash-safety risk. Despite this being a critical infrastructure module used by `api.ts`, it has zero test coverage.
+
+The atomic write pattern (write to `.tmp`, then `fs.renameSync`) has specific failure modes: cross-filesystem renames that fall back to direct writes, permission errors on the `.tmp` file, and race conditions during the rename window. None of these are tested.
+
+The fix is to create `tests/config-io.test.ts` with tests covering: `readJsonConfig` with valid JSON, malformed JSON (fallback to default), missing file (fallback); `writeJsonConfig` atomic write (verify `.tmp` file is created and renamed); `writeJsonConfig` cross-filesystem fallback; `readSettings`/`writeSettings` round-trip; path constants matching expected values.
+
+**Impact:** Validates the atomic write-then-rename pattern that was specifically introduced to prevent config corruption.
+
+#### TEST-02: Zero test coverage for `model-test-utils.ts` — scoring/caching untested
+
+| Property | Value |
+|----------|-------|
+| **Severity** | High |
+| **Category** | Testing |
+| **File(s)** | `shared/model-test-utils.ts` (all exports untested) |
+
+`model-test-utils.ts` exports 15+ functions including scoring logic (`scoreReasoning`, `scoreNativeToolCall`, `scoreTextToolCall`), caching (`readToolSupportCache`, `writeToolSupportCache`, `getCachedToolSupport`, `cacheToolSupport`), test history (`readTestHistory`, `appendTestHistory`, `detectRegression`), and configuration (`readTestConfig`, `getEffectiveConfig`). The scoring functions are the most critical — they determine model benchmark ratings (STRONG/MODERATE/WEAK/FAIL), and the ROB-01/ROB-02 bugs in v1.1.8 were directly related to configuration handling in this module.
+
+Despite being the shared foundation for all model testing, it has zero test coverage. The `scoreReasoning`, `scoreNativeToolCall`, and `scoreTextToolCall` functions contain complex conditional logic for classifying model responses — exactly the kind of logic that benefits most from unit tests.
+
+The fix is to create `tests/model-test-utils.test.ts` covering: all 3 scoring functions with various response qualities; `getEffectiveConfig` with user overrides and defaults; `detectRegression` with improving and degrading scores; cache read/write round-trip with temp files; history append and trimming; `readTestConfig` with valid and invalid JSON.
+
+**Impact:** Prevents regressions in model scoring and configuration handling — the exact type of bug that v1.1.8 fixed.
 
 ---
 
@@ -314,22 +442,24 @@ Add `debugLog("config-io", "Failed to read config: " + filePath, error)` to the 
 
 | Timeline | Findings |
 |----------|----------|
-| **Near term (v1.1.8–v1.1.9)** | MAINT-07 (config-io atomic write), ROB-06 (readJsonConfig debugLog), MAINT-08 (unused imports) |
-| **Short term (v1.1.9–v1.2.0)** | ARCH-05 (duplicated paths), ARCH-06 (updateModelsJsonReasoning mutex), TEST-04 (test reimplementation), TEST-05 (getEffectiveConfig tests), TEST-06 (test-report tests), ARCH-08 (duplicate tests) |
-| **Medium term (v1.2.0+)** | MAINT-09 (split model-test.ts), ARCH-07 (modularize ollama.ts), FEAT-04 (config schema validation), FEAT-05 (CI/CD pipeline), PERF-04 (cache coherence), PERF-05 (configurable batching) |
+| **Near term (v1.2.0–v1.2.1)** | ROB-01 (add missing debugLog import), ROB-02 (migrate api.ts to readModifyWriteModelsJson), ROB-03 (fix undefined `model` variable), MAINT-05 (remove unused writeModelsJson import) |
+| **Short term (v1.2.1–v1.2.3)** | SEC-01 (sanitizeCommand rejection), SEC-02 (secret redaction in security logs), MAINT-01 (score-reporting extraction), MAINT-03 (consolidate path constants), MAINT-04 (diag.ts use readSettings), TEST-01 (config-io tests), TEST-02 (model-test-utils tests) |
+| **Medium term (v1.3.0+)** | ARCH-01 (split model-test.ts), ARCH-02 (consolidate local-provider detection), ARCH-03 (shared branding), ROB-04 (bridge tool self-reference guard), ROB-05 (async getSwap), PERF-01 (reverse audit log reader), SEC-03 (audit log rotation), MAINT-02 (provider existence helper), MAINT-06 (rename TimeoutError), MAINT-07 (use debugLog in config-io), ROB-06 (align bump scripts), SEC-04 (anchor IP patterns) |
 
 ---
 
 ## Architecture Strengths
 
-The v1.1.8 release represents a significant maturation of the codebase architecture. Several patterns that were strengths in the previous audit have been reinforced and extended.
+The Pi Coding Agent Extensions codebase demonstrates several architectural strengths that should be preserved during improvement work:
 
-The **shared module layer** has grown from 7 to 11 subpath exports with the addition of `config-io`, `errors`, `provider-sync`, and `test-report`. Each extraction followed a clear pattern: identify duplicated or tightly-coupled logic, extract to a pure function module, and update consumers to import from the shared location. The `shared/config-io.ts` module eliminated the duplicated `readSettings`/`writeSettings` pattern that existed in `api.ts`. The `shared/provider-sync.ts` module eliminated the model merge duplication between `ollama-sync.ts` and `openrouter-sync.ts`. The `shared/errors.ts` module replaced raw string throws with a structured, catchable error hierarchy.
+**Clean shared module extraction.** The `shared/` library is well-organized with 11 modules covering distinct concerns (format, security, ollama, types, config, debug, react-parser, model-test-utils, test-report, provider-sync, errors). Each module has a clear single responsibility, zero circular dependencies, and no external runtime dependencies (Node.js built-ins only). The extraction of `react-parser.ts`, `test-report.ts`, `provider-sync.ts`, `config-io.ts`, and `errors.ts` in v1.1.7–1.1.8 eliminated significant duplication and created reusable building blocks.
 
-The **security layer** in `shared/security.ts` has been hardened with four significant improvements: crash-safe audit log flushing via `process.on("exit")` handler, IPv6-mapped IPv4 SSRF bypass protection, Unicode NFKC normalization for homoglyph attack prevention, and restricted temp directory writes. The partitioned security model (41 CRITICAL always blocked + 25 EXTENDED max-only) with mode-aware SSRF patterns provides flexible enforcement without sacrificing safety. The `validatePath()` function with `fs.realpathSync()` symlink dereferencing prevents classic path traversal bypasses. The DNS rebinding protection via `dns.lookup()` adds defense-in-depth against time-of-check-to-time-of-use attacks.
+**Mutex-protected concurrent writes.** The `acquireModelsJsonLock()` / `readModifyWriteModelsJson()` pattern in `shared/ollama.ts` is an elegant in-memory mutex built on a Promise chain. It correctly serializes concurrent writes to `models.json` from multiple extensions without external dependencies. The `readModifyWriteModelsJson(modifier)` convenience wrapper with null-abort support is well-designed API ergonomics.
 
-The **concurrency model** established in v1.1.7 with `readModifyWriteModelsJson()` has been correctly adopted by both sync extensions in v1.1.8. The mutex pattern — an in-memory promise chain — is simple, effective, and correctly prevents lost-write races when multiple extensions modify `models.json` concurrently.
+**Defense-in-depth security model.** The security system operates at multiple layers: command blocklist (sanitization), SSRF URL blocking (pattern matching + DNS resolution), path validation (symlink dereferencing), injection detection (pattern matching), and audit logging. The mode-aware partitioning (basic/max) is a thoughtful design that balances security with usability for different environments. The NFKC Unicode normalization and zero-width character stripping in `sanitizeCommand` are sophisticated defenses against homoglyph bypass attempts rarely seen in extension-level code.
 
-The **testing infrastructure** has grown substantially. Test count increased from ~80 to ~353 across 6 test files (2 new: `openrouter-sync.test.ts` and `shared-utils.test.ts`). The `security.test.ts` file expanded to 1,079 lines with 146 tests covering all major security subsystems. The `shared-utils.test.ts` added 37 tests covering the new typed error classes, provider sync, and test report formatting. All empty catch blocks were replaced with `debugLog()` calls, making error paths observable in debug mode.
+**Atomic file writes with crash safety.** Both `writeModelsJson()` (in `shared/ollama.ts`) and `writeJsonConfig()` (in `shared/config-io.ts`) implement write-to-temp-then-rename patterns with appropriate fallbacks for cross-filesystem moves. The audit log has crash-safe flush via `process.on("exit")` and `process.on("SIGTERM")` handlers. These patterns show careful attention to data integrity.
 
-The **inter-extension communication** was cleaned up by removing the `pi._reactParser` hack in favor of direct imports from `shared/react-parser`. This eliminated the fragile `(pi as any)._reactParser` pattern and the fallback logic in `model-test.ts`, making the communication path explicit and type-safe.
+**Comprehensive security test suite.** `tests/security.test.ts` (66 tests) covers mode-aware command blocking, SSRF URL validation, path traversal, injection detection, DNS rebinding protection, Unicode normalization, and audit log buffering. The tests use `after()` hooks to restore security mode, ensuring test isolation. This is the most thorough test file in the suite and serves as a model for testing security-sensitive logic.
+
+**Provider-agnostic test abstraction.** The `ChatFn` type in `shared/model-test-utils.ts` abstracts provider differences into a simple `(messages, options) => Promise<response>` interface. This allows the same test functions (reasoning, tool usage, instruction following) to run against both local Ollama models and remote cloud providers without modification. The unified test functions (`testReasoningUnified`, `testToolUsageUnified`, `testInstructionFollowingUnified`) further consolidate this pattern.
