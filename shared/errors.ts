@@ -44,10 +44,10 @@ export class ApiError extends ExtensionError {
 /**
  * Error thrown when an operation exceeds its timeout.
  */
-export class TimeoutError extends ExtensionError {
+export class ExtensionTimeoutError extends ExtensionError {
   constructor(message: string, public readonly timeoutMs?: number) {
     super(message, "TIMEOUT");
-    this.name = "TimeoutError";
+    this.name = "ExtensionTimeoutError";
   }
 }
 

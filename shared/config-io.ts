@@ -15,6 +15,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import os from "node:os";
+import { debugLog } from "./debug";
 
 /** Base directory for Pi agent configuration files. */
 const PI_AGENT_DIR = path.join(os.homedir(), ".pi", "agent");
@@ -36,9 +37,7 @@ export function readJsonConfig<T = Record<string, any>>(
     }
   } catch (err) {
     // read failure is non-critical — caller receives defaultValue
-    if (typeof process !== "undefined" && process.env.PI_EXTENSIONS_DEBUG === "1") {
-      console.debug(`[config-io] Failed to read config: ${filePath}`, err);
-    }
+    debugLog("config-io", `failed to read config: ${filePath}`, err);
   }
   return defaultValue;
 }

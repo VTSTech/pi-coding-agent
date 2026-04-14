@@ -2,7 +2,7 @@
  * Tests for shared utility modules: errors, provider-sync, test-report, model-test-utils.
  *
  * TEST-02: Key shared utilities tests
- * - ExtensionError, ConfigError, ApiError, TimeoutError, SecurityError, ToolError (errors.ts)
+ * - ExtensionError, ConfigError, ApiError, ExtensionTimeoutError, SecurityError, ToolError (errors.ts)
  * - mergeModels (provider-sync.ts)
  * - formatTestScore, formatTestSummary, formatRecommendation (test-report.ts)
  * - getRecommendationLabel (test-report.ts recommendation logic)
@@ -13,7 +13,7 @@ import {
   ExtensionError,
   ConfigError,
   ApiError,
-  TimeoutError,
+  ExtensionTimeoutError,
   SecurityError,
   ToolError,
 } from "../shared/errors";
@@ -78,11 +78,11 @@ describe("ApiError", () => {
   });
 });
 
-describe("TimeoutError", () => {
+describe("ExtensionTimeoutError", () => {
   it("creates with timeoutMs", () => {
-    const err = new TimeoutError("operation timed out", 30000);
+    const err = new ExtensionTimeoutError("operation timed out", 30000);
     assert.equal(err.message, "operation timed out");
-    assert.equal(err.name, "TimeoutError");
+    assert.equal(err.name, "ExtensionTimeoutError");
     assert.equal(err.code, "TIMEOUT");
     assert.equal(err.timeoutMs, 30000);
   });

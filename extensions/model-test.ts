@@ -5,7 +5,8 @@ import {
   section, ok, fail, warn, info,
   msHuman, truncate, sanitizeForReport,
 } from "../shared/format";
-import { getOllamaBaseUrl, MODELS_JSON_PATH, detectModelFamily, readModelsJson, writeModelsJson, readModifyWriteModelsJson, BUILTIN_PROVIDERS, fetchModelContextLength, EXTENSION_VERSION, detectProvider, type ProviderInfo } from "../shared/ollama";
+import { getOllamaBaseUrl, MODELS_JSON_PATH, detectModelFamily, readModelsJson, readModifyWriteModelsJson, BUILTIN_PROVIDERS, fetchModelContextLength, EXTENSION_VERSION, detectProvider, type ProviderInfo } from "../shared/ollama";
+import { debugLog } from "../shared/debug";
 import type { ToolSupportLevel } from "../shared/types";
 import {
   ALL_DIALECT_PATTERNS,
