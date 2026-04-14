@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **ZAI  as a built-in provider** (`shared/ollama.ts`)
+- **ZAI (GLM-4) as a built-in provider** (`shared/ollama.ts`)
   - Added `zai` entry to `BUILTIN_PROVIDERS` with `openai-completions` API mode, base URL `https://open.bigmodel.cn/api/paas/v4`, and `ZAI_API_KEY` environment key. Users can now run `/api provider add zai` to configure ZAI's GLM-4 series models without manually specifying the API mode or endpoint.
 
 - **GLM model family detection** (`shared/ollama.ts`)
@@ -29,6 +29,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **GLM-4 added to reasoning model auto-detection** (`extensions/api.ts`)
   - The reasoning model heuristic in `/api reasoning` now matches model names containing `glm-4` (ZAI's GLM-4 series). These models use chain-of-thought by default and are correctly initialized with `reasoning: true` instead of requiring manual toggling.
+
+### Security
+
+- **Command chaining with `&&`, `||`, and `|` now allowed — each sub-command checked individually** (`shared/security.ts`)
+  - Previously, `sanitizeCommand()` blanket-blocked any command containing `&&`, `||`, or `|` via regex patterns in `INJECTION_PATTERNS`. This was overly aggressive — legitimate shell chains like `npm test && npm run build`, `cat file | grep pattern`, or `false || echo "retry"` were incorrectly blocked as "injection patterns" even though every sub-command was safe.
+  - Refactored `sanitizeCommand()` to split commands on `&&`, `||`, and `|` operators, then validate each sub-command independently against the CRITICAL_COMMANDS and EXTENDED_COMMANDS blocklists. Safe chains are now allowed; chains containing blocked sub-commands are still rejected with a specific error identifying which command triggered the block (e.g., `Blocked command: sudo (critical)`).
+  - **Important distinction:** The semicolon (`;`) is intentionally NOT included in the split-and-check logic. Unlike `&&` and `||` (which are conditional), semicolon unconditionally executes the next command — making it the primary shell injection vector. Commands like `ls; rm -rf /` remain blocked in all modes via the `INJECTION_PATTERNS` check, which runs before the split logic.
+
+- **Unicode normalization variance now rejects commands instead of logging** (`shared/security.ts`) — [SEC-01]
+  - `sanitizeCommand()` performed NFKC Unicode normalization to defeat homoglyph bypass attacks (e.g., fullwidth `ｒｍ` → ASCII `rm`). The JSDoc explicitly stated "Reject if normalization changed the command — indicates obfuscation attempt," but the code only logged a `debugLog` warning and continued processing the normalized command. This comment-to-code mismatch was a maintenance hazard where a future developer reading the comment would assume rejection happens.
+  - Changed the `debugLog` call to an actual rejection: returns `{ isSafe: false, error: "Command rejected: Unicode normalization variance detected (possible homoglyph bypass)" }`. The normalized command is no longer processed further when a mismatch is detected.
+
+### Testing
+
+- **Updated security tests for command chaining refactor** (`tests/security.test.ts`)
+  - Updated the semicolon injection test (`rejects dangerous injection patterns (; rm -rf)`) to verify the mode-independent `;` blocking still works correctly after the refactor.
+  - Existing pipe and AND-chain tests (`rejects pipe injection to dangerous commands`, `rejects AND-chain injection`) continue to pass unchanged — both already accepted blocklist-based error messages alongside injection-pattern messages.
 
 ---
 
