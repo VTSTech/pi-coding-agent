@@ -213,7 +213,7 @@ export default function (pi: ExtensionAPI) {
     });
   }
 
-  function setMode(ctx: any, providerName: string, mode: string) {
+  async function setMode(ctx: any, providerName: string, mode: string) {
     if (!mode) {
       ctx.ui.notify("Usage: /api mode <mode>. Use /api modes to list available modes.", "error");
       return;
@@ -231,7 +231,7 @@ export default function (pi: ExtensionAPI) {
     }
 
     let oldMode = "(not set)";
-    const written = readModifyWriteModelsJson((config) => {
+    const written = await readModifyWriteModelsJson((config) => {
       const provider = config.providers[providerName];
       if (!provider) return null;
       oldMode = provider.api || "(not set)";
@@ -259,7 +259,7 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.notify(`API mode set to ${matched}`, "success");
   }
 
-  function setUrl(ctx: any, providerName: string, url: string) {
+  async function setUrl(ctx: any, providerName: string, url: string) {
     if (!url) {
       ctx.ui.notify("Usage: /api url <base-url>", "error");
       return;
@@ -278,7 +278,7 @@ export default function (pi: ExtensionAPI) {
     }
 
     let oldUrl = "(not set)";
-    const written = readModifyWriteModelsJson((config) => {
+    const written = await readModifyWriteModelsJson((config) => {
       const provider = config.providers[providerName];
       if (!provider) return null;
       // Append /v1 if provider uses an OpenAI-compatible API mode and URL lacks it
@@ -291,7 +291,7 @@ export default function (pi: ExtensionAPI) {
       return config;
     });
     if (!written) {
-      ctx.ui.notify(`Provider "${providerName}" not found in models.json", "error");
+      ctx.ui.notify(`Provider "${providerName}" not found in models.json`, "error");
       return;
     }
 
@@ -310,7 +310,7 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.notify(`Base URL set to ${normalizedUrl}`, "success");
   }
 
-  function setThink(ctx: any, providerName: string, value: string) {
+  async function setThink(ctx: any, providerName: string, value: string) {
     if (!value) {
       ctx.ui.notify("Usage: /api think <on|off|auto>", "error");
       return;
@@ -318,14 +318,18 @@ export default function (pi: ExtensionAPI) {
 
     const valLower = value.toLowerCase();
     let models: any[] = [];
-    const written = readModifyWriteModelsJson((config) => {
+
+    const written = await readModifyWriteModelsJson((config) => {
       const provider = config.providers[providerName];
       if (!provider) return null;
+
       models = provider.models || [];
       if (models.length === 0) return null;
+
       const setAll = (state: boolean | null) => {
         for (const model of models) {
           if (state === null) {
+            // Auto: detect from model name
             const name = (model.id || "").toLowerCase();
             model.reasoning =
               name.includes("deepseek-r1") ||
@@ -334,12 +338,13 @@ export default function (pi: ExtensionAPI) {
               name.includes("o3") ||
               name.includes("think") ||
               name.includes("qwen3") ||
-              name.includes("glm-4");
+              name.includes("glm-4"); // ZAI GLM-4 series models
           } else {
             model.reasoning = state;
           }
         }
       };
+
       if (valLower === "on" || valLower === "true" || valLower === "1") {
         setAll(true);
       } else if (valLower === "off" || valLower === "false" || valLower === "0") {
@@ -351,18 +356,13 @@ export default function (pi: ExtensionAPI) {
       }
       return config;
     });
+
     if (!written) {
       ctx.ui.notify(`Provider "${providerName}" not found in models.json`, "error");
       return;
     }
     if (models.length === 0) {
       ctx.ui.notify(`No models found in provider "${providerName}"`, "error");
-      return;
-    }
-    if (!(valLower === "on" || valLower === "true" || valLower === "1" ||
-          valLower === "off" || valLower === "false" || valLower === "0" ||
-          valLower === "auto")) {
-      ctx.ui.notify('Invalid value. Use: on, off, or auto', "error");
       return;
     }
 
@@ -384,7 +384,7 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.notify(`Thinking set to ${valLower} for ${models.length} model(s)`, "success");
   }
 
-  function handleCompat(ctx: any, providerName: string, args: string) {
+  async function handleCompat(ctx: any, providerName: string, args: string) {
     const parts = args.split(/\s+/);
     const key = parts[0];
     const value = parts.slice(1).join(" ");
@@ -393,7 +393,7 @@ export default function (pi: ExtensionAPI) {
       // Show all compat flags for this provider
       const provider = findProvider(providerName);
       if (!provider) {
-        ctx.ui.notify(`Provider "${providerName}" not found", "error");
+        ctx.ui.notify(`Provider "${providerName}" not found`, "error");
         return;
       }
 
@@ -450,7 +450,7 @@ export default function (pi: ExtensionAPI) {
     }
 
     let oldValue: unknown;
-    const written = readModifyWriteModelsJson((config) => {
+    const written = await readModifyWriteModelsJson((config) => {
       const provider = config.providers[providerName];
       if (!provider) return null;
       if (!provider.compat) provider.compat = {};
