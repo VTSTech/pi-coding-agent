@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.1.9] - 04-14-2026 3:16:03 PM
+
+### Added
+
+- **ZAI  as a built-in provider** (`shared/ollama.ts`)
+  - Added `zai` entry to `BUILTIN_PROVIDERS` with `openai-completions` API mode, base URL `https://open.bigmodel.cn/api/paas/v4`, and `ZAI_API_KEY` environment key. Users can now run `/api provider add zai` to configure ZAI's GLM-4 series models without manually specifying the API mode or endpoint.
+
+- **GLM model family detection** (`shared/ollama.ts`)
+  - Added `glm-4` and `glm` patterns to `detectModelFamily()` so that ZAI GLM models are correctly identified as the `glm` family. This enables consistent family-based display, grouping, and configuration across sync and model-test extensions.
+
+### Changed
+
+- **`/api` commands now target the current session provider by default** (`extensions/api.ts`)
+  - `resolveProvider()` previously auto-detected the local Ollama provider when no explicit provider was given. In multi-provider setups, this meant `/api show`, `/api mode`, and `/api url` always displayed Ollama's config regardless of which provider the active session was actually using — a confusing experience when connected to OpenRouter, Together, or another remote provider.
+  - Rewrote the resolution logic with a three-tier fallback: (1) if an explicit provider argument is given, use that; (2) if the current session provider is available and valid in `models.json`, use that; (3) fall back to local Ollama detection. Added `getCurrentSessionProvider()` helper that reads from `ctx.session.state.provider`, `ctx.state.provider`, or `settings.defaultProvider`.
+  - All `/api` sub-commands (`show`, `mode`, `url`, `key`, `models`, `reasoning`, `test`) now pass the session provider through the resolution chain, so they operate on the active provider by default.
+
+- **`/api show` highlights current provider and suggests switching** (`extensions/api.ts`)
+  - The provider name line in `/api show` output now displays a `◀ current` indicator when the shown provider matches the active session provider (e.g., `Provider: openrouter ◀ current`). This gives immediate visual confirmation that the displayed config is the one currently in use.
+  - When the user views a provider that differs from the active session (e.g., `/api show ollama` while connected to openrouter), a note section is appended showing the current session provider and a command hint to switch (`Use /api provider set <name> to switch to this provider`).
+
+- **GLM-4 added to reasoning model auto-detection** (`extensions/api.ts`)
+  - The reasoning model heuristic in `/api reasoning` now matches model names containing `glm-4` (ZAI's GLM-4 series). These models use chain-of-thought by default and are correctly initialized with `reasoning: true` instead of requiring manual toggling.
+
+---
+
 ## [1.1.8] - 04-13-2026 3:59:34 PM
 
 ### Fixed
