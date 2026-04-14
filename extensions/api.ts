@@ -314,7 +314,8 @@ export default function (pi: ExtensionAPI) {
             name.includes("o1") ||
             name.includes("o3") ||
             name.includes("think") ||
-            name.includes("qwen3");
+            name.includes("qwen3") ||
+            name.includes("glm-4"); // ZAI GLM-4 series models
         } else {
           model.reasoning = state;
         }

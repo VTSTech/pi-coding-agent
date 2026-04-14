@@ -605,6 +605,7 @@ export const BUILTIN_PROVIDERS: Record<string, { api: string; baseUrl: string; e
   together:      { api: "openai-completions", baseUrl: "https://api.together.xyz/v1",       envKey: "TOGETHER_API_KEY" },
   fireworks:     { api: "openai-completions", baseUrl: "https://api.fireworks.ai/inference/v1", envKey: "FIREWORKS_API_KEY" },
   cohere:        { api: "cohere-chat",        baseUrl: "https://api.cohere.com/v1",         envKey: "COHERE_API_KEY" },
+  zai:           { api: "openai-completions", baseUrl: "https://open.bigmodel.cn/api/paas/v4", envKey: "ZAI_API_KEY" },
 };
 
 // ============================================================================
@@ -630,6 +631,7 @@ export const BUILTIN_PROVIDERS: Record<string, { api: string; baseUrl: string; e
  * detectModelFamily("qwen3:0.6b");       // "qwen3"
  * detectModelFamily("llama3.2:1b");      // "llama"
  * detectModelFamily("granite4:350m");    // "granite"
+ * detectModelFamily("glm-4:flash");      // "glm"
  * detectModelFamily("unknown-model");    // "unknown"
  * ```
  */
@@ -653,6 +655,8 @@ export function detectModelFamily(modelName: string): string {
     ["gemma", "gemma2"],
     ["granite", "granite"],
     ["dolphin", "dolphin"],
+    ["glm-4", "glm"],
+    ["glm", "glm"],
     ["deepseek-r1", "deepseek-r1"],
     ["deepseek", "deepseek"],
     ["mistral", "qwen2"],
