@@ -125,6 +125,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Updated test for ROB-04 fmtBytes fix** (`tests/format.test.ts`)
   - Changed test expectation from `"1K"` to `"512B"` to match the easy-pass ROB-04 fix (values below 1024 bytes now return byte notation).
 
+### Fixed
+
+- **Unused imports across 5 extension files** (`extensions/api.ts`, `extensions/security.ts`, `extensions/diag.ts`, `extensions/openrouter-sync.ts`) — [MAINT-08]
+  - Five unused imports were left behind during v1.1.8 refactoring: `ConfigError` in `api.ts`, `SecurityError` and `bytesHuman` in `security.ts`, `padRight` in `diag.ts`, `writeModelsJson` and `os` in `openrouter-sync.ts` and `api.ts`. Dead imports add noise and can cause false positives in bundler tree-shaking analysis.
+  - Removed all unused imports from affected files.
+
+- **`readJsonConfig()` empty catch lacked debug logging** (`shared/config-io.ts`) — [ROB-06]
+  - The v1.1.8 release replaced ~20 empty catch blocks with `debugLog()` calls (ROB-03) but missed one: `readJsonConfig()` had `catch { /* read failure is non-critical */ }` with no debug output. Since this is the centralized config reader used by all extensions, corrupted config files or permission errors were completely invisible even with `PI_EXTENSIONS_DEBUG=1`.
+  - Added `console.debug()` call gated on `PI_EXTENSIONS_DEBUG` environment variable, consistent with the pattern used across the rest of the codebase.
+
+- **`updateModelsJsonReasoning()` bypassed models.json mutex** (`extensions/model-test.ts`) — [ARCH-06]
+  - While both sync extensions were fixed in v1.1.8 to use `readModifyWriteModelsJson()` for mutex-protected writes (SEC-01), the `updateModelsJsonReasoning()` function still used the lower-level `readModelsJson()`/`writeModelsJson()` pair without mutex protection. A concurrent sync operation during a reasoning update could interleave reads and writes.
+  - Replaced the read-modify-write cycle with `readModifyWriteModelsJson()`, bringing it in line with the established pattern used by `ollama-sync.ts` and `openrouter-sync.ts`.
+
+- **`writeJsonConfig()` not atomic despite docstring claiming crash safety** (`shared/config-io.ts`) — [MAINT-07]
+  - The function's docstring stated "Uses write-then-rename for crash safety" but the implementation called `fs.writeFileSync()` directly — no temporary file or rename step. A crash during write could leave config files in a corrupted (partial) state. Meanwhile, `writeModelsJson()` in `shared/ollama.ts` correctly implemented the atomic pattern.
+  - Implemented actual atomic write-then-rename: writes to `${filePath}.tmp`, then `fs.renameSync()` to the target path. Falls back to direct write if rename fails (e.g., cross-filesystem move). Updated docstring to document the fallback behavior.
+
+### Changed
+
+- **Duplicate tests consolidated into shared-utils.test.ts** (`tests/shared-utils.test.ts`, `tests/openrouter-sync.test.ts`) — [ARCH-08]
+  - Both `openrouter-sync.test.ts` and `shared-utils.test.ts` contained inline re-implementations of `parseModelIds` and `ensureProviderOrder` with nearly identical test cases. The duplication doubled maintenance surface — any bug fix in source functions had to be manually synchronized in both test copies.
+  - `shared-utils.test.ts` now imports `mergeModels`, `formatTestScore`, `formatTestSummary`, and `formatRecommendation` from their actual source modules instead of using inline re-implementations. `openrouter-sync.test.ts` was cleaned up to remove its duplicated copies while retaining tests for `parseModelIds` and `ensureProviderOrder` (which cannot be imported since the extension uses `export default`).
+
+### Testing
+
+- **Tests for formatTestSummary and formatRecommendation** (`tests/shared-utils.test.ts`) — [TEST-06]
+  - Added 7 tests for `formatTestSummary`: all-pass summary with score and time, mixed pass/fail, all-fail, and empty test array.
+  - Added 7 tests for `formatRecommendation`: STRONG (all pass), STRONG with `via` provider suffix, GOOD (one fail), USABLE (two fails), WEAK (most fail), single-test pass (STRONG), and single-test fail (WEAK).
+
+### Added
+
+- **Configurable context length fetch batch size** (`shared/model-test-utils.ts`, `extensions/ollama-sync.ts`) — [PERF-05]
+  - `fetchContextLengthsBatched()` used a hardcoded batch size of 3 concurrent requests. Under high-latency network conditions (e.g., tunneled remote Ollama over Cloudflare Tunnel), a smaller batch avoids timeouts; a larger batch improves throughput on fast connections.
+  - Added `CONTEXT_BATCH_SIZE` to `CONFIG` defaults (default: 3), `contextBatchSize` to `ModelTestUserConfig` interface, and wired the effective config value through to the `fetchContextLengthsBatched()` call in `ollama-sync.ts`. Users can now set `contextBatchSize` in `~/.pi/agent/model-test-config.json`.
+
+### Fixed
+
+- **`formatRecommendation()` edge case: single-test fail returned GOOD instead of WEAK** (`shared/test-report.ts`)
+  - When `passed=0, total=1`, the condition `passed >= total - 1` evaluated to `0 >= 0` (true), routing to the GOOD tier. A model that fails its only test should not be rated GOOD.
+  - Added `passed > 0` guard to both GOOD and USABLE tier conditions so that zero passes always falls through to WEAK.
+
 ---
 
 ## [1.1.7] - 04-13-2026 11:19:48 AM
