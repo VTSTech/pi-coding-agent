@@ -18,7 +18,7 @@
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { section, ok, fail, info, warn } from "../shared/format";
-import { readModelsJson, writeModelsJson, getOllamaBaseUrl, BUILTIN_PROVIDERS, EXTENSION_VERSION } from "../shared/ollama";
+import { readModelsJson, readModifyWriteModelsJson, getOllamaBaseUrl, BUILTIN_PROVIDERS, EXTENSION_VERSION, isLocalProvider } from "../shared/ollama";
 import { SETTINGS_PATH, readSettings, writeSettings } from "../shared/config-io";
 
 // ============================================================================
@@ -70,19 +70,20 @@ const COMPAT_FLAGS: Record<string, { description: string; values: string[] }> = 
 /** Get the first local provider name (usually "ollama"). */
 function getLocalProvider(config: ReturnType<typeof readModelsJson>): { name: string; isLocal: boolean } {
   for (const [name, provider] of Object.entries(config.providers)) {
-    const url = provider.baseUrl || "";
-    if (
-      url.includes("localhost") ||
-      url.includes("127.0.0.1") ||
-      url.includes("0.0.0.0") ||
-      name === "ollama"
-    ) {
+    if (isLocalProvider(provider.baseUrl || "", name)) {
       return { name, isLocal: true };
     }
   }
   // Fall back to first provider
   const first = Object.keys(config.providers)[0];
   return { name: first || "ollama", isLocal: false };
+}
+
+/** Look up a provider by name. Returns null if not found. */
+function findProvider(providerName: string): any {
+  const config = readModelsJson();
+  const provider = config.providers[providerName];
+  return provider || null;
 }
 
 /** Resolve the provider to operate on. If explicit, use that; otherwise use current session provider. */
@@ -229,16 +230,18 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    const config = readModelsJson();
-    const provider = config.providers[providerName];
-    if (!provider) {
+    let oldMode = "(not set)";
+    const written = readModifyWriteModelsJson((config) => {
+      const provider = config.providers[providerName];
+      if (!provider) return null;
+      oldMode = provider.api || "(not set)";
+      provider.api = matched;
+      return config;
+    });
+    if (!written) {
       ctx.ui.notify(`Provider "${providerName}" not found in models.json`, "error");
       return;
     }
-
-    const oldMode = provider.api || "(not set)";
-    provider.api = matched;
-    writeModelsJson(config);
 
     const lines: string[] = [branding];
     lines.push(section("API MODE CHANGED"));
@@ -274,22 +277,23 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    const config = readModelsJson();
-    const provider = config.providers[providerName];
-    if (!provider) {
-      ctx.ui.notify(`Provider "${providerName}" not found in models.json`, "error");
+    let oldUrl = "(not set)";
+    const written = readModifyWriteModelsJson((config) => {
+      const provider = config.providers[providerName];
+      if (!provider) return null;
+      // Append /v1 if provider uses an OpenAI-compatible API mode and URL lacks it
+      const apiMode = provider.api || "";
+      if (apiMode.includes("openai") && !normalizedUrl.endsWith("/v1")) {
+        normalizedUrl = normalizedUrl.replace(/\/+$/, "") + "/v1";
+      }
+      oldUrl = provider.baseUrl || "(not set)";
+      provider.baseUrl = normalizedUrl;
+      return config;
+    });
+    if (!written) {
+      ctx.ui.notify(`Provider "${providerName}" not found in models.json", "error");
       return;
     }
-
-    // Append /v1 if provider uses an OpenAI-compatible API mode and URL lacks it
-    const apiMode = provider.api || "";
-    if (apiMode.includes("openai") && !normalizedUrl.endsWith("/v1")) {
-      normalizedUrl = normalizedUrl.replace(/\/+$/, "") + "/v1";
-    }
-
-    const oldUrl = provider.baseUrl || "(not set)";
-    provider.baseUrl = normalizedUrl;
-    writeModelsJson(config);
 
     const lines: string[] = [branding];
     lines.push(section("BASE URL CHANGED"));
@@ -312,51 +316,55 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    const config = readModelsJson();
-    const provider = config.providers[providerName];
-    if (!provider) {
+    const valLower = value.toLowerCase();
+    let models: any[] = [];
+    const written = readModifyWriteModelsJson((config) => {
+      const provider = config.providers[providerName];
+      if (!provider) return null;
+      models = provider.models || [];
+      if (models.length === 0) return null;
+      const setAll = (state: boolean | null) => {
+        for (const model of models) {
+          if (state === null) {
+            const name = (model.id || "").toLowerCase();
+            model.reasoning =
+              name.includes("deepseek-r1") ||
+              name.includes("qwq") ||
+              name.includes("o1") ||
+              name.includes("o3") ||
+              name.includes("think") ||
+              name.includes("qwen3") ||
+              name.includes("glm-4");
+          } else {
+            model.reasoning = state;
+          }
+        }
+      };
+      if (valLower === "on" || valLower === "true" || valLower === "1") {
+        setAll(true);
+      } else if (valLower === "off" || valLower === "false" || valLower === "0") {
+        setAll(false);
+      } else if (valLower === "auto") {
+        setAll(null);
+      } else {
+        return null;
+      }
+      return config;
+    });
+    if (!written) {
       ctx.ui.notify(`Provider "${providerName}" not found in models.json`, "error");
       return;
     }
-
-    const models = provider.models || [];
     if (models.length === 0) {
       ctx.ui.notify(`No models found in provider "${providerName}"`, "error");
       return;
     }
-
-    const valLower = value.toLowerCase();
-    const setAll = (state: boolean | null) => {
-      for (const model of models) {
-        if (state === null) {
-          // Auto: detect from model name
-          const name = (model.id || "").toLowerCase();
-          model.reasoning =
-            name.includes("deepseek-r1") ||
-            name.includes("qwq") ||
-            name.includes("o1") ||
-            name.includes("o3") ||
-            name.includes("think") ||
-            name.includes("qwen3") ||
-            name.includes("glm-4"); // ZAI GLM-4 series models
-        } else {
-          model.reasoning = state;
-        }
-      }
-    };
-
-    if (valLower === "on" || valLower === "true" || valLower === "1") {
-      setAll(true);
-    } else if (valLower === "off" || valLower === "false" || valLower === "0") {
-      setAll(false);
-    } else if (valLower === "auto") {
-      setAll(null);
-    } else {
+    if (!(valLower === "on" || valLower === "true" || valLower === "1" ||
+          valLower === "off" || valLower === "false" || valLower === "0" ||
+          valLower === "auto")) {
       ctx.ui.notify('Invalid value. Use: on, off, or auto', "error");
       return;
     }
-
-    writeModelsJson(config);
 
     const lines: string[] = [branding];
     lines.push(section("THINKING MODE"));
@@ -383,10 +391,9 @@ export default function (pi: ExtensionAPI) {
 
     if (!key) {
       // Show all compat flags for this provider
-      const config = readModelsJson();
-      const provider = config.providers[providerName];
+      const provider = findProvider(providerName);
       if (!provider) {
-        ctx.ui.notify(`Provider "${providerName}" not found`, "error");
+        ctx.ui.notify(`Provider "${providerName}" not found", "error");
         return;
       }
 
@@ -419,8 +426,7 @@ export default function (pi: ExtensionAPI) {
 
     if (!value) {
       // Show single flag
-      const config = readModelsJson();
-      const provider = config.providers[providerName];
+      const provider = findProvider(providerName);
       if (!provider) {
         ctx.ui.notify(`Provider "${providerName}" not found`, "error");
         return;
@@ -429,16 +435,6 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.notify(`${key} = ${current !== undefined ? JSON.stringify(current) : "(not set)"}`, "info");
       return;
     }
-
-    // Set a compat flag
-    const config = readModelsJson();
-    const provider = config.providers[providerName];
-    if (!provider) {
-      ctx.ui.notify(`Provider "${providerName}" not found`, "error");
-      return;
-    }
-
-    if (!provider.compat) provider.compat = {};
 
     // Parse value
     let parsedValue: unknown = value;
@@ -453,9 +449,19 @@ export default function (pi: ExtensionAPI) {
       }
     }
 
-    const oldValue = provider.compat[key];
-    provider.compat[key] = parsedValue;
-    writeModelsJson(config);
+    let oldValue: unknown;
+    const written = readModifyWriteModelsJson((config) => {
+      const provider = config.providers[providerName];
+      if (!provider) return null;
+      if (!provider.compat) provider.compat = {};
+      oldValue = provider.compat[key];
+      provider.compat[key] = parsedValue;
+      return config;
+    });
+    if (!written) {
+      ctx.ui.notify(`Provider "${providerName}" not found`, "error");
+      return;
+    }
 
     const lines: string[] = [branding];
     lines.push(section("COMPAT FLAG SET"));
@@ -547,7 +553,7 @@ export default function (pi: ExtensionAPI) {
           const url = p.baseUrl || "(no URL)";
           const api = p.api || "(no mode)";
           const isDefault = name === defaultProvider;
-          const isLocal = url.includes("localhost") || url.includes("127.0.0.1") || url.includes("0.0.0.0") || name === "ollama";
+          const isLocal = isLocalProvider(url, name);
           const marker = isDefault ? ok(" ◀ default") : "";
           const tag = isLocal ? " (local)" : " (cloud)";
           lines.push(info(`  ${name}${tag}${marker}`));
@@ -599,7 +605,7 @@ export default function (pi: ExtensionAPI) {
         lines.push(info("Configured providers:"));
         for (const name of providerNames) {
           const p = config.providers[name] as any;
-          const isLocal = (p.baseUrl || "").includes("localhost") || (p.baseUrl || "").includes("127.0.0.1") || name === "ollama";
+          const isLocal = isLocalProvider(p.baseUrl || "", name);
           lines.push(info(`  ${name}${isLocal ? " (local)" : " (cloud)"}`));
         }
         const builtins = Object.keys(BUILTIN_PROVIDERS).filter(n => !providerNames.includes(n));

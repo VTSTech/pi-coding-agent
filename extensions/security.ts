@@ -477,11 +477,26 @@ export default function (pi: ExtensionAPI) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
+/** Patterns matching sensitive key names that should be redacted in logs. */
+const SECRET_KEY_PATTERNS = [
+  /key$/i, /token/i, /secret/i, /password/i, /credential/i, /auth/i, /apikey/i, /api_key/i,
+];
+
 /** Remove sensitive values from tool input for safe logging. */
 function sanitizeInputForLog(input: Record<string, unknown>): Record<string, unknown> {
   const sanitized: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(input)) {
-    if (typeof value === "string" && value.length > 500) {
+    if (typeof value !== "string") {
+      sanitized[key] = value;
+      continue;
+    }
+    // Redact values for sensitive key names
+    if (SECRET_KEY_PATTERNS.some(p => p.test(key))) {
+      sanitized[key] = "[REDACTED]";
+      continue;
+    }
+    // Truncate long values
+    if (value.length > 500) {
       sanitized[key] = value.slice(0, 500) + "... (truncated)";
     } else {
       sanitized[key] = value;

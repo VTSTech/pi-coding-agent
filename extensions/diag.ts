@@ -8,7 +8,7 @@ import {
   section, ok, fail, warn, info,
   bytesHuman, msHuman, pct,
 } from "../shared/format";
-import { MODELS_JSON_PATH, getOllamaBaseUrl, BUILTIN_PROVIDERS, readModelsJson, EXTENSION_VERSION } from "../shared/ollama";
+import { MODELS_JSON_PATH, getOllamaBaseUrl, BUILTIN_PROVIDERS, readModelsJson, EXTENSION_VERSION, isLocalProvider } from "../shared/ollama";
 import {
   BLOCKED_COMMANDS, BLOCKED_URL_PATTERNS,
   CRITICAL_COMMANDS, EXTENDED_COMMANDS,
@@ -17,6 +17,7 @@ import {
   validatePath, isSafeUrl, sanitizeCommand, readRecentAuditEntries,
   AUDIT_LOG_PATH,
 } from "../shared/security";
+import { readSettings } from "../shared/config-io";
 import { debugLog } from "../shared/debug";
 
 // ── Secret redaction ───────────────────────────────────────────────────
@@ -120,7 +121,7 @@ export default function (pi: ExtensionAPI) {
     let ollamaModels: string[] = [];
     let ollamaVersion = "unknown";
     const ollamaBaseUrl = getOllamaBaseUrl();
-    const isRemoteOllama = !ollamaBaseUrl.includes("localhost") && !ollamaBaseUrl.includes("127.0.0.1");
+    const isRemoteOllama = !isLocalProvider(ollamaBaseUrl);
 
     if (isRemoteOllama) {
       // Remote Ollama — probe via HTTP instead of CLI
@@ -266,20 +267,19 @@ export default function (pi: ExtensionAPI) {
 
     // ── SETTINGS ──
     lines.push(section("SETTINGS"));
-    const settingsPath = path.join(agentDir, "settings.json");
-    if (fs.existsSync(settingsPath)) {
-      try {
-        const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    try {
+      const settings = readSettings();
+      if (Object.keys(settings).length > 0) {
         lines.push(info("Global settings found:"));
         for (const [key, val] of Object.entries(settings)) {
           lines.push(info(`  ${key}: ${redactValue(key, val)}`));
         }
         check(true, "settings.json valid JSON", "");
-      } catch (e: any) {
-        lines.push(fail(`settings.json parse error: ${e.message}`));
+      } else {
+        lines.push(warn("No global settings.json found (using defaults)"));
       }
-    } else {
-      lines.push(warn("No global settings.json found (using defaults)"));
+    } catch (e: any) {
+      lines.push(fail(`settings.json read error: ${e.message}`));
     }
 
     // ── EXTENSIONS ──

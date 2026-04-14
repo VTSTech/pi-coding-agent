@@ -10,15 +10,16 @@
 #   .\scripts\bump-version.ps1 1.1.8-dev
 #
 # Files updated:
-#   shared/ollama.ts          EXTENSION_VERSION constant (source of truth)
-#   package.json              version field
-#   shared/package.json       version field
+#   VERSION                   single source of truth (repo root)
+#   shared/ollama.ts          EXTENSION_VERSION constant
+#   package.json              root version field
+#   shared/package.json       shared package version
 #   README.md                 badge, pin-to-tag, snippet, header
-#   CHANGELOG.md              new version entry prepended
-#   VERSION                   single-line version file
 #
-# After updating files, stages everything and commits with the
-# version as message, then creates an annotated git tag.
+# NOTE: scripts/build-packages.sh and scripts/publish-packages.sh derive
+# the version from the VERSION file at runtime — they do NOT need updating.
+# NOTE: npm-packages/*/package.json versions are auto-updated by
+# build-packages.sh via sed — they do NOT need manual bumping.
 # ──────────────────────────────────────────────────────────────────
 
 param(
@@ -39,18 +40,23 @@ function Write-FileUtf8 {
     [System.IO.File]::WriteAllText((Resolve-Path $Path).Path, $Content, [System.Text.UTF8Encoding]::new($false))
 }
 
-# ── Read current version ─────────────────────────────────────────
-$ollamaTs = "shared\ollama.ts"
-if (-not (Test-Path $ollamaTs)) {
-    Write-Host "ERROR: $ollamaTs not found. Run from the repo root." -ForegroundColor Red
+# ── Read current version from VERSION file (source of truth) ──────
+$versionFile = "VERSION"
+if (-not (Test-Path $versionFile)) {
+    Write-Host "ERROR: $versionFile not found. Run from the repo root." -ForegroundColor Red
     exit 1
 }
 
-$content = Read-FileUtf8 $ollamaTs
-if ($content -match 'EXTENSION_VERSION\s*=\s*"([^"]+)"') {
-    $OldVersion = $Matches[1]
-} else {
-    Write-Host "ERROR: Could not parse EXTENSION_VERSION from $ollamaTs" -ForegroundColor Red
+$OldVersion = (Read-FileUtf8 $versionFile).Trim()
+if (-not $OldVersion) {
+    Write-Host "ERROR: VERSION file is empty." -ForegroundColor Red
+    exit 1
+}
+
+# Validate version format (semver-ish)
+if ($NewVersion -notmatch '^\d+\.\d+\.\d+([a-zA-Z0-9.+-]*)?$') {
+    Write-Host "ERROR: Invalid version format '$NewVersion'" -ForegroundColor Red
+    Write-Host "Expected: MAJOR.MINOR.PATCH (e.g., 1.2.3, 2.0.0-rc.1)" -ForegroundColor Red
     exit 1
 }
 
@@ -71,52 +77,39 @@ if ($reply -notmatch '^[Yy]') {
     exit 0
 }
 
-# ── Update shared/ollama.ts ──────────────────────────────────────
+# ── Update VERSION file ─────────────────────────────────────────
 Write-Host ""
 Write-Host " -- Updating files -------------------------------------------" -ForegroundColor DarkGray
 
-Write-Host "  [1/6] shared\ollama.ts"
+Write-Host "  [1/5] VERSION"
+Write-FileUtf8 "VERSION" "$NewVersion`n"
+
+# ── Update shared/ollama.ts ──────────────────────────────────────
+Write-Host "  [2/5] shared\ollama.ts"
+$ollamaTs = "shared\ollama.ts"
+$content = Read-FileUtf8 $ollamaTs
 $content = $content -replace '(EXTENSION_VERSION\s*=\s*)"[^"]+"', "`$1`"$NewVersion`""
 Write-FileUtf8 $ollamaTs $content
 
 # ── Update package.json (root) ───────────────────────────────────
-Write-Host "  [2/6] package.json"
+Write-Host "  [3/5] package.json"
 $c = Read-FileUtf8 "package.json"
 $c = $c.Replace("`"version`": `"$OldVersion`"", "`"version`": `"$NewVersion`"")
 Write-FileUtf8 "package.json" $c
 
 # ── Update shared/package.json ───────────────────────────────────
-Write-Host "  [3/6] shared\package.json"
+Write-Host "  [4/5] shared\package.json"
 $c = Read-FileUtf8 "shared\package.json"
 $c = $c.Replace("`"version`": `"$OldVersion`"", "`"version`": `"$NewVersion`"")
 Write-FileUtf8 "shared\package.json" $c
 
-# ── Update README.md (4 references) ─────────────────────────────
-Write-Host "  [4/6] README.md"
+# ── Update README.md (3 references) ─────────────────────────────
+Write-Host "  [5/5] README.md"
 $c = Read-FileUtf8 "README.md"
 $c = $c.Replace("v$OldVersion", "v$NewVersion")
 $c = $c.Replace("pi-coding-agent@v$OldVersion", "pi-coding-agent@v$NewVersion")
 $c = $c.Replace("Benchmark v$OldVersion", "Benchmark v$NewVersion")
 Write-FileUtf8 "README.md" $c
-
-# ── Update VERSION file ──────────────────────────────────────────
-Write-Host "  [5/6] VERSION"
-Write-FileUtf8 "VERSION" "$NewVersion`n"
-
-## ── Update CHANGELOG.md ──────────────────────────────────────────
-#Write-Host "  [6/6] CHANGELOG.md"
-#$date = Get-Date -Format "yyyy-MM-dd"
-
-$entry = @"
-## [$NewVersion] - $date
-
-### Changed
-
-- **Version bumped to $NewVersion** (all version touchpoints)
-  - Source of truth: ``shared/ollama.ts`` (``EXTENSION_VERSION``), root ``package.json``, ``shared/package.json``.
----
-
-"@
 
 Write-Host ""
 Write-Host " Done! $OldVersion -> $NewVersion" -ForegroundColor Green

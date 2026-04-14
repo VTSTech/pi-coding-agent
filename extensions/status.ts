@@ -22,7 +22,7 @@ const execAsync = promisify(exec);
 import os from "node:os";
 
 // ── Shared imports ─────────────────────────────────────────────────────────
-import { EXTENSION_VERSION, getOllamaBaseUrl, fetchModelContextLength, readModelsJson } from "../shared/ollama";
+import { EXTENSION_VERSION, getOllamaBaseUrl, fetchModelContextLength, readModelsJson, isLocalProvider } from "../shared/ollama";
 import { fmtBytes, fmtDur } from "../shared/format";
 import { debugLog } from "../shared/debug";
 import { getSecurityMode } from "../shared/security";
@@ -108,13 +108,13 @@ export default function (pi: ExtensionAPI) {
     return { used, total };
   }
 
-  function getSwap(): { used: number; total: number } | null {
+  async function getSwap(): Promise<{ used: number; total: number } | null> {
     if (process.platform !== "linux") {
       debugLog("status", "swap detection skipped: not a Linux platform");
       return null;
     }
     try {
-      const out = fs.readFileSync("/proc/meminfo", "utf-8");
+      const out = await fs.promises.readFile("/proc/meminfo", "utf-8");
       const swapTotal = Number(out.match(/SwapTotal:\s+(\d+)/)?.[1]) * 1024;
       const swapFree = Number(out.match(/SwapFree:\s+(\d+)/)?.[1]) * 1024;
       if (swapTotal > 0) return { used: swapTotal - swapFree, total: swapTotal };
@@ -127,19 +127,16 @@ export default function (pi: ExtensionAPI) {
    * or remote/cloud. CPU/RAM/Swap metrics are only meaningful for local.
    */
   function detectLocalProvider(modelsJson: Record<string, any>): boolean {
-    const isLocalUrl = (url: string) =>
-      url.includes("localhost") || url.includes("127.0.0.1") || url.includes("0.0.0.0");
-
     try {
       const ctxUrl = currentCtx?.provider?.baseUrl || currentCtx?.provider?.url || "";
-      if (ctxUrl) return isLocalUrl(ctxUrl);
+      if (ctxUrl) return isLocalProvider(ctxUrl);
 
       const modelId = footerModel || "";
       if (modelsJson && modelId) {
         for (const provider of Object.values(modelsJson.providers || {}) as any[]) {
           const url = provider.baseUrl || "";
           if ((provider.models || []).some((m: any) => m.id === modelId)) {
-            return isLocalUrl(url);
+            return isLocalProvider(url);
           }
         }
       }
@@ -267,7 +264,7 @@ export default function (pi: ExtensionAPI) {
 
   // ── metrics refresh (called every STATUS_UPDATE_INTERVAL_MS) ──
 
-  function updateMetrics() {
+  async function updateMetrics() {
     cpuUsage = getCpuUsage();
     const mem = getMem();
     memUsed = mem.used;

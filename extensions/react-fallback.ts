@@ -144,6 +144,15 @@ The bridge will match your tool name (fuzzy matching supported) and normalize ar
           } as AgentToolResult;
         }
 
+        // Prevent infinite loop: block the bridge from calling itself
+        if (targetToolName === "tool_call") {
+          stats.parseFailures++;
+          return {
+            content: [{ type: "text", text: `Error: The tool_call bridge cannot call itself — this would create an infinite loop. Please call the real tool directly with these arguments: ${argsJson}` }],
+            isError: true,
+          } as AgentToolResult;
+        }
+
         // Try to execute the tool via pi.exec or find another way
         // Since Pi doesn't expose a "call another tool" API from extensions,
         // we return a structured message telling the agent to call the real tool

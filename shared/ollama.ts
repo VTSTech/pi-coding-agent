@@ -768,3 +768,22 @@ export function detectProvider(ctx: PiExtensionContext): ProviderInfo {
   // Tier 3: Unknown provider
   return { kind: "unknown", name: providerName };
 }
+
+// ============================================================================
+// Local Provider Detection
+// ============================================================================
+
+/**
+ * Check if a provider URL indicates a local (on-machine) provider.
+ * Used by api.ts, status.ts, and diag.ts to determine whether
+ * system metrics (CPU/RAM/Swap) are meaningful.
+ *
+ * @param baseUrl - The provider's base URL (e.g. "http://localhost:11434/v1")
+ * @param providerName - Optional provider name (e.g. "ollama")
+ * @returns `true` if the provider is local, `false` otherwise
+ */
+export function isLocalProvider(baseUrl: string, providerName?: string): boolean {
+  if (providerName === "ollama") return true;
+  const url = baseUrl || "";
+  return url.includes("localhost") || url.includes("127.0.0.1") || url.includes("0.0.0.0");
+}

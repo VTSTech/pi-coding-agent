@@ -86,6 +86,83 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
+  // ── Score reporting helpers ─────────────────────────────────────────
+
+  /**
+   * Report a test score with appropriate formatting.
+   * Reduces score-reporting duplication across test functions.
+   * Each test category provides score-specific descriptions.
+   */
+  function reportScore(
+    lines: string[],
+    score: string,
+    descriptions: Record<string, string>,
+    fallback: string,
+  ): void {
+    const desc = descriptions[score] || descriptions["*"] || `(${score})`;
+    if (score === "STRONG" || score === "MODERATE") {
+      lines.push(ok(desc));
+    } else if (score === "WEAK") {
+      lines.push(warn(desc));
+    } else if (score === "FAIL") {
+      lines.push(fail(desc));
+    } else {
+      lines.push(fail(fallback));
+    }
+  }
+
+  /** Report a reasoning test score (used by both Ollama and provider paths). */
+  function reportReasoningScore(
+    lines: string[],
+    result: { score: string; answer: string; reasoning: string },
+  ): void {
+    reportScore(lines, result.score, {
+      STRONG: `Answer: ${result.answer} — Correct with clear reasoning (${result.score})`,
+      MODERATE: `Answer: ${result.answer} — Correct but weak reasoning (${result.score})`,
+      WEAK: `Answer: ${result.answer} — Reasoned but wrong answer (${result.score})`,
+      FAIL: `Answer: ${result.answer} — No reasoning detected (${result.score})`,
+    }, `Error: ${result.reasoning.includes("<!DOCTYPE") || result.reasoning.includes("<html") ? result.reasoning.split("\n")[0].slice(0, 100) + "..." : truncate(result.reasoning, 300)}`);
+  }
+
+  /** Report an instruction-following test score (used by both Ollama and provider paths). */
+  function reportInstructionScore(lines: string[], result: { score: string }): void {
+    reportScore(lines, result.score, {
+      STRONG: `JSON output valid with correct values (${result.score})`,
+      MODERATE: `JSON output valid but some values incorrect (${result.score})`,
+      WEAK: `Partial JSON compliance (${result.score})`,
+    }, `Failed to produce valid JSON (${result.score})`);
+  }
+
+  /** Report a tool usage test score (used by both Ollama and provider paths). */
+  function reportToolScore(
+    lines: string[],
+    result: { score: string; toolCall: string; response?: string },
+  ): void {
+    if (result.score === "STRONG" || result.score === "MODERATE") {
+      lines.push(ok(`Tool call: ${result.toolCall} (${result.score})`));
+    } else if (result.score === "WEAK") {
+      lines.push(warn(`Tool call: ${result.toolCall} (${result.score}) — malformed call`));
+    } else if (result.score === "FAIL") {
+      const hasResponse = result.response && result.response.trim().length > 0;
+      lines.push(fail(`Tool call: none — ${hasResponse ? "model responded in text instead" : "model returned empty response"} (${result.score})`));
+    } else {
+      lines.push(fail(`Error: ${result.toolCall}`));
+    }
+    // Show response for STRONG/MODERATE/WEAK
+    if (result.score === "STRONG" || result.score === "MODERATE" || result.score === "WEAK") {
+      if (result.response) {
+        lines.push(info(`Raw response: ${sanitizeForReport(result.response)}`));
+      }
+    } else if (result.score === "FAIL") {
+      const hasResponse = result.response && result.response.trim().length > 0;
+      if (hasResponse) {
+        lines.push(info(`Text response: ${sanitizeForReport(result.response)}`));
+      } else {
+        lines.push(info("Text response: (empty)"));
+      }
+    }
+  }
+
   // ── ChatFn wrappers ──────────────────────────────────────────────────
 
   /**
@@ -1120,20 +1197,7 @@ export default function (pi: ExtensionAPI) {
 
     const reasoning = await testReasoning(model);
     lines.push(info(`Time: ${msHuman(reasoning.elapsedMs)}`));
-    if (reasoning.score === "STRONG") {
-      lines.push(ok(`Answer: ${reasoning.answer} — Correct with clear reasoning (${reasoning.score})`));
-    } else if (reasoning.score === "MODERATE") {
-      lines.push(ok(`Answer: ${reasoning.answer} — Correct but weak reasoning (${reasoning.score})`));
-    } else if (reasoning.score === "WEAK") {
-      lines.push(fail(`Answer: ${reasoning.answer} — Reasoned but wrong answer (${reasoning.score})`));
-    } else if (reasoning.score === "FAIL") {
-      lines.push(fail(`Answer: ${reasoning.answer} — No reasoning detected (${reasoning.score})`));
-    } else {
-      const errMsg = reasoning.reasoning.includes("<!DOCTYPE") || reasoning.reasoning.includes("<html")
-        ? reasoning.reasoning.split("\n")[0].slice(0, 100) + "..." 
-        : truncate(reasoning.reasoning, 300);
-      lines.push(fail(`Error: ${errMsg}`));
-    }
+    reportReasoningScore(lines, reasoning);
     lines.push(info(`Response: ${sanitizeForReport(reasoning.reasoning)}`));
 
     // 2. Thinking test
@@ -1164,33 +1228,7 @@ export default function (pi: ExtensionAPI) {
 
     const tools = await testToolUsage(model);
     lines.push(info(`Time: ${msHuman(tools.elapsedMs)}`));
-    if (tools.score === "STRONG") {
-      lines.push(ok(`Tool call: ${tools.toolCall} (${tools.score})`));
-      // If tool call was detected from text (not native API), show the raw output
-      if (tools.response) {
-        lines.push(info(`Raw response: ${sanitizeForReport(tools.response)}`));
-      }
-    } else if (tools.score === "MODERATE") {
-      lines.push(ok(`Tool call: ${tools.toolCall} (${tools.score})`));
-      if (tools.response) {
-        lines.push(info(`Raw response: ${sanitizeForReport(tools.response)}`));
-      }
-    } else if (tools.score === "WEAK") {
-      lines.push(warn(`Tool call: ${tools.toolCall} (${tools.score}) — malformed call`));
-      if (tools.response) {
-        lines.push(info(`Raw response: ${sanitizeForReport(tools.response)}`));
-      }
-    } else if (tools.score === "FAIL") {
-      const hasResponse = tools.response && tools.response.trim().length > 0;
-      lines.push(fail(`Tool call: none — ${hasResponse ? "model responded in text instead" : "model returned empty response"} (${tools.score})`));
-      if (hasResponse) {
-        lines.push(info(`Text response: ${sanitizeForReport(tools.response)}`));
-      } else {
-        lines.push(info("Text response: (empty)"));
-      }
-    } else {
-      lines.push(fail(`Error: ${tools.toolCall}`));
-    }
+    reportToolScore(lines, tools);
 
     // 4. ReAct parsing test
     lines.push(section("REACT PARSING TEST"));
@@ -1234,15 +1272,7 @@ export default function (pi: ExtensionAPI) {
 
     const instructions = await testInstructionFollowing(model);
     lines.push(info(`Time: ${msHuman(instructions.elapsedMs)}`));
-    if (instructions.score === "STRONG") {
-      lines.push(ok(`JSON output valid with correct values (${instructions.score})`));
-    } else if (instructions.score === "MODERATE") {
-      lines.push(ok(`JSON output valid but some values incorrect (${instructions.score})`));
-    } else if (instructions.score === "WEAK") {
-      lines.push(warn(`Partial JSON compliance (${instructions.score})`));
-    } else {
-      lines.push(fail(`Failed to produce valid JSON (${instructions.score})`));
-    }
+    reportInstructionScore(lines, instructions);
     lines.push(info(`Output: ${sanitizeForReport(instructions.output)}`));
 
     // 6. Tool support detection
@@ -1383,20 +1413,7 @@ export default function (pi: ExtensionAPI) {
 
     const reasoning = await testReasoningProvider(providerInfo, model);
     lines.push(info(`Time: ${msHuman(reasoning.elapsedMs)}`));
-    if (reasoning.score === "STRONG") {
-      lines.push(ok(`Answer: ${reasoning.answer} — Correct with clear reasoning (${reasoning.score})`));
-    } else if (reasoning.score === "MODERATE") {
-      lines.push(ok(`Answer: ${reasoning.answer} — Correct but weak reasoning (${reasoning.score})`));
-    } else if (reasoning.score === "WEAK") {
-      lines.push(fail(`Answer: ${reasoning.answer} — Reasoned but wrong answer (${reasoning.score})`));
-    } else if (reasoning.score === "FAIL") {
-      lines.push(fail(`Answer: ${reasoning.answer} — No reasoning detected (${reasoning.score})`));
-    } else {
-      const errMsg = reasoning.reasoning.includes("<!DOCTYPE") || reasoning.reasoning.includes("<html")
-        ? reasoning.reasoning.split("\n")[0].slice(0, 100) + "..." 
-        : truncate(reasoning.reasoning, 300);
-      lines.push(fail(`Error: ${errMsg}`));
-    }
+    reportReasoningScore(lines, reasoning);
     lines.push(info(`Response: ${sanitizeForReport(reasoning.reasoning)}`));
 
     // 3. Instruction following test
@@ -1407,15 +1424,7 @@ export default function (pi: ExtensionAPI) {
 
     const instructions = await testInstructionFollowingProvider(providerInfo, model);
     lines.push(info(`Time: ${msHuman(instructions.elapsedMs)}`));
-    if (instructions.score === "STRONG") {
-      lines.push(ok(`JSON output valid with correct values (${instructions.score})`));
-    } else if (instructions.score === "MODERATE") {
-      lines.push(ok(`JSON output valid but some values incorrect (${instructions.score})`));
-    } else if (instructions.score === "WEAK") {
-      lines.push(warn(`Partial JSON compliance (${instructions.score})`));
-    } else {
-      lines.push(fail(`Failed to produce valid JSON (${instructions.score})`));
-    }
+    reportInstructionScore(lines, instructions);
     lines.push(info(`Output: ${sanitizeForReport(instructions.output)}`));
 
     // 4. Tool usage test
@@ -1426,32 +1435,7 @@ export default function (pi: ExtensionAPI) {
 
     const toolTest = await testToolUsageProvider(providerInfo, model);
     lines.push(info(`Time: ${msHuman(toolTest.elapsedMs)}`));
-    if (toolTest.score === "STRONG") {
-      lines.push(ok(`Tool call: ${toolTest.toolCall} (${toolTest.score})`));
-      if (toolTest.response) {
-        lines.push(info(`Raw response: ${sanitizeForReport(toolTest.response)}`));
-      }
-    } else if (toolTest.score === "MODERATE") {
-      lines.push(ok(`Tool call: ${toolTest.toolCall} (${toolTest.score})`));
-      if (toolTest.response) {
-        lines.push(info(`Raw response: ${sanitizeForReport(toolTest.response)}`));
-      }
-    } else if (toolTest.score === "WEAK") {
-      lines.push(warn(`Tool call: ${toolTest.toolCall} (${toolTest.score}) — malformed call`));
-      if (toolTest.response) {
-        lines.push(info(`Raw response: ${sanitizeForReport(toolTest.response)}`));
-      }
-    } else if (toolTest.score === "FAIL") {
-      const hasResponse = toolTest.response && toolTest.response.trim().length > 0;
-      lines.push(fail(`Tool call: none — ${hasResponse ? "model responded in text instead" : "model returned empty response"} (${toolTest.score})`));
-      if (hasResponse) {
-        lines.push(info(`Text response: ${sanitizeForReport(toolTest.response)}`));
-      } else {
-        lines.push(info("Text response: (empty)"));
-      }
-    } else {
-      lines.push(fail(`Error: ${toolTest.toolCall}`));
-    }
+    reportToolScore(lines, toolTest);
 
     // Skipped tests notice
     lines.push(section("SKIPPED TESTS (OLLAMA-ONLY)"));

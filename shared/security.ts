@@ -19,13 +19,14 @@ import * as path from "node:path";
 import os from "node:os";
 import { debugLog } from "./debug";
 import dns from "node:dns";
+import { SETTINGS_PATH as _SETTINGS_PATH, SECURITY_PATH } from "./config-io";
 
 // ============================================================================
-// Settings Path
+// Settings Path (re-exported from config-io for backward compatibility)
 // ============================================================================
 
 /** Path to the Pi agent settings file — protected against tool-based access. */
-export const SETTINGS_PATH = path.join(os.homedir(), ".pi", "agent", "settings.json");
+export const SETTINGS_PATH = _SETTINGS_PATH;
 
 // ============================================================================
 // Security Mode Configuration
@@ -42,7 +43,7 @@ export const SETTINGS_PATH = path.join(os.homedir(), ".pi", "agent", "settings.j
 export type SecurityMode = "basic" | "max";
 
 /** Path to the security mode configuration file. Stored separately from settings.json per project convention. */
-export const SECURITY_CONFIG_PATH = path.join(os.homedir(), ".pi", "agent", "security.json");
+export const SECURITY_CONFIG_PATH = SECURITY_PATH;
 
 /** Shape of the persisted security.json file. */
 interface SecurityConfig {
@@ -571,6 +572,14 @@ export function isSafeUrl(
     // ALWAYS block: cloud metadata, RFC1918, internal patterns
     for (const pattern of BLOCKED_URL_ALWAYS) {
       if (normalized === pattern || normalized.endsWith("." + pattern) || normalized.startsWith(pattern)) {
+        // For IP-like patterns, anchor to prevent false positives
+        // e.g. "10." should not match "10.example.com" but should match "10.0.0.1"
+        if (/^\d|^::/.test(pattern)) {
+          const nextChar = normalized[pattern.length];
+          if (nextChar && nextChar !== "/" && nextChar !== ":" && !/\d/.test(nextChar)) {
+            continue;
+          }
+        }
         return { safe: false, error: `SSRF protection: blocked hostname pattern '${pattern}'` };
       }
     }
@@ -579,6 +588,13 @@ export function isSafeUrl(
     if (mode === "max") {
       for (const pattern of BLOCKED_URL_MAX_ONLY) {
         if (normalized === pattern || normalized.endsWith("." + pattern) || normalized.startsWith(pattern)) {
+          // For IP-like patterns, anchor to prevent false positives
+          if (/^\d|^::/.test(pattern)) {
+            const nextChar = normalized[pattern.length];
+            if (nextChar && nextChar !== "/" && nextChar !== ":" && !/\d/.test(nextChar)) {
+              continue;
+            }
+          }
           return { safe: false, error: `SSRF protection: blocked hostname pattern '${pattern}' (max mode)` };
         }
       }
@@ -906,6 +922,20 @@ export function flushAuditBuffer(): void {
 export function appendAuditEntry(entry: Record<string, unknown>): void {
   try {
     ensureAuditFlushTimer();
+
+    // Rotate audit log if it exceeds 5MB (SEC-03)
+    const AUDIT_LOG_MAX_SIZE = 5 * 1024 * 1024;
+    try {
+      if (fs.existsSync(AUDIT_LOG_PATH)) {
+        const stat = fs.statSync(AUDIT_LOG_PATH);
+        if (stat.size > AUDIT_LOG_MAX_SIZE) {
+          const entries = readRecentAuditEntries(1000);
+          const content = entries.map(e => JSON.stringify(e)).join("\n") + "\n";
+          fs.writeFileSync(AUDIT_LOG_PATH, content, "utf-8");
+        }
+      }
+    } catch (err) { debugLog("security", "audit log rotation failed", err); }
+
     const enriched = { ...entry, securityMode: getSecurityMode() };
     const line = JSON.stringify(enriched) + "\n";
     _auditBuffer.push(line);
@@ -940,8 +970,43 @@ export function appendAuditEntry(entry: Record<string, unknown>): void {
 export function readRecentAuditEntries(count = 50): Array<Record<string, unknown>> {
   try {
     if (!fs.existsSync(AUDIT_LOG_PATH)) return [];
-    const content = fs.readFileSync(AUDIT_LOG_PATH, "utf-8");
-    const lines = content.trim().split("\n");
+    const fileSize = fs.statSync(AUDIT_LOG_PATH).size;
+    if (fileSize === 0) return [];
+
+    // Read from the end of the file to avoid O(n) memory for large logs.
+    // Opens the file, seeks backwards in chunks, and collects complete lines
+    // until we have `count` entries or reach the beginning.
+    const fd = fs.openSync(AUDIT_LOG_PATH, "r");
+    const bufferSize = 8192;
+    const buffer = Buffer.alloc(bufferSize);
+    const lines: string[] = [];
+    let pos = fileSize;
+    let partial = "";
+
+    while (pos > 0 && lines.length < count) {
+      const readSize = Math.min(bufferSize, pos);
+      pos -= readSize;
+      fs.readSync(fd, buffer, 0, readSize, pos);
+      const chunk = buffer.slice(0, readSize).toString("utf-8");
+
+      // Prepend to partial (reading backwards)
+      partial = chunk + partial;
+
+      // Extract complete lines from the end of partial
+      const lineBreak = partial.lastIndexOf("\n");
+      if (lineBreak !== -1) {
+        const complete = partial.slice(lineBreak + 1);
+        if (complete.trim()) lines.unshift(complete);
+        partial = partial.slice(0, lineBreak);
+      }
+    }
+    fs.closeSync(fd);
+
+    // Don't forget the last partial line
+    if (partial.trim() && lines.length < count) {
+      lines.unshift(partial);
+    }
+
     const recent = lines.slice(-count);
     return recent.map(line => {
       try { return JSON.parse(line); }
