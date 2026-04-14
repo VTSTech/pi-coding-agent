@@ -595,17 +595,28 @@ export function isSafeUrl(
 /**
  * Regex patterns for detecting shell injection attempts.
  *
- * These patterns detect truly dangerous constructs that cannot be safely
- * handled by per-command blocklist checking (e.g. command substitution,
- * sensitive variable expansion).
+ * These patterns detect dangerous constructs that cannot be safely handled
+ * by per-command blocklist checking:
  *
- * NOTE: Command chaining operators (&&, ||, ;, |) are NOT blanket-blocked
- * here. Instead, sanitizeCommand() splits chained commands and checks each
- * sub-command individually against the blocklists. This allows safe chains
- * like "npm test && npm run build" while still blocking "ls && sudo rm -rf /"
- * (because the second sub-command fails the blocklist check).
+ * - Semicolon chaining (;) is ALWAYS blocked when followed by dangerous
+ *   commands, regardless of security mode. Unlike && and || (which are
+ *   conditional), semicolon unconditionally executes the next command,
+ *   making it the primary shell injection vector.
+ * - Command substitution (backticks, $()) is always dangerous.
+ * - Sensitive variable expansion targets env vars that could leak secrets.
+ *
+ * NOTE: && and || chaining is handled by sanitizeCommand() which splits
+ * the command and checks each sub-command against the blocklists. This
+ * allows safe chains like "npm test && npm run build" while still
+ * blocking "ls && sudo rm -rf /" (second sub-command fails blocklist).
+ *
+ * NOTE: Pipes (|) are also handled by split-and-check. "cat file | sudo"
+ * is blocked because "sudo" hits the critical blocklist.
  */
 const INJECTION_PATTERNS: RegExp[] = [
+  // Semicolon chaining to dangerous commands — mode-independent.
+  // Unlike && (conditional), ; ALWAYS runs the second command.
+  /;\s*(rm|sudo|chmod|chown|mkfs|dd|shred|kill|pkill)\b/i,
   // Command substitution (backticks) — still dangerous
   /`[^`]+`/,
   // Command substitution ($()) — still dangerous
@@ -674,13 +685,19 @@ function checkSingleCommand(
  * 2. Normalizes Unicode and strips control characters
  * 3. Rejects Unicode normalization variance (SEC-01 — obfuscation detection)
  * 4. Detects newline injection
- * 5. Splits on command chaining operators (&&, ||, ;, |) and checks
- *    each sub-command individually against the blocklists
+ * 5. Checks for semicolon injection (mode-independent, always blocked)
+ * 6. Splits on conditional chaining operators (&&, ||) and pipes (|),
+ *    then checks each sub-command individually against the blocklists
  *
- * Chaining operators (&&, ||, ;, |) are NOT blanket-blocked. Instead, each
- * sub-command is validated independently. This allows safe chains like
- * "npm test && npm run build" or "cat file | grep foo" while still blocking
- * "ls && sudo rm -rf /" (the second sub-command fails the blocklist check).
+ * Chaining behavior by operator:
+ * - `;` (semicolon): ALWAYS blocked when followed by dangerous commands.
+ *   Semicolon unconditionally executes the next command, making it the
+ *   primary injection vector. This is mode-independent.
+ * - `&&` and `||` (conditional): Split and check each sub-command.
+ *   Allows safe chains like "npm test && npm run build" while still
+ *   blocking "ls && sudo rm -rf /" (second sub-command fails blocklist).
+ * - `|` (pipe): Split and check each sub-command. Allows "cat file | grep"
+ *   while blocking "cat file | sudo tee /tmp/pwned".
  *
  * @param command - The command string to validate
  * @returns Object with `isSafe`, `error`, and sanitized `command`
@@ -691,9 +708,13 @@ function checkSingleCommand(
  * sanitizeCommand("ls -la /home/user");
  * // Returns: { isSafe: true, error: "", command: "ls -la /home/user" }
  *
- * // Safe chained command (both modes)
+ * // Safe && chain (both modes)
  * sanitizeCommand("echo hello && ls");
  * // Returns: { isSafe: true, error: "", command: "echo hello && ls" }
+ *
+ * // Semicolon injection — always blocked regardless of mode
+ * sanitizeCommand("ls; rm -rf /");
+ * // Returns: { isSafe: false, error: "Potential injection pattern detected", command: "" }
  *
  * // Critical command — always blocked
  * sanitizeCommand("dd if=/dev/zero of=/dev/sda");
@@ -704,7 +725,7 @@ function checkSingleCommand(
  * // Max: { isSafe: false, error: "Blocked command: npm (max mode)", command: "" }
  * // Basic: { isSafe: true, error: "", command: "npm install lodash" }
  *
- * // Chained command with blocked sub-command
+ * // && chain with blocked sub-command
  * sanitizeCommand("ls && sudo rm -rf /");
  * // Returns: { isSafe: false, error: "Blocked command: sudo (critical)", command: "" }
  *
@@ -750,15 +771,27 @@ export function sanitizeCommand(
     return { isSafe: false, error: "Newline characters detected: potential command injection", command: "" };
   }
 
-  // ── Split on command chaining operators and check each sub-command ──
-  // We split on && || ; | but carefully handle || vs | to avoid
-  // splitting "||" into two separate "|" tokens.
+  // ── Check for semicolon injection (mode-independent, always blocked) ──
+  // Unlike && and || (conditional), semicolon unconditionally executes the
+  // next command. This is checked BEFORE the split-and-check logic so that
+  // "ls; rm -rf /" is blocked even in basic mode (where rm is allowed
+  // as a standalone command).
+  for (const pattern of INJECTION_PATTERNS) {
+    if (pattern.test(trimmed)) {
+      return { isSafe: false, error: `Potential injection pattern detected`, command: "" };
+    }
+  }
+
+  // ── Split on conditional chaining operators (&&, ||) and pipes (|) ──
+  // We do NOT split on semicolons — those are handled above by the
+  // injection pattern check. For && || |, we split and check each
+  // sub-command individually against the blocklists.
   const subCommands: string[] = [];
   let remaining = trimmed;
 
-  // Use a regex that matches &&, ||, ;, or | (in that priority order)
+  // Use a regex that matches &&, ||, or | (in that priority order)
   // to split while preserving the operator structure.
-  const chainRegex = /&&|\|\||;|(?<!\|)\|(?!\|)/g;
+  const chainRegex = /&&|\|\||(?<!\|)\|(?!\|)/g;
   let match;
   let lastIndex = 0;
   while ((match = chainRegex.exec(remaining)) !== null) {

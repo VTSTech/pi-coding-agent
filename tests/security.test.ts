@@ -305,11 +305,12 @@ describe("sanitizeCommand", () => {
   });
 
   it("rejects dangerous injection patterns (; rm -rf)", () => {
-    // Command is split on ';' — each sub-command checked individually.
-    // "rm" is blocked by the blocklist, not the injection pattern.
+    // Semicolon is always blocked when followed by dangerous commands,
+    // regardless of security mode. Unlike && and ||, ; unconditionally
+    // runs the second command — the primary injection vector.
     const result = sanitizeCommand("echo hello; rm -rf /");
     assert.equal(result.isSafe, false);
-    assert.ok(result.error.includes("rm"));
+    assert.ok(result.error.includes("injection"));
   });
 
   it("rejects pipe injection to dangerous commands", () => {
