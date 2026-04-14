@@ -1,6 +1,6 @@
 {
   "name": "@vtstech/pi-api",
-  "version": "1.1.9",
+  "version": "1.2.0",
   "description": "API Mode Switcher extension for Pi Coding Agent",
   "main": "api.js",
   "keywords": ["pi-extensions"],
@@ -14,7 +14,7 @@
     "url": "https://github.com/VTSTech/pi-coding-agent"
   },
   "dependencies": {
-    "@vtstech/pi-shared": "1.1.9"
+    "@vtstech/pi-shared": "1.2.0"
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": ">=0.66"
