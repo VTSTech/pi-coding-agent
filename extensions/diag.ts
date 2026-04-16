@@ -41,6 +41,17 @@ function redactValue(key: string, value: unknown): string {
  */
 export default function (pi: ExtensionAPI) {
 
+  // ── Cache for system prompt capture ─────────────────────────────────
+  let cachedSystemPrompt: string | null = null;
+  let cachedPayload: Record<string, any> | null = null;
+
+  // Listen for provider requests to capture the system prompt from the payload.
+  // This runs eagerly so that by the time /diag is invoked, we already have
+  // the prompt text from the most recent API call.
+  pi.on("before_provider_request", (event) => {
+    cachedPayload = event.payload as Record<string, any>;
+  });
+
   // ── core diagnostic logic ────────────────────────────────────────────
 
   const branding = [
@@ -498,6 +509,80 @@ export default function (pi: ExtensionAPI) {
 
     const thinking = pi.getThinkingLevel();
     lines.push(info(`Thinking level: ${thinking}`));
+
+    // ── SYSTEM PROMPT ──
+    lines.push(section("SYSTEM PROMPT"));
+    let systemPromptText: string | null = null;
+
+    // Strategy 1: Use ctx.getSystemPrompt() if available (Pi framework method)
+    try {
+      if (typeof ctx.getSystemPrompt === "function") {
+        systemPromptText = ctx.getSystemPrompt();
+        if (systemPromptText) {
+          debugLog("diag", `system prompt retrieved via getSystemPrompt(): ${systemPromptText.length} chars`);
+        }
+      }
+    } catch (err) {
+      debugLog("diag", "getSystemPrompt() not available", err);
+    }
+
+    // Strategy 2: Extract from the cached provider payload (messages array)
+    if (!systemPromptText && cachedPayload) {
+      try {
+        const messages = cachedPayload.messages as Array<{ role: string; content: string }> | undefined;
+        if (messages?.length) {
+          const sysMsg = messages.find((m) => m.role === "system") ?? messages[0];
+          if (sysMsg?.content) {
+            systemPromptText = sysMsg.content;
+            debugLog("diag", `system prompt extracted from payload: ${systemPromptText.length} chars`);
+          }
+        }
+      } catch (err) {
+        debugLog("diag", "failed to extract system prompt from payload", err);
+      }
+    }
+
+    if (systemPromptText) {
+      const charCount = systemPromptText.length;
+      const wordCount = systemPromptText.split(/\s+/).filter(Boolean).length;
+      const lineCount = systemPromptText.split("\n").length;
+      lines.push(info(`Size: ${charCount} chars, ~${wordCount} words, ${lineCount} lines`));
+
+      // Show a preview of the prompt (first 80 chars)
+      const preview = systemPromptText.split("\n")[0]?.slice(0, 80) || "(empty first line)";
+      lines.push(info(`Opening line: ${preview}${preview.length >= 80 ? "..." : ""}`));
+
+      // Display the full system prompt, truncated to 2000 chars to avoid flooding output.
+      // In TUI mode the user can scroll; in tool mode this keeps the report manageable.
+      const TRUNCATE_AT = 2000;
+      if (charCount <= TRUNCATE_AT) {
+        lines.push("");
+        lines.push("  ┌─── SYSTEM PROMPT ───");
+        for (const line of systemPromptText.split("\n")) {
+          lines.push(`  │ ${line}`);
+        }
+        lines.push("  └" + "─".repeat(Math.min("─── SYSTEM PROMPT ───".length + 4, 50)));
+        check(true, "System prompt retrieved successfully");
+      } else {
+        // Show first 1500 chars of a truncated prompt so the user gets the gist
+        const truncated = systemPromptText.slice(0, 1500);
+        const remaining = charCount - 1500;
+        lines.push("");
+        lines.push("  ┌─── SYSTEM PROMPT (truncated) ───");
+        for (const line of truncated.split("\n")) {
+          lines.push(`  │ ${line}`);
+        }
+        lines.push(`  │ ... (${remaining} more chars not shown)`);
+        lines.push("  └" + "─".repeat(Math.min("─── SYSTEM PROMPT (truncated) ───".length + 4, 50)));
+        check(true, `System prompt retrieved (${charCount} chars, showing first 1500)`);
+      }
+    } else {
+      lines.push(warn("System prompt not available"));
+      lines.push(info("  Possible reasons:"));
+      lines.push(info("    • No provider request has been made yet in this session"));
+      lines.push(info("    • ctx.getSystemPrompt() is not supported by your Pi version"));
+      lines.push(info("    • The provider payload does not contain a messages array"));
+    }
 
     // ── SUMMARY ──
     lines.push(section("SUMMARY"));
