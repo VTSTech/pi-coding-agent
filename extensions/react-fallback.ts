@@ -70,6 +70,7 @@ function writeReactConfig(config: ReactConfig): void {
 
 export default function (pi: ExtensionAPI) {
   let reactModeEnabled = readReactConfig().enabled;
+  let bridgeRegistered = false;
   let stats = { bridgeCalls: 0, fuzzyMatches: 0, argNormalizations: 0, parseFailures: 0 };
 
   const branding = [
@@ -145,6 +146,11 @@ The bridge will match your tool name (fuzzy matching supported) and normalize ar
         }
 
         // Prevent infinite loop: block the bridge from calling itself
+        // Note: argsJson computed BEFORE the guard so the error message is valid
+        const normalizedArgs = Object.keys(args).length > 0 ? args : {};
+        stats.argNormalizations++;
+        const argsJson = JSON.stringify(normalizedArgs);
+
         if (targetToolName === "tool_call") {
           stats.parseFailures++;
           return {
@@ -152,14 +158,6 @@ The bridge will match your tool name (fuzzy matching supported) and normalize ar
             isError: true,
           } as AgentToolResult;
         }
-
-        // Try to execute the tool via pi.exec or find another way
-        // Since Pi doesn't expose a "call another tool" API from extensions,
-        // we return a structured message telling the agent to call the real tool
-        const normalizedArgs = Object.keys(args).length > 0 ? args : {};
-        stats.argNormalizations++;
-
-        const argsJson = JSON.stringify(normalizedArgs);
         return {
           content: [{
             type: "text",
@@ -172,7 +170,8 @@ The bridge will match your tool name (fuzzy matching supported) and normalize ar
   }
 
   // Only register the bridge tool if react-mode starts enabled
-  if (reactModeEnabled) {
+  if (reactModeEnabled && !bridgeRegistered) {
+    bridgeRegistered = true;
     registerBridgeTool();
   }
 
@@ -221,7 +220,10 @@ The bridge will match your tool name (fuzzy matching supported) and normalize ar
       lines.push(info(`Parse failures: ${stats.parseFailures}`));
 
       if (reactModeEnabled) {
-        registerBridgeTool();
+        if (!bridgeRegistered) {
+          bridgeRegistered = true;
+          registerBridgeTool();
+        }
         lines.push(ok("The tool_call bridge tool is now available to the model"));
         lines.push(info("ReAct system prompt instructions have been added"));
         lines.push(info("Run /reload to make the bridge tool available to the current model"));

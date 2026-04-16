@@ -55,7 +55,7 @@ export default function (pi: ExtensionAPI) {
   let footerModel = "";
   let footerNativeCtx = "";
   let nativeCtxModel = "";
-  let isLocalProvider = true;
+  let isLocal = true;
   let versionsText = "";
   let cachedPromptText: string | null = null;
 
@@ -196,14 +196,14 @@ export default function (pi: ExtensionAPI) {
     const green = (s: string) => theme?.fg?.("success", s) ?? s;
 
     // CPU (local only)
-    ctxUi.setStatus("status-cpu", isLocalProvider ? `${dim("CPU")} ${green(cpuUsage.toFixed(0) + "%")}` : undefined);
+    ctxUi.setStatus("status-cpu", isLocal ? `${dim("CPU")} ${green(cpuUsage.toFixed(0) + "%")}` : undefined);
 
     // RAM (local only)
-    ctxUi.setStatus("status-ram", isLocalProvider ? `${dim("RAM")} ${green(fmtBytes(memUsed) + "/" + fmtBytes(memTotal))}` : undefined);
+    ctxUi.setStatus("status-ram", isLocal ? `${dim("RAM")} ${green(fmtBytes(memUsed) + "/" + fmtBytes(memTotal))}` : undefined);
 
     // Swap (local only, only when swap is in use)
     ctxUi.setStatus("status-swap",
-      (isLocalProvider && hasSwap && swapUsed > 0)
+      (isLocal && hasSwap && swapUsed > 0)
         ? `${dim("Swap")} ${green(fmtBytes(swapUsed) + "/" + fmtBytes(swapTotal))}`
         : undefined,
     );
@@ -278,7 +278,7 @@ export default function (pi: ExtensionAPI) {
       hasSwap = false;
     }
     const modelsJson = readModelsJson();
-    isLocalProvider = modelsJson ? detectLocalProvider(modelsJson) : false;
+    isLocal = modelsJson ? detectLocalProvider(modelsJson) : false;
 
     if (currentCtx) {
       footerModel = currentCtx.model?.id || "";

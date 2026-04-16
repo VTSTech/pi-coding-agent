@@ -19,7 +19,7 @@ import * as path from "node:path";
 import os from "node:os";
 import { debugLog } from "./debug";
 import dns from "node:dns";
-import { SETTINGS_PATH as _SETTINGS_PATH, SECURITY_PATH } from "./config-io";
+import { SETTINGS_PATH as _SETTINGS_PATH, SECURITY_PATH, writeJsonConfig } from "./config-io";
 
 // ============================================================================
 // Settings Path (re-exported from config-io for backward compatibility)
@@ -84,8 +84,8 @@ export function getSecurityMode(): SecurityMode {
 /**
  * Write the security mode to ~/.pi/agent/security.json.
  *
- * Creates the `~/.pi/agent/` directory if it does not already exist.
- * The file is written atomically (writeFileSync) to prevent partial writes.
+ * Uses the atomic write-then-rename pattern from `writeJsonConfig()`
+ * (shared/config-io) to prevent partial writes on crash.
  *
  * @param mode - The security mode to persist ("basic" or "max")
  * @returns `true` if the write succeeded, `false` if it failed
@@ -100,13 +100,9 @@ export function getSecurityMode(): SecurityMode {
  * ```
  */
 export function setSecurityMode(mode: SecurityMode): boolean {
-  const configDir = path.dirname(SECURITY_CONFIG_PATH);
   try {
-    if (!fs.existsSync(configDir)) {
-      fs.mkdirSync(configDir, { recursive: true });
-    }
     const config: SecurityConfig = { mode, lastUpdated: new Date().toISOString() };
-    fs.writeFileSync(SECURITY_CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+    writeJsonConfig(SECURITY_CONFIG_PATH, config);
 
     // Verify the write by reading it back
     const verify = JSON.parse(fs.readFileSync(SECURITY_CONFIG_PATH, "utf-8"));

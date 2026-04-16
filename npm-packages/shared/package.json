@@ -5,6 +5,7 @@
   "exports": {
     "./config-io": "./config-io.js",
     "./debug": "./debug.js",
+    "./errors": "./errors.js",
     "./format": "./format.js",
     "./model-test-utils": "./model-test-utils.js",
     "./ollama": "./ollama.js",

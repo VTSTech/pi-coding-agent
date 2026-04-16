@@ -707,9 +707,10 @@ export interface ProviderInfo {
  *   3. Unknown provider
  *
  * @param ctx - Pi's extension context (from session_start event)
+ * @param modelsJson - Optional pre-loaded models.json data (avoids redundant disk read)
  * @returns Provider information including kind, name, API details, and key
  */
-export function detectProvider(ctx: PiExtensionContext): ProviderInfo {
+export function detectProvider(ctx: PiExtensionContext, modelsJson?: PiModelsJson): ProviderInfo {
   const model = ctx.model;
   if (!model) return { kind: "unknown", name: "none" };
 
@@ -717,8 +718,8 @@ export function detectProvider(ctx: PiExtensionContext): ProviderInfo {
   if (!providerName) return { kind: "unknown", name: "none" };
 
   // Tier 1: Check if provider is defined in models.json
-  const modelsJson = readModelsJson();
-  const userProviderCfg = (modelsJson.providers || {})[providerName];
+  const effectiveModelsJson = modelsJson ?? readModelsJson();
+  const userProviderCfg = (effectiveModelsJson.providers || {})[providerName];
   if (userProviderCfg) {
     const baseUrl = userProviderCfg.baseUrl || "";
     const apiMode = userProviderCfg.api || "";
