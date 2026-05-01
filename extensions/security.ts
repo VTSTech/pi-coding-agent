@@ -40,6 +40,7 @@ import {
 import { debugLog } from "../shared/debug";
 import { section, ok, fail, warn, info } from "../shared/format";
 import { EXTENSION_VERSION } from "../shared/ollama";
+import { initI18n, t } from "./i18n";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -54,6 +55,7 @@ interface SecurityStats {
 // ── Extension ────────────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
+  initI18n(pi);
   const stats: SecurityStats = {
     blocked: 0,
     allowed: 0,
@@ -92,19 +94,19 @@ export default function (pi: ExtensionAPI) {
           if (!value) {
             const lines: string[] = [branding];
             lines.push(section("SECURITY MODE"));
-            lines.push(info(`Current mode: ${currentMode.toUpperCase()}`));
-            lines.push(info(`Config path: ${SECURITY_CONFIG_PATH}`));
+            lines.push(info(t("security.mode.current", "Current mode: {mode}", { mode: currentMode.toUpperCase() })));
+            lines.push(info(t("security.config.path", "Config path: {path}", { path: SECURITY_CONFIG_PATH })));
             lines.push(info(`Critical commands (always blocked): ${CRITICAL_COMMANDS.size}`));
             lines.push(info(`Extended commands (max only): ${EXTENDED_COMMANDS.size}`));
             lines.push(info(`Total blocked (max): ${CRITICAL_COMMANDS.size + EXTENDED_COMMANDS.size}`));
             lines.push(info(`URL patterns always blocked: ${BLOCKED_URL_ALWAYS.size}`));
             lines.push(info(`URL patterns (max only): ${BLOCKED_URL_MAX_ONLY.size}`));
             lines.push(section("MODE DIFFERENCES"));
-            lines.push(info("Basic: critical commands blocked, localhost/127.x allowed"));
-            lines.push(info("Max: all commands blocked, full SSRF protection"));
+            lines.push(info(t("security.mode.basic", "Basic: critical commands blocked, localhost/127.x allowed")));
+            lines.push(info(t("security.mode.max", "Max: all commands blocked, full SSRF protection")));
             lines.push(section("SWITCH MODE"));
-            lines.push(info("/security mode basic  — relax restrictions for development"));
-            lines.push(info("/security mode max    — full lockdown (default)"));
+            lines.push(info(t("security.mode.setBasic", "/security mode basic  — relax restrictions for development")));
+            lines.push(info(t("security.mode.setMax", "/security mode max    — full lockdown (default)")));
             lines.push(branding);
 
             pi.sendMessage({
@@ -118,19 +120,19 @@ export default function (pi: ExtensionAPI) {
           // /security mode basic|max
           if (value === "basic" || value === "max") {
             if (value === currentMode) {
-              ctx.ui.notify(`Security mode is already ${value.toUpperCase()}`, "info");
+              ctx.ui.notify(t("security.alreadyMode", "Security mode is already {mode}", { mode: value.toUpperCase() }), "info");
               return;
             }
 
             const writeOk = setSecurityMode(value as "basic" | "max");
             if (!writeOk) {
-              ctx.ui.notify(`FAILED to persist security mode: could not write ${SECURITY_CONFIG_PATH}`, "error");
+              ctx.ui.notify(t("security.persistFailed", "FAILED to persist security mode: could not write {path}", { path: SECURITY_CONFIG_PATH }), "error");
               debugLog("security", `/security mode ${value}: write failed`, { path: SECURITY_CONFIG_PATH });
               return;
             }
 
             ctx.ui.setStatus("status-sec", value.toUpperCase());
-            ctx.ui.notify(`Security mode set to ${value.toUpperCase()}`, "success");
+            ctx.ui.notify(t("security.modeChanged", "Security mode set to {mode}", { mode: value.toUpperCase() }), "success");
 
             appendAuditEntry({
               timestamp: new Date().toISOString(),
@@ -149,12 +151,12 @@ export default function (pi: ExtensionAPI) {
             lines.push(info(`Config: ${SECURITY_CONFIG_PATH}`));
 
             if (value === "basic") {
-              lines.push(warn("Extended commands are now ALLOWED: rm, sudo, npm, apt, git, curl, wget, etc."));
-              lines.push(warn("Localhost and 127.x URLs are now ALLOWED for SSRF"));
-              lines.push(ok("Critical commands remain blocked: dd, mkfs, shred, fdisk, ssh, etc."));
+              lines.push(warn(t("security.extendedAllowed", "Extended commands are now ALLOWED: rm, sudo, npm, apt, git, curl, wget, etc.")));
+              lines.push(warn(t("security.localhostAllowed", "Localhost and 127.x URLs are now ALLOWED for SSRF")));
+              lines.push(ok(t("security.criticalStillBlocked", "Critical commands remain blocked: dd, mkfs, shred, fdisk, ssh, etc.")));
             } else {
-              lines.push(ok(`Full lockdown active — all ${totalCmds} commands blocked`));
-              lines.push(ok("Full SSRF protection — localhost and private IPs blocked"));
+              lines.push(ok(t("security.fullLockdown", "Full lockdown active — all {count} commands blocked", { count: totalCmds })));
+              lines.push(ok(t("security.fullSsrf", "Full SSRF protection — localhost and private IPs blocked")));
             }
 
             lines.push(branding);
@@ -168,7 +170,7 @@ export default function (pi: ExtensionAPI) {
           }
 
           // Invalid mode value
-          ctx.ui.notify(`Invalid mode: "${value}". Use \"basic\" or \"max\".`, "error");
+          ctx.ui.notify(t("security.invalidMode", "Invalid mode: \"{mode}\". Use \"basic\" or \"max\".", { mode: value || "" }), "error");
           return;
         }
 
@@ -342,7 +344,7 @@ export default function (pi: ExtensionAPI) {
 
     // Security mode
     lines.push(section("SECURITY MODE"));
-    lines.push(info(`Current mode: ${currentMode.toUpperCase()}`));
+    lines.push(info(t("security.mode.current", "Current mode: {mode}", { mode: currentMode.toUpperCase() })));
     lines.push(info(`Config file: ${SECURITY_CONFIG_PATH}`));
 
     // Effective blocklist summary
@@ -428,7 +430,7 @@ export default function (pi: ExtensionAPI) {
     description: "Show security audit report — blocked operations, stats, and recent log",
     handler: async (_args, ctx) => {
       if (!ctx.hasUI) {
-        ctx.ui.notify("Security audit requires TUI mode", "error");
+        ctx.ui.notify(t("security.auditRequiresTui", "Security audit requires TUI mode"), "error");
         return;
       }
       try {
