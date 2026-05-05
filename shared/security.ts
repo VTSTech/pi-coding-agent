@@ -528,6 +528,7 @@ export async function resolveAndCheckHostname(
 export function isSafeUrl(
   url: string,
   blockSsrf = true,
+  mode: SecurityMode = "max",
 ): { safe: boolean; error: string } {
   if (!url) return { safe: false, error: "URL cannot be empty" };
 
@@ -563,7 +564,12 @@ export function isSafeUrl(
   }
 
   if (blockSsrf) {
-    const mode = getSecurityMode();
+    // Off mode: skip SSRF protection
+    if (mode === "off") {
+      return { safe: true, error: "" };
+    }
+
+    const currentMode = getSecurityMode();
 
     // ALWAYS block: cloud metadata, RFC1918, internal patterns
     for (const pattern of BLOCKED_URL_ALWAYS) {
@@ -581,7 +587,7 @@ export function isSafeUrl(
     }
 
     // MAX ONLY block: loopback addresses (allowed in basic mode)
-    if (mode === "max") {
+    if (currentMode === "max") {
       for (const pattern of BLOCKED_URL_MAX_ONLY) {
         if (normalized === pattern || normalized.endsWith("." + pattern) || normalized.startsWith(pattern)) {
           // For IP-like patterns, anchor to prevent false positives
@@ -1053,11 +1059,15 @@ process.on("SIGTERM", () => {
  */
 export function checkBashToolInput(
   input: Record<string, unknown>,
+  mode: SecurityMode = "max",
 ): { safe: boolean; rule: string; detail: string } {
+  // Off mode: skip all security checks
+  if (mode === "off") return { safe: true, rule: "", detail: "" };
+
   const command = (input.command ?? input.cmd ?? "") as string;
   if (!command) return { safe: true, rule: "", detail: "" };
 
-  const result = sanitizeCommand(command);
+  const result = sanitizeCommand(command, mode);
   if (!result.isSafe) {
     return { safe: false, rule: "command_blocklist", detail: result.error };
   }
@@ -1081,7 +1091,11 @@ export function checkBashToolInput(
  */
 export function checkFileToolInput(
   input: Record<string, unknown>,
+  mode: SecurityMode = "max",
 ): { safe: boolean; rule: string; detail: string } {
+  // Off mode: skip all security checks
+  if (mode === "off") return { safe: true, rule: "", detail: "" };
+
   const filePaths = [
     input.file_path, input.path, input.output_path,
     input.filePath, input.inputPath,
@@ -1114,11 +1128,15 @@ export function checkFileToolInput(
  */
 export function checkHttpToolInput(
   input: Record<string, unknown>,
+  mode: SecurityMode = "max",
 ): { safe: boolean; rule: string; detail: string } {
+  // Off mode: skip all security checks
+  if (mode === "off") return { safe: true, rule: "", detail: "" };
+
   const url = (input.url ?? input.uri ?? input.endpoint ?? "") as string;
   if (!url) return { safe: true, rule: "", detail: "" };
 
-  const result = isSafeUrl(url);
+  const result = isSafeUrl(url, mode);
   if (!result.safe) {
     return { safe: false, rule: "ssrf_protection", detail: result.error };
   }
@@ -1144,7 +1162,11 @@ export function checkHttpToolInput(
  */
 export function checkInjectionPatterns(
   input: Record<string, unknown>,
+  mode: SecurityMode = "max",
 ): { safe: boolean; rule: string; detail: string } {
+  // Off mode: skip all security checks
+  if (mode === "off") return { safe: true, rule: "", detail: "" };
+
   const dangerousPatterns: RegExp[] = [
     /;\s*(rm|sudo|chmod|chown|mkfs|dd|shred)\b/,
     /\|\s*(rm|sudo|chmod|shred|mkfs)\b/,

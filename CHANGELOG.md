@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated version to 1.2.1 across all packages
   - Ensures consistent metadata across the extension bundle
 
+- **Security extension now supports "off" mode** (`extensions/security.ts`, `shared/security.ts`)
+  - Added "off" security mode that disables all security checks
+  - When in "off" mode, all commands are allowed and no SSRF protection is enforced
+  - Updated security check functions to accept mode parameter and skip checks in "off" mode
+  - Updated command help text and tab completion to include "off" option
+  - Provides complete flexibility for development and testing scenarios
+
 ## [1.2.0] - 04-14-2026 6:27:57 PM
 
 ### Fixed

@@ -102,9 +102,11 @@ export default function (pi: ExtensionAPI) {
             lines.push(section("MODE DIFFERENCES"));
             lines.push(info("Basic: critical commands blocked, localhost/127.x allowed"));
             lines.push(info("Max: all commands blocked, full SSRF protection"));
+            lines.push(info("Off: no security enforcement, all commands allowed"));
             lines.push(section("SWITCH MODE"));
             lines.push(info("/security mode basic  — relax restrictions for development"));
             lines.push(info("/security mode max    — full lockdown (default)"));
+            lines.push(info("/security mode off     — disable all security checks"));
             lines.push(branding);
 
             pi.sendMessage({
@@ -115,8 +117,8 @@ export default function (pi: ExtensionAPI) {
             return;
           }
 
-          // /security mode basic|max
-          if (value === "basic" || value === "max") {
+          // /security mode basic|max|off
+          if (value === "basic" || value === "max" || value === "off") {
             if (value === currentMode) {
               ctx.ui.notify(`Security mode is already ${value.toUpperCase()}`, "info");
               return;
@@ -213,11 +215,12 @@ export default function (pi: ExtensionAPI) {
     getArgumentCompletions: (args: string[]) => {
       const sub = args[0]?.toLowerCase() || "";
 
-      // /security mode <TAB> — complete with basic|max
+      // /security mode <TAB> — complete with basic|max|off
       if (sub === "mode" && args.length === 2) {
         return [
           { value: "basic", label: "basic", description: "Relax to basic mode — only critical commands blocked" },
           { value: "max",   label: "max",   description: "Full lockdown — all commands blocked (default)" },
+          { value: "off",   label: "off",   description: "Disable all security checks" },
         ];
       }
 
