@@ -39,8 +39,9 @@ export const SETTINGS_PATH = _SETTINGS_PATH;
  *   SSRF blocks localhost/private IPs/metadata. Default when no config exists.
  * - `"basic"`: Relaxed mode. Only critical commands are blocked,
  *   SSRF allows localhost/127.x for local development.
+ * - `"off"`: No security enforcement. All commands allowed, no SSRF protection.
  */
-export type SecurityMode = "basic" | "max";
+export type SecurityMode = "basic" | "max" | "off";
 
 /** Path to the security mode configuration file. Stored separately from settings.json per project convention. */
 export const SECURITY_CONFIG_PATH = SECURITY_PATH;
@@ -50,6 +51,11 @@ interface SecurityConfig {
   mode: SecurityMode;
   lastUpdated: string;
 }
+
+// Cache for security mode to reduce file I/O
+let securityModeCache: SecurityMode | null = null;
+let securityModeCacheTime = 0;
+const SECURITY_CACHE_DURATION_MS = 30000; // Cache for 30 seconds
 
 /**
  * Read the current security mode from ~/.pi/agent/security.json.
@@ -69,14 +75,31 @@ interface SecurityConfig {
  * ```
  */
 export function getSecurityMode(): SecurityMode {
+  const now = Date.now();
+  if (securityModeCache && (now - securityModeCacheTime) < SECURITY_CACHE_DURATION_MS) {
+    return securityModeCache;
+  }
+  
   try {
-    if (!fs.existsSync(SECURITY_CONFIG_PATH)) return "max";
+    if (!fs.existsSync(SECURITY_CONFIG_PATH)) {
+      securityModeCache = "max";
+      securityModeCacheTime = now;
+      return "max";
+    }
     const raw = fs.readFileSync(SECURITY_CONFIG_PATH, "utf-8");
     const config = JSON.parse(raw) as SecurityConfig;
-    if (config.mode === "basic" || config.mode === "max") return config.mode;
+    if (config.mode === "basic" || config.mode === "max" || config.mode === "off") {
+      securityModeCache = config.mode;
+      securityModeCacheTime = now;
+      return config.mode;
+    }
+    securityModeCache = "max";
+    securityModeCacheTime = now;
     return "max";
   } catch (err) {
     debugLog("security", `failed to read security config at ${SECURITY_CONFIG_PATH}`, err);
+    securityModeCache = "max";
+    securityModeCacheTime = now;
     return "max";
   }
 }
@@ -112,6 +135,7 @@ export function setSecurityMode(mode: SecurityMode): boolean {
     }
 
     debugLog("security", `security mode set to ${mode}`, { path: SECURITY_CONFIG_PATH });
+    
     return true;
   } catch (err) {
     debugLog("security", `failed to write security config to ${SECURITY_CONFIG_PATH}`, err);
@@ -569,8 +593,6 @@ export function isSafeUrl(
       return { safe: true, error: "" };
     }
 
-    const currentMode = getSecurityMode();
-
     // ALWAYS block: cloud metadata, RFC1918, internal patterns
     for (const pattern of BLOCKED_URL_ALWAYS) {
       if (normalized === pattern || normalized.endsWith("." + pattern) || normalized.startsWith(pattern)) {
@@ -587,7 +609,7 @@ export function isSafeUrl(
     }
 
     // MAX ONLY block: loopback addresses (allowed in basic mode)
-    if (currentMode === "max") {
+    if (mode === "max") {
       for (const pattern of BLOCKED_URL_MAX_ONLY) {
         if (normalized === pattern || normalized.endsWith("." + pattern) || normalized.startsWith(pattern)) {
           // For IP-like patterns, anchor to prevent false positives
