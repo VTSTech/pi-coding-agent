@@ -62,6 +62,7 @@ pi install "npm:@vtstech/pi-ollama-sync"
 pi install "npm:@vtstech/pi-openrouter-sync"
 pi install "npm:@vtstech/pi-react-fallback"
 pi install "npm:@vtstech/pi-security"
+pi install "npm:@vtstech/pi-soul"
 pi install "npm:@vtstech/pi-status"
 
 # Or install everything as one bundle via GitHub
