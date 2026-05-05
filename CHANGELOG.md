@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.2.1] - 05-05-2026
+
+### Added
+
+- **@vtstech/pi-soul package** (`npm-packages/pi-soul/`)
+  - New SoulSpec extension for Pi Coding Agent that allows loading and managing AI agent personas
+  - Provides tools: `load_soul`, `list_souls`, `soul_info` for managing soul definitions
+  - Provides commands: `/souls` to list available souls, `/soul <name>` to use a soul
+  - Supports progressive disclosure (Level 1-3) for different levels of detail
+  - Supports multiple soul locations: global (`~/.pi/agent/souls/`), project-local (`.pi/souls/`), and current directory (`./souls/`)
+  - Includes sample souls: `nova-helper` (coding assistant) and `robot-assistant` (physical robot)
+  - Compatible with both bundle installation (`pi install @vtstech/pi-coding-agent-extensions`) and individual npm installation
+  - Includes comprehensive documentation and examples
+
+### Changed
+
+- **Updated package keywords** (`package.json` and all `npm-packages/*/package.json`)
+  - Added required keywords: `pi-package`, `pi`, `pi-coding-agent` to all packages for better discoverability
+  - Updated version to 1.2.1 across all packages
+  - Ensures consistent metadata across the extension bundle
+
 ## [1.2.0] - 04-14-2026 6:27:57 PM
 
 ### Fixed
