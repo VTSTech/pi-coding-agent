@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Pi Version](https://img.shields.io/badge/Pi-v0.66%2B-green.svg)](https://github.com/badlogic/pi-mono)
 [![Pi Package](https://img.shields.io/badge/Install-pi%20install%20git-blue.svg)](#installation)
-[![Version](https://img.shields.io/badge/Version-v1.2.0-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-v1.2.1-orange.svg)](CHANGELOG.md)
 
 <p>
   <a href="https://github.com/VTSTech"><strong>VTSTech</strong></a> •
@@ -335,7 +335,7 @@ Automatically loaded — protects against:
 
 - **Partitioned command blocklist** — 41 CRITICAL commands (always blocked: system modification, privilege escalation, network attacks, shell escapes) + 25 EXTENDED commands (blocked in max mode: package management, process control, development tools)
 - **Mode-aware SSRF protection** — 22 ALWAYS_BLOCKED URL patterns (loopback, RFC1918 private ranges, cloud metadata endpoints) + 7 MAX_ONLY patterns (localhost by name, broadcast, link-local, current network) that are allowed in basic mode
-- **Security mode toggle** — switch between `basic` and `max` modes at runtime; persisted to `~/.pi/agent/security.json`
+- **Security mode toggle** — switch between `basic`, `max`, and `off` modes at runtime; persisted to `~/.pi/agent/security.json`
 - **Path validation** — prevents filesystem escape and access to critical system directories; symlinks are dereferenced via `fs.realpathSync()` to block `/tmp/evil → /etc/passwd` bypasses
 - **Shell injection detection** — regex patterns for command chaining, substitution, and redirection
 - **Audit logging** — JSON-lines audit log at `~/.pi/agent/audit.log` with security mode recorded per entry (path exported as `AUDIT_LOG_PATH`)
@@ -343,9 +343,40 @@ Automatically loaded — protects against:
 ```bash
 /security mode basic    # Relaxed mode — CRITICAL commands blocked, localhost URLs allowed
 /security mode max      # Full lockdown — all 66 commands blocked, strict SSRF
+/security mode off     # Disable all security checks
 ```
 
-**Default mode: `max`** — if `security.json` doesn't exist, the extension starts in max mode and creates it on first use. The current mode is displayed in the status bar (`SEC:BASIC` or `SEC:MAX`).
+**Default mode: `max`** — if `security.json` doesn't exist, the extension starts in max mode and creates it on first use. The current mode is displayed in the status bar (`SEC:BASIC`, `SEC:MAX`, or `SEC:OFF`).
+
+### 🎭 SoulSpec (`soul.ts`)
+
+**Load and manage AI agent personas defined in SoulSpec format with progressive disclosure support.**
+
+Automatically loaded — provides tools and commands for managing AI personas:
+
+- **Soul loading** — Load personas from multiple locations with progressive disclosure (Level 1-3)
+- **Multiple locations** — Supports global (`~/.pi/agent/souls/`), project-local (`.pi/souls/`), and current directory (`./souls/`) soul storage
+- **Progressive disclosure** — Level 1 (basic info), Level 2 (core persona), Level 3 (extended behavior)
+- **Embodied agent support** — Hardware constraints, safety policies, sensors, and actuators
+- **Built-in tools** — `load_soul`, `list_souls`, `soul_info` for programmatic access
+- **CLI commands** — `/souls` to list available souls, `/soul <name>` to use a soul
+- **Sample personas** — Includes `nova-helper` (coding assistant) and `robot-assistant` (physical robot)
+
+```bash
+/souls                    # List all available souls
+/soul nova-helper         # Use the Nova Helper persona
+/load_soul {"soul_name":"robot-assistant"}  # Load robot assistant persona
+/soul_info robot-assistant  # Get detailed information about a soul
+```
+
+**Soul locations** — The extension searches for souls in multiple directories:
+- `~/.pi/agent/souls/` — Global souls directory
+- `.pi/souls/` — Project-local souls directory  
+- `./souls/` — Current directory souls
+
+**Sample souls included**:
+- **nova-helper** — Helpful coding assistant focused on clear explanations and practical solutions
+- **robot-assistant** — Physical robot assistant with voice interaction and manipulation capabilities
 
 ### 🔄 ReAct Fallback (`react-fallback.ts`)
 
@@ -608,6 +639,7 @@ pi-coding-agent/
 │   ├── openrouter-sync.ts   # OpenRouter → models.json sync
 │   ├── react-fallback.ts    # ReAct fallback for non-native tool models
 │   ├── security.ts          # Command/path/SSRF protection
+│   ├── soul.ts              # SoulSpec persona management
 │   └── status.ts            # System resource monitor & status bar
 ├── shared/
 │   ├── debug.ts             # Conditional debug logging
