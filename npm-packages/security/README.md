@@ -14,7 +14,7 @@ pi install "npm:@vtstech/pi-security"
 
 - **Partitioned command blocklist** — 41 CRITICAL commands (always blocked: system modification, privilege escalation, network attacks, shell escapes) + 25 EXTENDED commands (blocked in max mode: package management, process control, development tools)
 - **Mode-aware SSRF protection** — 22 ALWAYS_BLOCKED URL patterns (loopback, RFC1918 private ranges, cloud metadata endpoints) + 7 MAX_ONLY patterns (localhost by name, broadcast, link-local, current network) that are allowed in basic mode
-- **Security mode toggle** — switch between `basic` and `max` modes at runtime; persisted to `~/.pi/agent/security.json`
+- **Security mode toggle** — switch between `basic`, `max`, and `off` modes at runtime; persisted to `~/.pi/agent/security.json`
 - **Path validation** — prevents filesystem escape and access to critical system directories; symlinks are dereferenced via `fs.realpathSync()` to block `/tmp/evil → /etc/passwd` bypasses
 - **Shell injection detection** — regex patterns for command chaining, substitution, and redirection
 - **Full-word command scanning** — all words in a command are checked against CRITICAL_COMMANDS (catches `sudo chmod`, `exec dd`, etc.)
@@ -26,6 +26,7 @@ pi install "npm:@vtstech/pi-security"
 ```bash
 /security mode basic    # Relaxed — CRITICAL commands blocked, localhost URLs allowed
 /security mode max      # Full lockdown — all 66 commands blocked, strict SSRF
+/security mode off     # Disable all security checks
 ```
 
 **Default mode: `max`**. The current mode is shown in the status bar as `SEC:BASIC` or `SEC:MAX`.
