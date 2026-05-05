@@ -46,7 +46,7 @@ pi update
 
 Pin to a specific tag:
 ```bash
-pi install git:github.com/VTSTech/pi-coding-agent@v1.2.0
+pi install git:github.com/VTSTech/pi-coding-agent@v1.2.1
 ```
 
 ### Individual npm packages
