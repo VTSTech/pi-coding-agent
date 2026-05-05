@@ -34,6 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated command help text and tab completion to include "off" option
   - Provides complete flexibility for development and testing scenarios
 
+### Fixed
+
+- Fixed `/api modes` command error (`ctx is not defined`). Updated `listModes` to accept a context argument and passed the context correctly.
+
+---
+
 ## [1.2.0] - 04-14-2026 6:27:57 PM
 
 ### Fixed
