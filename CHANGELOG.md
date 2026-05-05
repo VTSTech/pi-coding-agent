@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Supports progressive disclosure (Level 1-3) for different levels of detail
   - Supports multiple soul locations: global (`~/.pi/agent/souls/`), project-local (`.pi/souls/`), and current directory (`./souls/`)
   - Includes sample souls: `nova-helper` (coding assistant) and `robot-assistant` (physical robot)
-  - Compatible with both bundle installation (`pi install @vtstech/pi-coding-agent-extensions`) and individual npm installation
+  - Compatible with bundle installation (`pi install git:github.com/VTSTech/pi-coding-agent`) npm installation not working yet
   - Includes comprehensive documentation and examples
 
 ### Changed
