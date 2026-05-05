@@ -167,6 +167,9 @@ export interface SoulManifest {
 // SoulSpec Loader
 // ============================================================================
 
+import path from "path";
+import os from "os";
+
 export class SoulSpecLoader {
   private cache: Map<string, SoulManifest> = new Map();
   private soulsDirs: string[];
@@ -212,10 +215,10 @@ export class SoulSpecLoader {
     }
 
     const soulDir = require('fs').statSync(resolvedPath).isFile() 
-      ? require('path').dirname(resolvedPath)
+      ? path.dirname(resolvedPath)
       : resolvedPath;
 
-    const manifestPath = require('path').join(soulDir, 'soul.json');
+    const manifestPath = path.join(soulDir, 'soul.json');
     if (!require('fs').existsSync(manifestPath)) {
       throw new Error(`No soul.json found at: ${manifestPath}`);
     }
@@ -370,14 +373,14 @@ export class SoulSpecLoader {
 
   private async loadLevel2(manifest: SoulManifest, soulDir: string): Promise<void> {
     // Load SOUL.md
-    const soulPath = require('path').join(soulDir, manifest.files.soul);
+    const soulPath = path.join(soulDir, manifest.files.soul);
     if (require('fs').existsSync(soulPath)) {
       manifest.soul_content = require('fs').readFileSync(soulPath, 'utf-8');
     }
 
     // Load IDENTITY.md
     if (manifest.files.identity) {
-      const identityPath = require('path').join(soulDir, manifest.files.identity);
+      const identityPath = path.join(soulDir, manifest.files.identity);
       if (require('fs').existsSync(identityPath)) {
         manifest.identity_content = require('fs').readFileSync(identityPath, 'utf-8');
       }
@@ -387,7 +390,7 @@ export class SoulSpecLoader {
   private async loadLevel3(manifest: SoulManifest, soulDir: string): Promise<void> {
     // Load AGENTS.md
     if (manifest.files.agents) {
-      const agentsPath = require('path').join(soulDir, manifest.files.agents);
+      const agentsPath = path.join(soulDir, manifest.files.agents);
       if (require('fs').existsSync(agentsPath)) {
         manifest.agents_content = require('fs').readFileSync(agentsPath, 'utf-8');
       }
@@ -395,7 +398,7 @@ export class SoulSpecLoader {
 
     // Load STYLE.md
     if (manifest.files.style) {
-      const stylePath = require('path').join(soulDir, manifest.files.style);
+      const stylePath = path.join(soulDir, manifest.files.style);
       if (require('fs').existsSync(stylePath)) {
         manifest.style_content = require('fs').readFileSync(stylePath, 'utf-8');
       }
@@ -403,7 +406,7 @@ export class SoulSpecLoader {
 
     // Load HEARTBEAT.md
     if (manifest.files.heartbeat) {
-      const heartbeatPath = require('path').join(soulDir, manifest.files.heartbeat);
+      const heartbeatPath = path.join(soulDir, manifest.files.heartbeat);
       if (require('fs').existsSync(heartbeatPath)) {
         manifest.heartbeat_content = require('fs').readFileSync(heartbeatPath, 'utf-8');
       }
@@ -411,7 +414,7 @@ export class SoulSpecLoader {
 
     // Load USER_TEMPLATE.md
     if (manifest.files.user_template) {
-      const templatePath = require('path').join(soulDir, manifest.files.user_template);
+      const templatePath = path.join(soulDir, manifest.files.user_template);
       if (require('fs').existsSync(templatePath)) {
         manifest.user_template_content = require('fs').readFileSync(templatePath, 'utf-8');
       }
@@ -420,13 +423,13 @@ export class SoulSpecLoader {
     // Load calibration examples
     if (manifest.examples) {
       if (manifest.examples.good) {
-        const goodPath = require('path').join(soulDir, manifest.examples.good);
+        const goodPath = path.join(soulDir, manifest.examples.good);
         if (require('fs').existsSync(goodPath)) {
           manifest.examples_good_content = require('fs').readFileSync(goodPath, 'utf-8');
         }
       }
       if (manifest.examples.bad) {
-        const badPath = require('path').join(soulDir, manifest.examples.bad);
+        const badPath = path.join(soulDir, manifest.examples.bad);
         if (require('fs').existsSync(badPath)) {
           manifest.examples_bad_content = require('fs').readFileSync(badPath, 'utf-8');
         }
@@ -435,7 +438,7 @@ export class SoulSpecLoader {
 
     // Resolve avatar path
     if (manifest.files.avatar) {
-      const avatarPath = require('path').join(soulDir, manifest.files.avatar);
+      const avatarPath = path.join(soulDir, manifest.files.avatar);
       if (require('fs').existsSync(avatarPath)) {
         manifest.avatar_path = avatarPath;
       }
@@ -529,14 +532,14 @@ export class SoulSpecLoader {
     
     // Check all souls directories
     for (const soulsDir of this.soulsDirs) {
-      const resolvedDir = require('path').resolve(soulsDir);
+      const resolvedDir = path.resolve(soulsDir);
       
       try {
         if (require('fs').existsSync(resolvedDir)) {
           const entries = require('fs').readdirSync(resolvedDir, { withFileTypes: true });
           for (const entry of entries) {
             if (entry.isDirectory() && !seenSouls.has(entry.name)) {
-              const soulJsonPath = require('path').join(resolvedDir, entry.name, 'soul.json');
+              const soulJsonPath = path.join(resolvedDir, entry.name, 'soul.json');
               if (require('fs').existsSync(soulJsonPath)) {
                 souls.push(entry.name);
                 seenSouls.add(entry.name);
