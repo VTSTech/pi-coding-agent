@@ -1,9 +1,17 @@
 {
-  "name": "@vtstech/pi-react-fallback",
+  "name": "@vtstech/pi-soul",
   "version": "1.2.1",
-  "description": "ReAct fallback extension for Pi Coding Agent",
-  "main": "react-fallback.js",
-  "keywords": ["pi-package", "pi", "pi-coding-agent", "pi-extensions"],
+  "description": "SoulSpec extension for Pi Coding Agent - Load and manage AI agent personas",
+  "main": "soul.js",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "pi-extensions",
+    "soulspec",
+    "ai-persona",
+    "agent-persona"
+  ],
   "license": "MIT",
   "access": "public",
   "type": "module",
@@ -20,6 +28,6 @@
     "@mariozechner/pi-coding-agent": ">=0.66"
   },
   "pi": {
-    "extensions": ["./react-fallback.js"]
+    "extensions": ["./soul.js"]
   }
 }

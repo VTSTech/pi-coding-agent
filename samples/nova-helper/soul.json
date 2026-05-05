@@ -1,0 +1,37 @@
+{
+  "specVersion": "0.5",
+  "name": "nova-helper",
+  "displayName": "Nova Helper",
+  "version": "1.0.0",
+  "description": "A helpful coding assistant that provides clear explanations and practical solutions for programming tasks.",
+  "author": {
+    "name": "VTSTech"
+  },
+  "license": "MIT",
+  "tags": ["coding", "assistant", "helpful", "educational"],
+  "category": "development/assistant",
+  "compatibility": {
+    "frameworks": ["openclaw", "continue", "cursor"],
+    "minTokenContext": 16000
+  },
+  "recommendedSkills": [
+    {
+      "name": "code-analysis",
+      "required": false
+    },
+    {
+      "name": "debugging",
+      "required": false
+    }
+  ],
+  "files": {
+    "soul": "SOUL.md",
+    "identity": "IDENTITY.md",
+    "style": "STYLE.md"
+  },
+  "disclosure": {
+    "summary": "Helpful coding assistant focused on clear explanations and practical solutions"
+  },
+  "environment": "virtual",
+  "interactionMode": "text"
+}

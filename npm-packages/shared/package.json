@@ -1,6 +1,6 @@
 {
   "name": "@vtstech/pi-shared",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Shared utilities for Pi Coding Agent extensions",
   "exports": {
     "./config-io": "./config-io.js",
@@ -15,7 +15,7 @@
     "./test-report": "./test-report.js",
     "./types": "./types.js"
   },
-  "keywords": ["pi-extensions"],
+  "keywords": ["pi-package", "pi", "pi-coding-agent", "pi-extensions"],
   "license": "MIT",
   "access": "public",
   "type": "module",

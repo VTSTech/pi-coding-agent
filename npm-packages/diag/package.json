@@ -1,9 +1,9 @@
 {
   "name": "@vtstech/pi-diag",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Diagnostics extension for Pi Coding Agent",
   "main": "diag.js",
-  "keywords": ["pi-extensions"],
+  "keywords": ["pi-package", "pi", "pi-coding-agent", "pi-extensions"],
   "license": "MIT",
   "access": "public",
   "type": "module",
