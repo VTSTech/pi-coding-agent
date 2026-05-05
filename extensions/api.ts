@@ -158,7 +158,7 @@ export default function (pi: ExtensionAPI) {
         case "reload":
           return reloadConfig(ctx);
         case "modes":
-          return listModes();
+          return listModes(ctx);
         default:
           ctx.ui.notify(`Unknown sub-command: "${sub}". Use: mode, url, think, compat, reload, modes, provider, providers`, "error");
         }
@@ -497,7 +497,7 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.notify("Run /reload to apply models.json changes", "info");
   }
 
-  function listModes() {
+  function listModes(ctx: any) {
     const lines: string[] = [branding];
     lines.push(section("SUPPORTED API MODES"));
 
