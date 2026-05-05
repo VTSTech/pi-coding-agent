@@ -349,43 +349,43 @@ export default function (pi: ExtensionAPI) {
     lines.push(info(`Security mode: ${secMode.toUpperCase()}`));
 
     // a. Command blocklist status (mode-aware)
-    const effectiveCmds = secMode === "max" ? BLOCKED_COMMANDS : CRITICAL_COMMANDS;
+    const effectiveCmds = secMode === "off" ? new Set<string>() : (secMode === "max" ? BLOCKED_COMMANDS : CRITICAL_COMMANDS);
     const blockedCmdList = Array.from(effectiveCmds).sort();
     lines.push(info(`Command blocklist: ${blockedCmdList.length} commands blocked (${CRITICAL_COMMANDS.size} critical` +
-      (secMode === "max" ? ` + ${EXTENDED_COMMANDS.size} extended)` : ")")));
+      (secMode === "max" ? ` + ${EXTENDED_COMMANDS.size} extended)` : (secMode === "off" ? " (disabled in off mode)" : ")"))));
     const exampleCmds = blockedCmdList.filter(c => ["rm", "sudo", "chmod", "curl", "wget", "eval"].includes(c));
     if (exampleCmds.length > 0) {
       lines.push(info(`  Examples: ${exampleCmds.join(", ")}`));
     }
-    check(blockedCmdList.length > 0,
-      `Command blocklist active (${blockedCmdList.length} rules)`,
-      `Command blocklist is EMPTY — security risk!`);
+    check(secMode === "off" ? true : blockedCmdList.length > 0,
+      secMode === "off" ? "Security disabled in off mode" : `Command blocklist active (${blockedCmdList.length} rules)`,
+      secMode === "off" ? "" : `Command blocklist is EMPTY — security risk!`);
 
     // b. SSRF protection (mode-aware)
-    const effectivePatterns = secMode === "max" ? BLOCKED_URL_PATTERNS : BLOCKED_URL_ALWAYS;
+    const effectivePatterns = secMode === "off" ? new Set<string>() : (secMode === "max" ? BLOCKED_URL_PATTERNS : BLOCKED_URL_ALWAYS);
     const blockedPatterns = Array.from(effectivePatterns).sort();
     lines.push(info(`SSRF protection: ${blockedPatterns.length} hostname patterns blocked (${BLOCKED_URL_ALWAYS.size} always` +
-      (secMode === "max" ? ` + ${BLOCKED_URL_MAX_ONLY.size} max-only)` : ")")));
+      (secMode === "max" ? ` + ${BLOCKED_URL_MAX_ONLY.size} max-only)` : (secMode === "off" ? " (disabled in off mode)" : ")"))));
     const examplePatterns = blockedPatterns.filter(p =>
       ["localhost", "127.0.0.1", "169.254.169.254", "10.", "192.168.", "internal."].includes(p)
     );
     if (examplePatterns.length > 0) {
       lines.push(info(`  Examples: ${examplePatterns.join(", ")}`));
     }
-    check(blockedPatterns.length > 0,
-      `SSRF protection active (${blockedPatterns.length} patterns)`,
-      `SSRF blocklist is EMPTY — vulnerability risk!`);
+    check(secMode === "off" ? true : blockedPatterns.length > 0,
+      secMode === "off" ? "SSRF protection disabled in off mode" : `SSRF protection active (${blockedPatterns.length} patterns)`,
+      secMode === "off" ? "" : `SSRF blocklist is EMPTY — vulnerability risk!`);
 
     // Test SSRF with sample URLs
     lines.push(info("SSRF validation tests:"));
     const ssrfTests = [
-      { url: "http://localhost:8080/api", expectBlocked: secMode === "max" },
-      { url: "http://169.254.169.254/latest/meta-data/", expectBlocked: true },
-      { url: "http://192.168.1.1/admin", expectBlocked: true },
+      { url: "http://localhost:8080/api", expectBlocked: secMode !== "off" && secMode === "max" },
+      { url: "http://169.254.169.254/latest/meta-data/", expectBlocked: secMode !== "off" },
+      { url: "http://192.168.1.1/admin", expectBlocked: secMode !== "off" },
       { url: "https://api.example.com/data", expectBlocked: false },
     ];
     for (const test of ssrfTests) {
-      const result = isSafeUrl(test.url);
+      const result = isSafeUrl(test.url, true, secMode);
       if (test.expectBlocked && !result.safe) {
         lines.push(ok(`  BLOCKED: ${test.url} → ${result.error}`));
       } else if (!test.expectBlocked && result.safe) {
@@ -421,9 +421,9 @@ export default function (pi: ExtensionAPI) {
     // d. Injection detection
     lines.push(info("Command injection tests:"));
     const cmdTests = [
-      { cmd: "ls; rm -rf /", expectSafe: false },
-      { cmd: "sudo chmod 777 /etc/passwd", expectSafe: false },
-      { cmd: "curl http://localhost/secret", expectSafe: secMode !== "max" },
+      { cmd: "ls; rm -rf /", expectSafe: secMode === "off" },
+      { cmd: "sudo chmod 777 /etc/passwd", expectSafe: secMode === "off" },
+      { cmd: "curl http://localhost/secret", expectSafe: secMode !== "max" && secMode !== "off" },
       { cmd: "ls -la", expectSafe: true },
       { cmd: "cat README.md", expectSafe: true },
       { cmd: "echo hello", expectSafe: true },

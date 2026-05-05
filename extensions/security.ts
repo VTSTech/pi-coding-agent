@@ -124,7 +124,7 @@ export default function (pi: ExtensionAPI) {
               return;
             }
 
-            const writeOk = setSecurityMode(value as "basic" | "max");
+            const writeOk = setSecurityMode(value as "basic" | "max" | "off");
             if (!writeOk) {
               ctx.ui.notify(`FAILED to persist security mode: could not write ${SECURITY_CONFIG_PATH}`, "error");
               debugLog("security", `/security mode ${value}: write failed`, { path: SECURITY_CONFIG_PATH });
@@ -154,9 +154,12 @@ export default function (pi: ExtensionAPI) {
               lines.push(warn("Extended commands are now ALLOWED: rm, sudo, npm, apt, git, curl, wget, etc."));
               lines.push(warn("Localhost and 127.x URLs are now ALLOWED for SSRF"));
               lines.push(ok("Critical commands remain blocked: dd, mkfs, shred, fdisk, ssh, etc."));
-            } else {
+            } else if (value === "max") {
               lines.push(ok(`Full lockdown active — all ${totalCmds} commands blocked`));
               lines.push(ok("Full SSRF protection — localhost and private IPs blocked"));
+            } else if (value === "off") {
+              lines.push(ok("Security enforcement disabled — all commands allowed"));
+              lines.push(ok("SSRF protection disabled — all URLs allowed"));
             }
 
             lines.push(branding);

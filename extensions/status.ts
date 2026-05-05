@@ -240,6 +240,8 @@ export default function (pi: ExtensionAPI) {
       ctxUi.setStatus("status-sec", `${dim("SEC:")}${green(String(blockedCount))} ${dim("(" + secMode.toUpperCase() + ")")} ${dim("(blocked: " + securityFlashTool + ")")}`);
     } else if (blockedCount > 0) {
       ctxUi.setStatus("status-sec", `${dim("SEC:")}${green(String(blockedCount))} ${dim("(" + secMode.toUpperCase() + ")")}`);
+    } else if (secMode === "off") {
+      ctxUi.setStatus("status-sec", `${dim("SEC:")}${green("OFF")}`);
     } else {
       ctxUi.setStatus("status-sec", `${dim("SEC:")}${green(secMode.toUpperCase())}`);
     }
