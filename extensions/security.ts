@@ -35,6 +35,7 @@ import {
   BLOCKED_URL_MAX_ONLY,
   getSecurityMode,
   setSecurityMode,
+  clearSecurityModeCache,
   SECURITY_CONFIG_PATH,
 } from "../shared/security";
 import { debugLog } from "../shared/debug";
@@ -133,6 +134,9 @@ export default function (pi: ExtensionAPI) {
 
             ctx.ui.setStatus("status-sec", value.toUpperCase());
             ctx.ui.notify(`Security mode set to ${value.toUpperCase()}`, "success");
+            
+            // Clear the cache in all extensions that might be using it
+            clearSecurityModeCache();
 
             appendAuditEntry({
               timestamp: new Date().toISOString(),
@@ -173,7 +177,7 @@ export default function (pi: ExtensionAPI) {
           }
 
           // Invalid mode value
-          ctx.ui.notify(`Invalid mode: "${value}". Use \"basic\" or \"max\".`, "error");
+          ctx.ui.notify(`Invalid mode: "${value}". Use \"basic\", \"max\", or \"off\".`, "error");
           return;
         }
 
@@ -183,6 +187,7 @@ export default function (pi: ExtensionAPI) {
         lines.push(info("/security mode        — show current security mode"));
         lines.push(info("/security mode basic  — relax to basic mode"));
         lines.push(info("/security mode max    — switch to max lockdown"));
+        lines.push(info("/security mode off     — disable all security checks"));
         lines.push(info("/security-audit       — show security audit report"));
         lines.push(branding);
 
