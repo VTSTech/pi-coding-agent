@@ -35,7 +35,6 @@ import {
   BLOCKED_URL_MAX_ONLY,
   getSecurityMode,
   setSecurityMode,
-  clearSecurityModeCache,
   SECURITY_CONFIG_PATH,
 } from "../shared/security";
 import { debugLog } from "../shared/debug";
@@ -134,9 +133,6 @@ export default function (pi: ExtensionAPI) {
 
             ctx.ui.setStatus("status-sec", value.toUpperCase());
             ctx.ui.notify(`Security mode set to ${value.toUpperCase()}`, "success");
-            
-            // Clear the cache in all extensions that might be using it
-            clearSecurityModeCache();
 
             appendAuditEntry({
               timestamp: new Date().toISOString(),
