@@ -1,0 +1,29 @@
+{
+  "name": "@vtstech/pi-status",
+  "version": "1.2.3",
+  "description": "System monitor / status bar extension for Pi Coding Agent",
+  "main": "status.js",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "pi-extensions"
+  ],
+  "license": "MIT",
+  "access": "public",
+  "type": "module",
+  "author": "VTSTech",
+  "homepage": "https://www.vts-tech.org",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VTSTech/pi-coding-agent"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": ">=0.66"
+  },
+  "pi": {
+    "extensions": [
+      "./status.js"
+    ]
+  }
+}

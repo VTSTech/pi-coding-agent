@@ -2,5 +2,4 @@
 *.bak
 node_modules/
 .build-npm/
-dist/
 *.backup
