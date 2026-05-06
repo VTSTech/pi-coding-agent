@@ -15,13 +15,14 @@
     "./test-report": "./test-report.js",
     "./types": "./types.js"
   },
-  "keywords": ["pi-extensions"],
+  "keywords": ["pi-package", "pi", "pi-coding-agent", "pi-extensions"],
   "license": "MIT",
+  "access": "public",
+  "type": "module",
   "author": "VTSTech",
   "homepage": "https://www.vts-tech.org",
   "repository": {
     "type": "git",
     "url": "https://github.com/VTSTech/pi-coding-agent"
   },
-
 }

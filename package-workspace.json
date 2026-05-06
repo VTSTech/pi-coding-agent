@@ -1,0 +1,56 @@
+{
+  "name": "@vtstech/pi-coding-agent-extensions",
+  "version": "1.2.2",
+  "description": "Pi Coding Agent extensions: security, ReAct fallback, model benchmark, Ollama sync, diagnostics, system monitor, and Matrix theme",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "pi-extensions",
+    "ollama",
+    "model-test",
+    "status-bar",
+    "security",
+    "react-fallback"
+  ],
+  "license": "MIT",
+  "author": "VTSTech",
+  "homepage": "https://www.vts-tech.org",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VTSTech/pi-coding-agent"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "build": "npm run build:shared && npm run build:all-extensions",
+    "build:shared": "cd npm-packages/shared && npm run build",
+    "build:all-extensions": "cd npm-packages/api && npm run build && cd ../diag && npm run build && cd ../model-test && npm run build && cd ../ollama-sync && npm run build && cd ../openrouter-sync && npm run build && cd ../react-fallback && npm run build && cd ../security && npm run build && cd ../soul && npm run build && cd ../status && npm run build",
+    "publish": "npm run build && npm publish",
+    "publish:shared": "cd npm-packages/shared && npm publish",
+    "publish:api": "cd npm-packages/api && npm publish",
+    "publish:diag": "cd npm-packages/diag && npm publish",
+    "publish:model-test": "cd npm-packages/model-test && npm publish",
+    "publish:ollama-sync": "cd npm-packages/ollama-sync && npm publish",
+    "publish:openrouter-sync": "cd npm-packages/openrouter-sync && npm publish",
+    "publish:react-fallback": "cd npm-packages/react-fallback && npm publish",
+    "publish:security": "cd npm-packages/security && npm publish",
+    "publish:soul": "cd npm-packages/soul && npm publish",
+    "publish:status": "cd npm-packages/status && npm publish"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.0",
+    "typescript": "^6.0.2"
+  },
+  "workspaces": [
+    "npm-packages/*"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ],
+    "themes": [
+      "./themes"
+    ]
+  }
+}

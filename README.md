@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Pi Version](https://img.shields.io/badge/Pi-v0.66%2B-green.svg)](https://github.com/badlogic/pi-mono)
 [![Pi Package](https://img.shields.io/badge/Install-pi%20install%20git-blue.svg)](#installation)
-[![Version](https://img.shields.io/badge/Version-v1.2.2-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-v1.2.3-orange.svg)](CHANGELOG.md)
 
 <p>
   <a href="https://github.com/VTSTech"><strong>VTSTech</strong></a> •
@@ -46,30 +46,37 @@ pi update
 
 Pin to a specific tag:
 ```bash
-pi install git:github.com/VTSTech/pi-coding-agent@v1.2.2
+pi install git:github.com/VTSTech/pi-coding-agent@v1.2.3
 ```
 
-### Individual npm packages
+### Individual Packages (No npm required!)
 
-Each extension is published separately to npm. Install only what you need:
+Install only what you need using our git-based installation scripts:
 
 ```bash
-# Install individual extensions
-pi install "npm:@vtstech/pi-api"
-pi install "npm:@vtstech/pi-diag"
-pi install "npm:@vtstech/pi-model-test"
-pi install "npm:@vtstech/pi-ollama-sync"
-pi install "npm:@vtstech/pi-openrouter-sync"
-pi install "npm:@vtstech/pi-react-fallback"
-pi install "npm:@vtstech/pi-security"
-pi install "npm:@vtstech/pi-soul"
-pi install "npm:@vtstech/pi-status"
+# Install individual packages
+./scripts/install-package-remote.sh pi-soul
+./scripts/install-package-remote.sh pi-diag
+./scripts/install-package-remote.sh pi-model-test
+./scripts/install-package-remote.sh pi-ollama-sync
+./scripts/install-package-remote.sh pi-security
+./scripts/install-package-remote.sh pi-status
 
-# Or install everything as one bundle via GitHub
-pi install git:github.com/VTSTech/pi-coding-agent
+# Or install all packages at once
+./scripts/install-all-packages.sh
 ```
 
-> All extensions depend on `@vtstech/pi-shared` which is installed automatically as a dependency.
+### Manual Install
+
+```bash
+git clone https://github.com/VTSTech/pi-coding-agent.git
+cd pi-coding-agent
+cp extensions/*.ts ~/.pi/agent/extensions/
+cp themes/*.json ~/.pi/agent/themes/
+pi -c
+```
+
+> **Note:** npm installation is deprecated. Use the git-based installation methods above for better reliability and no permission issues.
 
 ### Manual install
 
@@ -96,7 +103,7 @@ This repo is a standard Pi package. The `package.json` contains a `pi` manifest 
 ```json
 {
   "name": "@vtstech/pi-coding-agent-extensions",
-  "version": "1.2.2",
+  "version": "1.2.0",
   "keywords": ["pi-package"],
   "pi": {
     "extensions": ["./extensions"],
@@ -652,7 +659,18 @@ pi-coding-agent/
 │   └── types.ts             # TypeScript types & error classes
 ├── themes/
 │   └── matrix.json          # Matrix movie theme
-├── npm-packages/            # Per-extension npm package manifests
+├── individual-packages/    # Individual packages for git-based installation
+│   ├── pi-shared/          # Shared utilities (dependency for all packages)
+│   ├── pi-api/             # API mode switcher
+│   ├── pi-diag/            # System diagnostics
+│   ├── pi-model-test/      # Model benchmarking
+│   ├── pi-ollama-sync/     # Ollama synchronization
+│   ├── pi-openrouter-sync/ # OpenRouter synchronization
+│   ├── pi-react-fallback/  # ReAct fallback
+│   ├── pi-security/        # Security extensions
+│   ├── pi-soul/            # SoulSpec personas
+│   └── pi-status/          # System monitoring
+├── npm-packages/            # Deprecated: npm package manifests (legacy support only)
 │   ├── shared/              # @vtstech/pi-shared
 │   ├── api/                 # @vtstech/pi-api
 │   ├── diag/                # @vtstech/pi-diag
@@ -661,12 +679,16 @@ pi-coding-agent/
 │   ├── openrouter-sync/     # @vtstech/pi-openrouter-sync
 │   ├── react-fallback/      # @vtstech/pi-react-fallback
 │   ├── security/            # @vtstech/pi-security
+│   ├── soul/                # @vtstech/pi-soul
 │   └── status/              # @vtstech/pi-status
 ├── scripts/
-│   ├── build-packages.sh    # Build all npm packages (esbuild TS→ESM)
-│   ├── bump-version.sh      # Linux/macOS version bump script
-│   ├── bump-version.ps1     # Windows PowerShell version bump script
-│   └── publish-packages.sh  # Publish to npm (shared first, then extensions)
+│   ├── install-package.sh           # Install individual package (local)
+│   ├── install-package-remote.sh    # Install individual package (remote)
+│   ├── install-all-packages.sh      # Install all packages (local)
+│   ├── build-packages.sh            # Build npm packages (deprecated)
+│   ├── bump-version.sh              # Linux/macOS version bump script
+│   ├── bump-version.ps1             # Windows PowerShell version bump script
+│   └── publish-packages.sh          # Publish to npm (deprecated)
 ├── CHANGELOG.md             # Version history
 ├── TESTS.md                 # Model benchmark results
 ├── VERSION                  # Single source of truth for version
