@@ -57,6 +57,8 @@ Install only what you need using the Pi TGZ Installer extension. The git-based i
 
 Install individual packages using the `@vtstech/pi-tgz-installer` extension - perfect for installing packages from local or remote TGZ files:
 
+<img width="1654" height="532" alt="image" src="https://github.com/user-attachments/assets/543b4f5a-ab59-436f-83d6-77c1547ba368" />
+
 ```bash
 # First, install the TGZ Installer extension
 pi install @vtstech/pi-tgz-installer
