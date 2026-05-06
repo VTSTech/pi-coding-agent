@@ -193,7 +193,7 @@ build_extension() {
 
 # ── Build all extensions ──────────────────────────────────────────────────
 build_all_extensions() {
-  local extensions=("api" "diag" "model-test" "ollama-sync" "openrouter-sync" "react-fallback" "security" "status")
+  local extensions=("api" "diag" "model-test" "ollama-sync" "openrouter-sync" "react-fallback" "security" "status" "soul")
   for ext in "${extensions[@]}"; do
     build_extension "$ext"
   done
@@ -274,7 +274,7 @@ main() {
       echo ""
       pack_tarballs
       ;;
-    api|diag|model-test|ollama-sync|openrouter-sync|react-fallback|security|status)
+    api|diag|model-test|ollama-sync|openrouter-sync|react-fallback|security|soul|status)
       build_shared
       echo ""
       build_extension "$target"
@@ -295,6 +295,7 @@ main() {
       echo "  openrouter-sync    Build only @vtstech/pi-openrouter-sync"
       echo "  react-fallback     Build only @vtstech/pi-react-fallback"
       echo "  security           Build only @vtstech/pi-security"
+      echo "  soul               Build only @vtstech/pi-soul"
       echo "  status             Build only @vtstech/pi-status"
       exit 1
       ;;

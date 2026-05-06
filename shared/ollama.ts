@@ -26,7 +26,7 @@ import type { PiExtensionContext } from "./types";
  *   - scripts/publish-packages.sh (derived from VERSION at runtime)
  *   - package.json (version field)
  */
-export const EXTENSION_VERSION = "1.2.0";
+export const EXTENSION_VERSION = "1.2.2";
 
 /**
  * Path to Pi's models.json configuration file.

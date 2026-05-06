@@ -12,6 +12,7 @@
 #
 # Options:
 #   --dry-run    Show what would be published without actually publishing
+#   --token <token>  Use npm token for authentication
 #   --tag <tag>  Publish with a custom dist-tag (default: latest)
 # ---------------------------------------------------------------------------
 set -euo pipefail
@@ -28,6 +29,7 @@ fi
 VERSION="$(cat "$REPO_ROOT/VERSION" | tr -d '[:space:]')"
 
 DRY_RUN=false
+NPM_TOKEN=""
 DIST_TAG="latest"
 
 # Colors
@@ -40,7 +42,7 @@ NC='\033[0m'
 log()  { echo -e "${GREEN}[publish]${NC} $*"; }
 info() { echo -e "${CYAN}[info]${NC}  $*"; }
 warn() { echo -e "${YELLOW}[warn]${NC}  $*"; }
-err()  { echo -e "${RED}[error]${NC} $*"; }
+err()  { echo -e "${RED}[error]${NC}  $*"; }
 
 # ── Parse args ────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -49,16 +51,20 @@ while [[ $# -gt 0 ]]; do
       DRY_RUN=true
       shift
       ;;
+    --token)
+      NPM_TOKEN="$2"
+      shift 2
+      ;;
     --tag)
       DIST_TAG="$2"
       shift 2
       ;;
-    shared|api|diag|model-test|ollama-sync|openrouter-sync|react-fallback|security|status|all)
+    shared|api|diag|model-test|ollama-sync|openrouter-sync|react-fallback|security|status|soul|all)
       TARGET="$1"
       shift
       ;;
     *)
-      echo "Usage: $0 [--dry-run] [--tag <tag>] [shared|api|diag|model-test|ollama-sync|react-fallback|security|status|all]"
+      echo "Usage: $0 [--dry-run] [--token <token>] [--tag <tag>] [shared|api|diag|model-test|ollama-sync|react-fallback|security|status|soul|all]"
       exit 1
       ;;
   esac
@@ -90,6 +96,12 @@ publish_one() {
     return 0
   fi
 
+  # Set npm token if provided
+  if [ -n "$NPM_TOKEN" ]; then
+    echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc
+    info "Using npm token for authentication"
+  fi
+
   log "Publishing $pkg_name@$pkg_version (tag: $DIST_TAG)..."
   npm publish "$pkg_dir" --access public --tag "$DIST_TAG"
 
@@ -101,12 +113,8 @@ publish_one() {
   fi
 }
 
-# ── Main ──────────────────────────────────────────────────────────────────
-echo ""
-echo "  ⚡ Pi Extensions — npm Publisher"
-echo "  Version: $VERSION"
-echo "  Tag: $DIST_TAG"
-if [ "$DRY_RUN" = true ]; then echo "  Mode: DRY RUN"; fi
+# ── Main logic ───────────────────────────────────────────────────────────
+log "Publishing packages (version: $VERSION)..."
 echo ""
 
 case "$TARGET" in
@@ -117,19 +125,19 @@ case "$TARGET" in
     # Shared must be published first — all extensions depend on it
     publish_one "shared"
     echo ""
-    for ext in api diag model-test ollama-sync openrouter-sync react-fallback security status; do
+    for ext in api diag model-test ollama-sync openrouter-sync react-fallback security status soul; do
       publish_one "$ext"
       echo ""
     done
     ;;
-  api|diag|model-test|ollama-sync|openrouter-sync|react-fallback|security|status)
+  api|diag|model-test|ollama-sync|openrouter-sync|react-fallback|security|status|soul)
     # Ensure shared is published first
     publish_one "shared"
     echo ""
     publish_one "$TARGET"
     ;;
   *)
-    echo "Usage: $0 [--dry-run] [--tag <tag>] [shared|api|diag|model-test|ollama-sync|react-fallback|security|status|all]"
+    echo "Usage: $0 [--dry-run] [--token <token>] [--tag <tag>] [shared|api|diag|model-test|ollama-sync|react-fallback|security|status|soul|all]"
     exit 1
     ;;
 esac
