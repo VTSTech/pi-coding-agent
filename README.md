@@ -49,22 +49,33 @@ Pin to a specific tag:
 pi install git:github.com/VTSTech/pi-coding-agent@v1.2.3
 ```
 
-### Individual Packages (No npm required!)
+### Individual Packages (TGZ-based Installation)
 
-Install only what you need using our git-based installation scripts:
+Install only what you need using the Pi TGZ Installer extension. The git-based installation scripts are deprecated and will be removed in a future version.
+
+#### Method: Pi TGZ Installer Extension (Recommended)
+
+Install individual packages using the `@vtstech/pi-tgz-installer` extension - perfect for installing packages from local or remote TGZ files:
 
 ```bash
-# Install individual packages
-./scripts/install-package-remote.sh pi-soul
-./scripts/install-package-remote.sh pi-diag
-./scripts/install-package-remote.sh pi-model-test
-./scripts/install-package-remote.sh pi-ollama-sync
-./scripts/install-package-remote.sh pi-security
-./scripts/install-package-remote.sh pi-status
+# First, install the TGZ Installer extension
+pi install @vtstech/pi-tgz-installer
+
+# Install individual packages directly from TGZ files in this repository
+pi tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-soul-1.2.3.tgz
+pi tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-diag-1.2.3.tgz
+pi tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-model-test-1.2.3.tgz
+pi tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-ollama-sync-1.2.3.tgz
+pi tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-security-1.2.3.tgz
+pi tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-status-1.2.3.tgz
 
 # Or install all packages at once
-./scripts/install-all-packages.sh
+for pkg in ./dist/pi-*.tgz; do pi tgz-install "$pkg"; done
 ```
+
+The TGZ Installer extension provides a `tgz-install` command that installs pi-packages directly from TGZ files, making it easy to install individual packages without cloning the entire repository.
+
+> **Note:** Git-based installation scripts (`./scripts/install-package-*.sh`) are deprecated and will be removed in a future version. Please migrate to the TGZ-based installation method above.
 
 ### Manual Install
 

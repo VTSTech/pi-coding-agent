@@ -40,6 +40,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated package.json to reference compiled file in `dist/` directory
   - Maintains backward compatibility with git installation
 
+### Deprecated
+
+- **Git-based installation scripts** (`scripts/install-package*.sh`, `scripts/install-all-packages.sh`)
+  - These scripts are deprecated and will be removed in a future version
+  - Users should migrate to the new TGZ-based installation method using `@vtstech/pi-tgz-installer`
+  - See README.md for updated installation instructions
+
+- **brief.md and audit.md documentation files**
+  - These files are deprecated and will be removed in a future version
+  - All important information has been migrated to README.md and other relevant documentation
+
 ---
 
 ## [1.2.1] - 05-05-2026
@@ -498,7 +509,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Version bumped from 1.1.4-dev to 1.1.5** (17 files, 30 line edits)
   - Source of truth: `shared/ollama.ts` (`EXTENSION_VERSION`), root `package.json`, `shared/package.json`, `scripts/build-packages.sh`, `scripts/publish-packages.sh`.
   - npm-packages: all 9 `package.json` files (version + `@vtstech/pi-shared` dependency).
-  - Documentation: root `README.md` (4 references), `package-lock.json` (2 references), `brief.md` (2 references).
+  - Documentation: root `README.md` (4 references), `package-lock.json` (2 references).
 
 ---
 
@@ -649,11 +660,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Stale 1.1.1 version references in README.md** (`README.md`)
   - Version badge, pin-to-tag example, package format version snippet, and sample output all still showed `1.1.1` after bumping to `1.1.2-dev`. Updated all four references.
 
-- **Incorrect TTL cache documentation** (`CHANGELOG.md`, `brief.md`)
-  - Changelog and brief both documented the `readModelsJson()`/`getOllamaBaseUrl()` cache as "5-second TTL" but the actual `CACHE_TTL_MS` constant is `2000` (2 seconds). Fixed in 4 locations across both files.
-
-- **Misleading `sanitizeForReport()` file reference in changelog** (`CHANGELOG.md`, `brief.md`)
-  - The 1.1.0 changelog entry referenced `sanitizeForReport()` as being in `shared/security.ts` but it lives in `shared/format.ts`. Corrected the file path and updated the brief.md note accordingly.
+- **Incorrect TTL cache documentation** (`CHANGELOG.md`)
+  - Changelog documented the `readModelsJson()`/`getOllamaBaseUrl()` cache as "5-second TTL" but the actual `CACHE_TTL_MS` constant is `2000` (2 seconds). Fixed in 4 locations in the changelog.
 
 - **Phantom `invalidateOllamaCache()` reference in changelog** (`CHANGELOG.md`)
   - The 1.1.0 changelog stated cache could be "manually invalidated via `invalidateOllamaCache()`" but this function does not exist in the codebase. Cache is only invalidated by TTL expiry or by `writeModelsJson()`. Corrected the description.
@@ -674,10 +682,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Per-model display changed from `VRAM: ~281.2MB` to `GPU: ~281.2MB · CPU: ~467.3MB`. Both slash command and tool output updated.
   - `buildModelEntry()` now passes `contextLength` to `estimateMemory()` for accurate CPU estimates.
 
-- **Documentation corrections** (`CHANGELOG.md`, `brief.md`, `README.md`)
+- **Documentation corrections** (`CHANGELOG.md`, `README.md`)
   - README.md: 4 stale version references updated to 1.1.2.
   - CHANGELOG.md: `sanitizeForReport()` file path corrected; TTL cache from "5s" to "2s"; phantom `invalidateOllamaCache()` reference corrected.
-  - brief.md: TTL cache docs corrected (5s → 2s); `sanitizeForReport` note updated to reflect changelog fix.
 
 ### Added
 
