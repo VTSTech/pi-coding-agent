@@ -62,12 +62,14 @@ Install individual packages using the `@vtstech/pi-tgz-installer` extension - pe
 pi install @vtstech/pi-tgz-installer
 
 # Install individual packages directly from TGZ files in this repository
-pi tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-soul-1.2.3.tgz
-pi tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-diag-1.2.3.tgz
-pi tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-model-test-1.2.3.tgz
-pi tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-ollama-sync-1.2.3.tgz
-pi tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-security-1.2.3.tgz
-pi tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-status-1.2.3.tgz
+# Just tell Pi
+
+/tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-soul-1.2.3.tgz
+/tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-diag-1.2.3.tgz
+/tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-model-test-1.2.3.tgz
+/tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-ollama-sync-1.2.3.tgz
+/tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-security-1.2.3.tgz
+/tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-status-1.2.3.tgz
 
 # Or install all packages at once
 for pkg in ./dist/pi-*.tgz; do pi tgz-install "$pkg"; done
