@@ -12,9 +12,9 @@
  * @writtenby VTSTech — https://www.vts-tech.org
  */
 
-import * as fs from "node:fs";
-import * as path from "node:path";
-import os from "node:os";
+import * as fs from "fs";
+import * as path from "path";
+import os from "os";
 import { debugLog } from "./debug";
 
 /** Base directory for Pi agent configuration files. */

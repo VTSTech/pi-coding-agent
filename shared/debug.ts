@@ -8,7 +8,7 @@
  * @module shared/debug
  */
 
-const DEBUG_ENABLED = process.env.PI_EXTENSIONS_DEBUG === "1";
+const DEBUG_ENABLED = process?.env?.PI_EXTENSIONS_DEBUG === "1";
 
 /**
  * Log a debug message to stderr (via console.debug).
