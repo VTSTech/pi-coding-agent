@@ -101,10 +101,37 @@ preflight() {
 }
 
 # ── Clean ────────────────────────────────────────────────────────────────
+_BUMP_HELPER=""
+
 clean_build() {
   log "Cleaning previous build..."
   rm -rf "$BUILD_DIR"
   mkdir -p "$BUILD_DIR"
+
+  # Write a tiny helper script that fixes package.json files.
+  # Using a real file instead of heredoc/eval avoids ALL bash↔JS quoting
+  # issues (dollar signs, backticks, regex, trailing commas in source JSON).
+  _BUMP_HELPER="$BUILD_DIR/_fix_pkg.cjs"
+  cat > "$_BUMP_HELPER" <<'HELPER_EOF'
+const fs = require("fs");
+const [, , srcDir, version, outPath, stripShared] = process.argv;
+let raw = fs.readFileSync(srcDir + "/package.json", "utf8");
+// Strip trailing commas — many editors leave them in hand-maintained JSON
+raw = raw.replace(/,\s*([\]}])/g, "$1");
+const p = JSON.parse(raw);
+p.version = version;
+if (stripShared === "true" && p.dependencies && p.dependencies["@vtstech/pi-shared"]) {
+  delete p.dependencies["@vtstech/pi-shared"];
+  if (Object.keys(p.dependencies).length === 0) delete p.dependencies;
+}
+fs.writeFileSync(outPath, JSON.stringify(p, null, 2) + "\n");
+HELPER_EOF
+}
+
+# Helper: fix up a package.json (version bump, optional shared dep removal)
+# Usage: _fix_pkg_json <src_pkg_dir> <out_json_path> <strip_shared:true|false>
+_fix_pkg_json() {
+  node "$_BUMP_HELPER" "$1" "$VERSION" "$2" "$3"
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -156,16 +183,8 @@ build_shared() {
   done
 
   # ── package.json (version bump) ──────────────────────────────────────
-  # Strip trailing commas before JSON.parse (many editors leave them in).
   if [ -f "$PKG_DIR/package.json" ]; then
-    node -e "
-      const fs = require('fs');
-      let raw = fs.readFileSync('$PKG_DIR/package.json','utf8');
-      raw = raw.replace(/,([ \t]*[\]})])/g, '$1');
-      const p = JSON.parse(raw);
-      p.version = '$VERSION';
-      fs.writeFileSync('$TARGET/package.json', JSON.stringify(p, null, 2) + '\n');
-    "
+    _fix_pkg_json "$PKG_DIR" "$TARGET/package.json" "false"
   else
     err "Missing $PKG_DIR/package.json"
     return 1
@@ -231,23 +250,9 @@ build_extension() {
   info "  ${ext_name}.ts -> ${ext_name}.js  ($(numfmt --to=iec "$js_size" 2>/dev/null || echo "${js_size}B"))"
 
   # ── package.json (version bump + remove shared dep) ─────────────────
-  # Remove @vtstech/pi-shared from dependencies since shared code is
-  # bundled.  This prevents npm install from trying to fetch a package
-  # that isn't on the npm registry.
-  # Strip trailing commas before JSON.parse
-  node -e "
-    const fs = require('fs');
-    let raw = fs.readFileSync('$PKG_DIR/package.json','utf8');
-    raw = raw.replace(/,([ \t]*[\]})])/g, '$1');
-    const p = JSON.parse(raw);
-    p.version = '$VERSION';
-    // Remove bundled shared dep
-    if (p.dependencies && p.dependencies['@vtstech/pi-shared']) {
-      delete p.dependencies['@vtstech/pi-shared'];
-      if (Object.keys(p.dependencies).length === 0) delete p.dependencies;
-    }
-    fs.writeFileSync('$TARGET/package.json', JSON.stringify(p, null, 2) + '\n');
-  "
+  # Shared code is bundled into the extension, so @vtstech/pi-shared is
+  # removed from dependencies (it's not on npm and would break install).
+  _fix_pkg_json "$PKG_DIR" "$TARGET/package.json" "true"
 
   # ── README ───────────────────────────────────────────────────────────
   [ -f "$PKG_DIR/README.md" ] && cp "$PKG_DIR/README.md" "$TARGET/README.md"
