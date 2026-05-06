@@ -241,12 +241,15 @@ export default function (pi: ExtensionAPI) {
 
     let result: { safe: boolean; rule: string; detail: string };
 
+    // Get current security mode
+    const currentMode = getSecurityMode();
+
     // Route to appropriate checker based on tool type
     switch (toolName) {
       case "bash":
       case "shell":
       case "run_command":
-        result = checkBashToolInput(input);
+        result = checkBashToolInput(input, currentMode);
         break;
 
       case "read":
@@ -257,7 +260,7 @@ export default function (pi: ExtensionAPI) {
       case "edit_file":
       case "list_directory":
       case "list_dir":
-        result = checkFileToolInput(input);
+        result = checkFileToolInput(input, currentMode);
         break;
 
       case "http_get":
@@ -265,12 +268,12 @@ export default function (pi: ExtensionAPI) {
       case "fetch":
       case "web_search":
       case "http_request":
-        result = checkHttpToolInput(input);
+        result = checkHttpToolInput(input, currentMode);
         break;
 
       default:
         // For unknown tools, still check for injection patterns
-        result = checkInjectionPatterns(input);
+        result = checkInjectionPatterns(input, currentMode);
         break;
     }
 

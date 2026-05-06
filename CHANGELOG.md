@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.2.2] - 05-06-2026
+
+### Fixed
+
+- **SoulSpec extension npm installation issue** (`extensions/soul.ts`, `npm-packages/pi-soul/package.json`, `npm-packages/pi-soul/src/soul.ts`)
+  - Fixed npm package installation path error when using `/souls` command
+  - Compiled `soul.ts` to JavaScript using esbuild with proper external dependencies
+  - Updated `npm-packages/pi-soul/package.json` to point to correct compiled file (`dist/soul.js`)
+  - Ensured imports use `@vtstech/pi-shared` npm package instead of relative paths
+  - Now works correctly with both git installation (`pi install git:...`) and npm installation (`pi install @vtstech/pi-soul`)
+  - Resolved "Cannot find module" errors when installing via npm package manager
+
+- **Security extension mode logic bug** (`extensions/security.ts`, `shared/security.ts`)
+  - Fixed security mode "OFF" still blocking critical commands
+  - Updated security check functions to properly respect "off" mode
+  - Critical commands should only be blocked in "basic" and "max" modes, not "off" mode
+  - Fixed issue where security extension was treating "critical" commands as always blocked regardless of mode
+  - Now correctly allows all commands when security mode is set to "off"
+
+### Added
+
+- **Build support for @vtstech/pi-soul package** (`scripts/build-packages.sh`)
+  - Added soul package to build script for automated compilation
+  - Ensures consistent build process across all npm packages
+  - Supports individual package building: `./scripts/build-packages.sh soul`
+
+### Changed
+
+- **Updated soul extension package structure** (`npm-packages/pi-soul/`)
+  - Added `src/` directory for TypeScript source files
+  - Created `dist/` directory for compiled JavaScript output
+  - Updated package.json to reference compiled file in `dist/` directory
+  - Maintains backward compatibility with git installation
+
+---
+
 ## [1.2.1] - 05-05-2026
 
 ### Added

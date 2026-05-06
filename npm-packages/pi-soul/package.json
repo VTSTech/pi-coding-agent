@@ -28,6 +28,6 @@
     "@mariozechner/pi-coding-agent": ">=0.66"
   },
   "pi": {
-    "extensions": ["./soul.js"]
+    "extensions": ["./dist/soul.js"]
   }
 }
