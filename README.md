@@ -66,11 +66,14 @@ pi install @vtstech/pi-tgz-installer
 # Install individual packages directly from TGZ files in this repository
 # Just tell Pi
 
-/tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-soul-1.2.3.tgz
+/tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-api-1.2.3.tgz
 /tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-diag-1.2.3.tgz
 /tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-model-test-1.2.3.tgz
 /tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-ollama-sync-1.2.3.tgz
+/tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-openrouter-sync-1.2.3.tgz
 /tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-security-1.2.3.tgz
+/tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-shared-1.2.3.tgz
+/tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-soul-1.2.3.tgz
 /tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-status-1.2.3.tgz
 
 # Or install all packages at once
