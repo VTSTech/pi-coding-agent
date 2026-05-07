@@ -1,6 +1,6 @@
 {
   "name": "@vtstech/pi-security",
-  "version": "1.2.3",
+  "version": "1.2.5",
   "description": "Security extension for Pi Coding Agent",
   "main": "security.js",
   "keywords": ["pi-package", "pi", "pi-coding-agent", "pi-extensions"],
@@ -14,13 +14,12 @@
     "url": "https://github.com/VTSTech/pi-coding-agent"
   },
   "dependencies": {
-    "@vtstech/pi-shared": "1.2.3"
+    "@vtstech/pi-shared": "1.2.5"
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": ">=0.66"
+    "@earendil-works/pi-coding-agent": ">=0.66"
   },
   "pi": {
     "extensions": ["./security.js"]
   }
 }
-

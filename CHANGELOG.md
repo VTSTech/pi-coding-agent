@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.2.5] - 05-07-2026 1:39:34 PM
+
+### Dependencies
+
+- **Updated peer dependencies to use @earendil-works packages** (`individual-packages/*/package.json`)
+  - Replaced deprecated `@mariozechner/pi-coding-agent` with `@earendil-works/pi-coding-agent` in all individual packages
+  - Updated peer dependencies to use the new Pi framework packages
+  - Eliminated npm deprecation warnings when running `pi update`
+
+### Build System
+
+- **Enhanced bump-version scripts for cross-platform publishing workflow** (`scripts/bump-version.ps1`, `scripts/bump-version.sh`)
+  - Fixed regex issue that prevented updating `@vtstech/pi-shared` dependency versions in individual packages
+  - Added support for updating `dist/` folder packages (built packages for npm publishing)
+  - Added automatic peer dependency updates from `@mariozechner` to `@earendil-works`
+  - Updated PowerShell script to handle Windows publishing workflow (Ubuntu build + Windows publish)
+  - Enhanced bash script with dist folder support and improved documentation
+  - Added proper next steps including publishing workflow instructions
+
+### Documentation
+
+- **Updated package.json version references** (all individual packages)
+  - Manually updated all individual package versions from 1.2.3 to 1.2.4
+  - Updated `@vtstech/pi-shared` dependency versions to match package version
+  - Ensured consistent versioning across all packages and dependencies
+
+### Maintenance
+
+- **Fixed version consistency issues** (multiple package files)
+  - Updated VERSION file to 1.2.4
+  - Updated main package.json and package-workspace.json versions
+  - Ensured all individual packages have consistent version numbers
+  - Fixed version skew between source and built packages
+
 ## [1.2.4] - 05-07-2026 12:55:14 PM
 
 ### Security

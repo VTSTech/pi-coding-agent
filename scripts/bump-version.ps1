@@ -7,6 +7,7 @@ This script updates version numbers in multiple files:
 - package.json (main package)
 - package-workspace.json (workspace configuration)
 - individual-packages/*/package.json (all npm packages)
+- dist/*/package.json (all built packages in dist folder)
 - README.md (version references)
 
 The script uses flexible regex patterns to find and replace version numbers
@@ -45,6 +46,7 @@ $PackageJson = Join-Path $ProjectRoot "package.json"
 $WorkspaceJson = Join-Path $ProjectRoot "package-workspace.json"
 $ReadmeFile = Join-Path $ProjectRoot "README.md"
 $IndividualPackagesDir = Join-Path $ProjectRoot "individual-packages"
+$DistDir = Join-Path $ProjectRoot "dist"
 
 # Validate version format (basic semver check)
 if (-not ($Version -match "^\d+\.\d+\.\d+(-[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*)?$")) {
@@ -68,7 +70,8 @@ $changes = @(
     "package.json: $CurrentVersion -> $Version",
     "package-workspace.json: $CurrentVersion -> $Version",
     "README.md: Update version references",
-    "individual-packages/*/package.json: $CurrentVersion -> $Version"
+    "individual-packages/*/package.json: $CurrentVersion -> $Version",
+    "dist/*/package.json: $CurrentVersion -> $Version"
 )
 
 if ($DryRun) {
@@ -128,8 +131,47 @@ if (Test-Path $IndividualPackagesDir) {
             $packageContent = $packageContent -replace $sharedPattern, "`$1`$2"
         }
         
+        # Update @vtstech/pi-shared dependency version to match new version
+        $sharedVersionPattern = "(?<=""@vtstech/pi-shared"":\s")($CurrentVersion)("")"
+        if ($packageContent -match $sharedVersionPattern) {
+            $packageContent = $packageContent -replace $sharedVersionPattern, "`$1$Version`$3"
+        }
+        
+        # Update @mariozechner peer dependencies to @earendil-works
+        $packageContent = $packageContent -replace "@mariozechner/pi-coding-agent", "@earendil-works/pi-coding-agent"
+        
         Set-Content $packageFile $packageContent
         Write-Host "  Updated $($_.Name)/package.json"
+    }
+}
+
+# Update dist packages (built packages for publishing)
+if (Test-Path $DistDir) {
+    Write-Host "Updating dist packages..." -ForegroundColor Green
+    Get-ChildItem $DistDir | Where-Object { $_.PSIsContainer -and (Test-Path (Join-Path $_.FullName "package.json")) } | ForEach-Object {
+        $packageFile = Join-Path $_.FullName "package.json"
+        $packageContent = Get-Content $packageFile -Raw
+        
+        # Update version field
+        $packageContent = $packageContent -replace "(?<=""version"":\s"")($CurrentVersion)($"")", "`$1$Version`$3"
+        
+        # Update @vtstech/pi-shared dependency if it exists
+        $sharedPattern = "(?<=""@vtstech/pi-shared"":\s"")([^""]+)("")"
+        if ($packageContent -match $sharedPattern) {
+            $packageContent = $packageContent -replace $sharedPattern, "`$1`$2"
+        }
+        
+        # Update @vtstech/pi-shared dependency version to match new version
+        $sharedVersionPattern = "(?<=""@vtstech/pi-shared"":\s")($CurrentVersion)("")"
+        if ($packageContent -match $sharedVersionPattern) {
+            $packageContent = $packageContent -replace $sharedVersionPattern, "`$1$Version`$3"
+        }
+        
+        # Update @mariozechner peer dependencies to @earendil-works
+        $packageContent = $packageContent -replace "@mariozechner/pi-coding-agent", "@earendil-works/pi-coding-agent"
+        
+        Set-Content $packageFile $packageContent
+        Write-Host "  Updated dist/$($_.Name)/package.json"
     }
 }
 
@@ -137,5 +179,6 @@ Write-Host "`n✅ Version bumped to $Version successfully!" -ForegroundColor Gre
 Write-Host "`nNext steps:"
 Write-Host "1. Test the changes: npm run test"
 Write-Host "2. Build packages: npm run build"
-Write-Host "3. Update CHANGELOG.md with new version entry"
-Write-Host "4. Commit changes and create a release"
+Write-Host "3. Publish packages: cd dist && npm publish (for each package)"
+Write-Host "4. Update CHANGELOG.md with new version entry"
+Write-Host "5. Commit changes and create a release"

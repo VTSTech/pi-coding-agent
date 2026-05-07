@@ -1,6 +1,6 @@
 {
   "name": "@vtstech/pi-coding-agent-extensions",
-  "version": "1.2.3",
+  "version": "1.2.5",
   "description": "Pi Coding Agent extensions: security, ReAct fallback, model benchmark, Ollama sync, diagnostics, system monitor, and Matrix theme",
   "keywords": [
     "pi-package",
@@ -37,4 +37,3 @@
     "typescript": "^6.0.3"
   }
 }
-

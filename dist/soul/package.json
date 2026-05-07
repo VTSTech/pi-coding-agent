@@ -1,6 +1,6 @@
 {
   "name": "@vtstech/pi-soul",
-  "version": "1.2.4",
+  "version": "1.2.3",
   "description": "SoulSpec extension for Pi Coding Agent - Load and manage AI agent personas",
   "main": "soul.js",
   "scripts": {

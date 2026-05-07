@@ -16,9 +16,11 @@
 #   4. shared/package.json     shared package version
 #   5. individual-packages/*/package.json    all individual package versions
 #   6. README.md               update version references
+#   7. dist/*/package.json     built packages for npm publishing
 #
 # NOTE: This script is for git-based Pi packages, not npm.
 # NOTE: scripts/build-tgz.sh derives the version from the VERSION file at runtime.
+# NOTE: Update peer dependencies from @mariozechner to @earendil-works
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -116,6 +118,9 @@ for pkg_dir in "$INDIVIDUAL_PKGS_DIR"/*/; do
       sed -i 's|"@vtstech/pi-shared": "[^"]*"|"@vtstech/pi-shared": "'$NEW_VERSION'"|' "$pkg_dir/package.json"
     fi
     
+    # Update @mariozechner peer dependencies to @earendil-works
+    sed -i 's|"@mariozechner/pi-coding-agent"|"@earendil-works/pi-coding-agent"|g' "$pkg_dir/package.json"
+    
     info "  Updated $pkg_name/package.json"
   fi
 done
@@ -135,14 +140,38 @@ if [ -f "$REPO_ROOT/README.md" ]; then
   fi
 fi
 
+# 7. dist/*/package.json — built packages for npm publishing
+if [ -d "$REPO_ROOT/dist" ]; then
+  log "Updating dist packages"
+  for pkg_dir in "$REPO_ROOT/dist"/*/; do
+    if [ -f "$pkg_dir/package.json" ]; then
+      pkg_name="$(basename "$pkg_dir")"
+      
+      # Update version
+      sed -i 's/"version": "[0-9]*\.[0-9]*\.[0-9]*[a-zA-Z0-9.+-]*"/"version": "'$NEW_VERSION'"/' "$pkg_dir/package.json"
+      
+      # Update shared dependency version if it exists
+      if grep -q '"@vtstech/pi-shared"' "$pkg_dir/package.json"; then
+        sed -i 's|"@vtstech/pi-shared": "[^"]*"|"@vtstech/pi-shared": "'$NEW_VERSION'"|' "$pkg_dir/package.json"
+      fi
+      
+      # Update @mariozechner peer dependencies to @earendil-works
+      sed -i 's|"@mariozechner/pi-coding-agent"|"@earendil-works/pi-coding-agent"|g' "$pkg_dir/package.json"
+      
+      info "  Updated dist/$pkg_name/package.json"
+    fi
+  done
+fi
+
 echo ""
 log "✅ Version bumped: $CURRENT_VERSION → $NEW_VERSION"
 info ""
 info "Next steps:"
 info "  1. Review changes: git diff"
-info "  2. Test:          ./scripts/build-tgz.sh"
+info "  2. Build:         ./scripts/build-tgz.sh"
 info "  3. Commit:        git add -A && git commit -m \"v$NEW_VERSION\""
+info "  4. Copy dist/ to Windows and run: cd dist && npm publish (for each package)"
 info ""
-info "Installation command after build:"
+info "Pi package installation:"
 info "  pi install git:github.com/VTSTech/pi-coding-agent"
 echo ""

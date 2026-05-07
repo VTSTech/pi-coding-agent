@@ -2,27 +2,27 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 const CONFIG = {
-  // General API settings - standardized across all providers
-  DEFAULT_TIMEOUT_MS: 3e5,
-  // 5 minutes - reasonable timeout for all providers
+  // General API settings
+  DEFAULT_TIMEOUT_MS: 999999,
+  // ~16.7 minutes — effectively unlimited for slow models
   CONNECT_TIMEOUT_S: 60,
   // 60 seconds to establish connection
-  MAX_RETRIES: 2,
-  // Two retries for transient failures (standardized)
-  RETRY_DELAY_MS: 15e3,
-  // 15 seconds between retries (standardized)
+  MAX_RETRIES: 1,
+  // Single retry for transient failures
+  RETRY_DELAY_MS: 1e4,
+  // 10 seconds between retries
   // Model generation settings
   NUM_PREDICT: 1024,
   // Max tokens in response
   TEMPERATURE: 0.1,
   // Low temperature for more deterministic output
-  // Test-specific settings - standardized across all providers
+  // Test-specific settings
   MIN_THINKING_LENGTH: 10,
   // Minimum chars to consider thinking tokens valid
-  TOOL_TEST_TIMEOUT_MS: 3e5,
-  // 5 minutes - consistent timeout for tool usage tests
-  TOOL_SUPPORT_TIMEOUT_MS: 3e5,
-  // 5 minutes - consistent timeout for tool support detection
+  TOOL_TEST_TIMEOUT_MS: 999999,
+  // Effectively unlimited for slow tool usage tests
+  TOOL_SUPPORT_TIMEOUT_MS: 999999,
+  // Effectively unlimited for tool support detection
   // Metadata retrieval
   TAGS_TIMEOUT_MS: 15e3,
   // 15 seconds for /api/tags
@@ -37,20 +37,8 @@ const CONFIG = {
   CONTEXT_BATCH_SIZE: 3,
   // Concurrent requests when fetching model context lengths
   // Rate limiting
-  TEST_DELAY_MS: 1e4,
+  TEST_DELAY_MS: 1e4
   // 10 seconds between tests to avoid rate limiting
-  // Provider-specific timeouts (now standardized)
-  PROVIDER_TIMEOUT_MS: 3e5,
-  // 5 minutes - consistent with Ollama
-  PROVIDER_TOOL_TIMEOUT_MS: 3e5,
-  // 5 minutes - consistent with Ollama tool tests
-  // Cache management
-  MAX_CACHE_SIZE: 1e3,
-  // Maximum number of entries in tool support cache
-  CACHE_TTL_DAYS: 30,
-  // Cache entries expire after 30 days
-  CACHE_CLEANUP_SIZE: 200
-  // Remove oldest 200 entries during cleanup
 };
 const TEST_CONFIG_DIR = path.join(os.homedir(), ".pi", "agent");
 const TEST_CONFIG_PATH = path.join(TEST_CONFIG_DIR, "model-test-config.json");
@@ -191,43 +179,7 @@ function cacheToolSupport(model, support, family) {
     family
   };
   _toolSupportCacheInMemory = cache;
-  ensureCacheClean();
   writeToolSupportCache(cache);
-}
-function cleanupToolSupportCache() {
-  const cache = readToolSupportCache();
-  const now = Date.now();
-  const ttlMs = CONFIG.CACHE_TTL_DAYS * 24 * 60 * 60 * 1e3;
-  const cleanedCache = {};
-  const entriesWithTimestamps = [];
-  for (const [key, record] of Object.entries(cache)) {
-    const timestamp = new Date(record.testedAt).getTime();
-    if (now - timestamp < ttlMs) {
-      cleanedCache[key] = record;
-      entriesWithTimestamps.push({ key, record, timestamp });
-    }
-  }
-  entriesWithTimestamps.sort((a, b) => a.timestamp - b.timestamp);
-  if (entriesWithTimestamps.length > CONFIG.MAX_CACHE_SIZE) {
-    const keepCount = CONFIG.MAX_CACHE_SIZE - CONFIG.CACHE_CLEANUP_SIZE;
-    const entriesToKeep = entriesWithTimestamps.slice(-keepCount);
-    const finalCache = {};
-    entriesToKeep.forEach(({ key, record }) => {
-      finalCache[key] = record;
-    });
-    writeToolSupportCache(finalCache);
-    _toolSupportCacheInMemory = finalCache;
-  } else {
-    writeToolSupportCache(cleanedCache);
-    _toolSupportCacheInMemory = cleanedCache;
-  }
-}
-function ensureCacheClean() {
-  const cache = readToolSupportCache();
-  if (Object.keys(cache).length > CONFIG.MAX_CACHE_SIZE * 0.9) {
-    debugLog("model-test", "Cache size exceeded threshold, performing cleanup");
-    cleanupToolSupportCache();
-  }
 }
 const TEST_HISTORY_DIR = path.join(os.homedir(), ".pi", "agent", "cache");
 const TEST_HISTORY_PATH = path.join(TEST_HISTORY_DIR, "model-test-history.json");
@@ -414,18 +366,34 @@ The JSON object must have exactly these 4 keys:
       parsed = JSON.parse(cleaned);
     } catch {
       const cleaned = msg.replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
-      let repaired = enhancedJsonRepair(cleaned);
-      if (repaired !== cleaned) {
+      let braceDepth = 0, bracketDepth = 0;
+      let inString = false, escapeNext = false;
+      for (let i = 0; i < cleaned.length; i++) {
+        const c = cleaned[i];
+        if (escapeNext) {
+          escapeNext = false;
+          continue;
+        }
+        if (c === "\\") {
+          if (inString) escapeNext = true;
+          continue;
+        }
+        if (c === '"') {
+          inString = !inString;
+          continue;
+        }
+        if (inString) continue;
+        if (c === "{") braceDepth++;
+        else if (c === "}") braceDepth = Math.max(0, braceDepth - 1);
+        else if (c === "[") bracketDepth++;
+        else if (c === "]") bracketDepth = Math.max(0, bracketDepth - 1);
+      }
+      if (braceDepth > 0 || bracketDepth > 0) {
+        const repaired = cleaned + "}".repeat(braceDepth) + "]".repeat(bracketDepth);
         try {
           parsed = JSON.parse(repaired);
-          repairNote = " (repaired JSON)";
+          repairNote = " (repaired truncated JSON)";
         } catch {
-          repaired = basicJsonRepair(cleaned);
-          try {
-            parsed = JSON.parse(repaired);
-            repairNote = " (basic repair)";
-          } catch {
-          }
         }
       }
     }
@@ -455,45 +423,6 @@ The JSON object must have exactly these 4 keys:
     return { pass: false, score: "ERROR", output: e.message, elapsedMs: 0 };
   }
 }
-function enhancedJsonRepair(json) {
-  let repaired = json;
-  repaired = repaired.replace(/,\s*([}\]])/g, "$1");
-  repaired = repaired.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, (match, content) => {
-    const fixedContent = content.replace(/(?<!\\)"/g, '\\"');
-    return '"' + fixedContent + '"';
-  });
-  repaired = repaired.replace(/\\u([0-9a-fA-F]{3})/g, "\\u$1000");
-  repaired = repaired.replace(/\\u([0-9a-fA-F]{2})/g, "\\u0100");
-  return repaired;
-}
-function basicJsonRepair(json) {
-  let braceDepth = 0, bracketDepth = 0;
-  let inString = false, escapeNext = false;
-  for (let i = 0; i < json.length; i++) {
-    const c = json[i];
-    if (escapeNext) {
-      escapeNext = false;
-      continue;
-    }
-    if (c === "\\") {
-      if (inString) escapeNext = true;
-      continue;
-    }
-    if (c === '"') {
-      inString = !inString;
-      continue;
-    }
-    if (inString) continue;
-    if (c === "{") braceDepth++;
-    else if (c === "}") braceDepth = Math.max(0, braceDepth - 1);
-    else if (c === "[") bracketDepth++;
-    else if (c === "]") bracketDepth = Math.max(0, bracketDepth - 1);
-  }
-  if (braceDepth > 0 || bracketDepth > 0) {
-    return json + "}".repeat(braceDepth) + "]".repeat(bracketDepth);
-  }
-  return json;
-}
 export {
   CONFIG,
   TEST_CONFIG_PATH,
@@ -501,9 +430,7 @@ export {
   WEATHER_TOOL_DEFINITION,
   appendTestHistory,
   cacheToolSupport,
-  cleanupToolSupportCache,
   detectRegression,
-  ensureCacheClean,
   getCachedToolSupport,
   getEffectiveConfig,
   getModelHistory,
