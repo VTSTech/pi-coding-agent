@@ -194,7 +194,8 @@ build_shared() {
   [ -f "$PKG_DIR/README.md" ] && cp "$PKG_DIR/README.md" "$TARGET/README.md"
 
   # ── tarball ──────────────────────────────────────────────────────────
-  (cd "$TARGET" && tar -czf "$BUILD_DIR/$TFILE" .)
+  # Use * instead of . to avoid a leading "./" entry that npm rejects
+  (cd "$TARGET" && tar -czf "$BUILD_DIR/$TFILE" *)
 
   log "  $compiled files transpiled"
   log "ok @vtstech/pi-shared v${VERSION} -> $BUILD_DIR/$TFILE"
@@ -258,7 +259,8 @@ build_extension() {
   [ -f "$PKG_DIR/README.md" ] && cp "$PKG_DIR/README.md" "$TARGET/README.md"
 
   # ── tarball ──────────────────────────────────────────────────────────
-  (cd "$TARGET" && tar -czf "$BUILD_DIR/$TFILE" .)
+  # Use * instead of . to avoid a leading "./" entry that npm rejects
+  (cd "$TARGET" && tar -czf "$BUILD_DIR/$TFILE" *)
 
   log "ok @vtstech/${pkg_name} v${VERSION} -> $BUILD_DIR/$TFILE"
 }
