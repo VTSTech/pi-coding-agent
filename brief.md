@@ -2,13 +2,13 @@
 
 **Generated:** 2026-05-07  
 **Project:** pca-ext (@vtstech/pi-coding-agent-extensions)  
-**Version:** 1.2.3  
+**Version:** 1.2.5  
 **Type:** Pi Coding Agent extensions package  
 **Repository:** https://github.com/VTSTech/pi-coding-agent
 
 ## Project Overview
 
-A comprehensive Pi package providing 9 extensions for the Pi Coding Agent, optimized for resource-constrained environments like Google Colab (CPU-only, 12GB RAM) with Ollama local models and cloud providers. Extensions include security, diagnostics, model benchmarking, synchronization tools, and system monitoring.
+A comprehensive Pi package providing 9 extensions for the Pi Coding Agent, optimized for resource-constrained environments like Google Colab (CPU-only, 12GB RAM) with Ollama local models and cloud providers. Extensions include security, diagnostics, model benchmarking, synchronization tools, and system monitoring. All extensions battle-tested on real hardware with local Ollama models and cloud providers.
 
 ## Tech Stack
 
@@ -17,6 +17,7 @@ A comprehensive Pi package providing 9 extensions for the Pi Coding Agent, optim
 - **Build:** esbuild for bundling, npm workspaces
 - **Package Format:** Pi package with individual npm packages
 - **Testing:** tsx test runner
+- **Framework:** Pi Coding Agent v0.66+ (@earendil-works/pi-coding-agent)
 
 ## Directory Structure
 
@@ -34,9 +35,9 @@ pca-ext/
 ## Critical Files Index
 
 ### Core Extensions (extensions/)
-- **api.ts** (30KB) - API mode switcher, URL management, thinking settings
+- **api.ts** (30KB) - API mode switcher, URL management, thinking settings, compat flags
 - **diag.ts** (29KB) - System diagnostic suite with security validation
-- **model-test.ts** (66KB) - Model benchmarking for Ollama and cloud providers
+- **model-test.ts** (66KB) - Model benchmarking for Ollama and 11 cloud providers
 - **security.ts** (21KB) - Command/path/SSRF protection with 3 security modes
 - **soul.ts** (25KB) - SoulSpec persona management with progressive disclosure
 - **status.ts** (19KB) - System resource monitor with status bar integration
@@ -46,10 +47,11 @@ pca-ext/
 
 ### Shared Utilities (shared/)
 - **ollama.ts** (27KB) - Ollama API helpers, provider detection, retry logic
-- **security.ts** (45KB) - Security validation, SSRF protection, audit logging
-- **model-test-utils.ts** (26KB) - Test utilities, config, history management
+- **security.ts** (46KB) - Security validation, SSRF protection, audit logging
+- **model-test-utils.ts** (31KB) - Test utilities, config, history management
 - **react-parser.ts** (21KB) - Multi-dialect ReAct text parser
 - **types.ts** (4KB) - TypeScript types and error classes
+- **format.ts** (13KB) - Shared formatting utilities
 
 ### Configuration
 - **package.json** - Pi package manifest with extensions/themes paths
@@ -75,22 +77,33 @@ pca-ext/
 
 ### Security Layer
 - 3 security modes: basic, max, off
-- 41 critical command blocks + 25 extended blocks
+- 41 critical commands always blocked + 25 extended commands (max mode)
 - SSRF protection with 22 always-blocked + 7 max-only URL patterns
-- Path validation with symlink dereferencing
-- Audit logging to ~/.pi/agent/audit.log
+- Path validation with symlink dereferencing and boundary checking
+- Shell injection detection with regex patterns
+- Audit logging to ~/.pi/agent/audit.log (JSON Lines)
+- Fixed symlink escape vulnerability in v1.2.4
 
 ### Model Testing
-- Supports Ollama and 11 cloud providers (OpenRouter, Anthropic, Google, etc.)
+- Supports Ollama and 11 cloud providers (OpenRouter, Anthropic, Google, OpenAI, Groq, DeepSeek, Mistral, xAI, Together, Fireworks, Cohere)
 - 6 test categories for Ollama, 4 for cloud providers
 - Automatic provider detection and URL resolution
-- Tool support caching and thinking token fallback
+- Tool support caching with persistent storage
+- Thinking token fallback for models like qwen3
+- JSON repair for truncated responses
 
 ### System Integration
-- Status bar integration with CPU/RAM/swap monitoring
+- Status bar integration with CPU/RAM/swap monitoring (local Ollama only)
 - Progressive disclosure for personas (Level 1-3)
 - Remote Ollama support via tunnel URL auto-detection
 - Matrix theme with neon green aesthetics
+- Cross-platform build system with PowerShell/bash scripts
+
+### Package Management
+- Individual npm packages under @vtstech scope
+- Shared utilities bundled into each package
+- Version synchronization across all packages
+- Automated build scripts for cross-platform publishing
 
 ## Known Landmines
 
@@ -99,6 +112,7 @@ pca-ext/
 3. **Remote Ollama:** URLs are auto-saved to models.json after sync
 4. **Tool Support:** Some models require ReAct mode to function properly
 5. **Memory Constraints:** Ollama models optimized for 12GB RAM environments
+6. **Framework Migration:** Recently migrated from @mariozechner to @earendil-works packages
 
 ## Request Lifecycle
 
@@ -115,3 +129,20 @@ pca-ext/
 - **~/.pi/agent/cache/tool_support.json** - Model tool support cache
 - **models.json** - Provider and model configuration
 - **~/.pi/agent/audit.log** - Security audit log (JSON Lines)
+- **VERSION** - Single source of truth for package version
+
+## Recent Changes (v1.2.5)
+
+- **Framework Migration:** Updated all peer dependencies from @mariozechner to @earendil-works packages
+- **Build System:** Enhanced cross-platform publishing scripts with dist folder support
+- **Version Consistency:** Fixed version skew between source and built packages
+- **Security:** Fixed symlink escape vulnerability in path validation (v1.2.4)
+
+## Google Colab Optimization
+
+Extensions optimized for CPU-only 12GB RAM environments with recommended Ollama settings:
+- CONTEXT_LENGTH: 4096 (reduced from 262k)
+- MAX_LOADED_MODELS: 1
+- KV_CACHE_TYPE: f16
+- BATCH_SIZE: 512
+- NO_CUDA: 1

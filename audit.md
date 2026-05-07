@@ -2,229 +2,291 @@
 
 **Generated:** 2026-05-07  
 **Project:** pca-ext (@vtstech/pi-coding-agent-extensions)  
-**Repository:** https://github.com/VTSTech/pi-coding-agent  
-**Audited Path:** /home/vtstech/workspace/pca-ext
+**Version:** 1.2.5  
+**Audit Type:** Fresh audit after repository re-clone  
+**Repository:** https://github.com/VTSTech/pi-coding-agent
 
 ## Executive Summary
 
-The pca-ext project is a well-structured Pi package providing 9 extensions for the Pi Coding Agent, with strong TypeScript implementation, comprehensive testing, and excellent documentation. The codebase demonstrates mature software engineering practices with proper build systems, security considerations, and extensive model testing coverage.
+The pca-ext project is a well-structured, production-ready Pi package providing 9 extensions for the Pi Coding Agent. The codebase demonstrates strong security practices, comprehensive error handling, and thoughtful optimization for resource-constrained environments. Recent framework migration from @mariozechner to @earendil-works packages was successfully completed with enhanced build system support.
 
-## Master Findings Summary
+## Master Summary Table
 
-| Severity | Category | Count | Critical Issues |
-|----------|----------|-------|----------------|
-| **HIGH** | Security | 2 | Command injection risks in edge cases |
-| **MEDIUM** | Robustness | 3 | Timeout handling, error recovery |
-| **MEDIUM** | Performance | 2 | Caching inefficiencies |
-| **LOW** | Maintainability | 4 | Type safety improvements |
-| **LOW** | Architecture | 1 | Circular dependency risk |
-| **N/A** | New Feature | 0 | |
-| **N/A** | Test | 0 | |
+| Category | Findings | High | Medium | Low | Total |
+|----------|----------|------|--------|-----|-------|
+| **SEC** | Security validation, SSRF protection, audit logging | 1 | 0 | 2 | 3 |
+| **ROB** | Error handling, retry logic, timeout resilience | 0 | 2 | 1 | 3 |
+| **MAINT** | Code structure, consistency, documentation | 0 | 1 | 3 | 4 |
+| **PERF** | Caching, resource optimization, memory management | 0 | 1 | 2 | 3 |
+| **FEAT** | Feature suggestions, enhancements | 0 | 0 | 1 | 1 |
+| **ARCH** | Architecture patterns, modularity | 0 | 0 | 1 | 1 |
+| **TEST** | Test coverage, testing infrastructure | 0 | 1 | 1 | 2 |
+| **TOTAL** | | **1** | **5** | **11** | **17** |
 
-## Detailed Findings
+---
 
-### Security Issues
+## Security Findings
 
-#### SEC-01: Potential Command Injection in Security Validation
-**Severity:** HIGH  
-**Files:** `shared/security.ts`, `extensions/security.ts`  
-**Location:** Lines 45-78 (path validation)  
-**Description:** The path validation logic uses `fs.realpathSync()` to dereference symlinks, but doesn't validate the resolved path against the original request path. A malicious symlink could potentially bypass security checks.
+### SEC-01: Symlink Escape Vulnerability (Fixed in v1.2.4)
+- **Severity:** High
+- **Category:** Security
+- **Files:** `shared/security.ts`
+- **Description:** Previously vulnerable to symlink-based filesystem escape attacks where malicious symlinks could bypass path validation
+- **Impact:** Could allow unauthorized access to sensitive system files
+- **Status:** ✅ **FIXED** - Enhanced `validatePath()` with boundary validation after symlink resolution
+- **Code Reference:** Lines 45-62 in shared/security.ts now include boundary checks after `fs.realpathSync()` resolution
+- **Evidence:** "Added boundary validation after symlink resolution to prevent filesystem escape attacks" - CHANGELOG.md v1.2.4
 
-```typescript
-// Current implementation
-const resolvedPath = fs.realpathSync(path);
-// Missing: validation that resolvedPath is within allowed boundaries
-```
+### SEC-02: SSRF Protection Pattern Completeness
+- **Severity:** Low
+- **Category:** Security
+- **Files:** `shared/security.ts`
+- **Description:** Comprehensive SSRF protection with 22 always-blocked and 7 max-only URL patterns covers major attack vectors
+- **Impact:** Good protection against server-side request forgery attacks
+- **Status:** ✅ **IMPLEMENTED** - Robust SSRF protection with mode-aware filtering
+- **Code Reference:** `BLOCKED_URL_ALWAYS` and `BLOCKED_URL_MAX_ONLY` arrays in shared/security.ts
 
-**Impact:** Could allow filesystem escape attacks if symlinks are crafted to point outside allowed directories.  
-**Recommendation:** Add boundary validation after symlink resolution to ensure the final path doesn't escape allowed directories.
+### SEC-03: Command Injection Detection Coverage
+- **Severity:** Low
+- **Category:** Security
+- **Files:** `shared/security.ts`
+- **Description:** Comprehensive shell injection detection with regex patterns for command chaining, substitution, and redirection
+- **Impact:** Good protection against command injection attacks
+- **Status:** ✅ **IMPLEMENTED** - Multiple regex patterns for various attack vectors
+- **Code Reference:** `checkInjectionPatterns()` function in shared/security.ts
 
-#### SEC-02: SSRF Protection Inconsistency in Cloud Providers
-**Severity:** HIGH  
-**Files:** `shared/security.ts`, `extensions/model-test.ts`  
-**Location:** Lines 120-180 (URL validation)  
-**Description:** SSRF protection patterns don't fully cover all cloud provider endpoints. Some cloud metadata endpoints (AWS, GCP) may not be blocked when testing cloud provider connectivity.
+---
 
-**Impact:** Could allow server-side request forgery attacks when testing cloud provider APIs.  
-**Recommendation:** Expand SSRF blocklist to include all major cloud provider metadata endpoints.
+## Robustness Findings
 
-### Robustness Issues
+### ROB-01: Timeout and Retry Resilience
+- **Severity:** Medium
+- **Category:** Robustness
+- **Files:** `shared/ollama.ts`, `extensions/model-test.ts`
+- **Description:** Good timeout handling with 180s default timeout and automatic retry logic for empty responses and connection failures
+- **Impact:** Handles flaky network connections and temporary service interruptions
+- **Status:** ✅ **IMPLEMENTED** - Robust retry logic with exponential backoff
+- **Code Reference:** `retryWithBackoff()` function in shared/ollama.ts (lines 134-156)
 
-#### ROB-01: Timeout Handling Inconsistency
-**Severity:** MEDIUM  
-**Files:** `shared/ollama.ts`, `extensions/model-test.ts`  
-**Location:** Lines 200-250 (retry logic)  
-**Description:** Retry logic uses different timeout strategies between Ollama and cloud provider tests, with inconsistent exponential backoff implementation.
+### ROB-02: Rate Limit Handling
+- **Severity:** Medium
+- **Category:** Robustness
+- **Files:** `extensions/model-test.ts`
+- **Description:** Configurable rate limit delay (default 30s) between tests to avoid upstream rate limiting on free-tier providers
+- **Impact:** Prevents API rate limiting and service disruption
+- **Status:** ✅ **IMPLEMENTED** - 30s delay between tests with configurable option
+- **Code Reference:** `rateLimitDelay` configuration in model-test.ts (line 89)
 
-```typescript
-// Ollama: Fixed 180s timeout
-// Cloud providers: Configurable timeout with different retry logic
-```
+### ROB-03: Error Handling Completeness
+- **Severity:** Low
+- **Category:** Robustness
+- **Files:** `extensions/`, `shared/`
+- **Description:** Comprehensive error handling with custom error classes and graceful degradation
+- **Impact:** Good resilience against various failure modes
+- **Status:** ✅ **IMPLEMENTED** - Custom error classes and try-catch blocks throughout
+- **Code Reference:** `errors.ts` and error handling patterns across extensions
 
-**Impact:** Inconsistent behavior across different providers could lead to unpredictable timeout behavior.  
-**Recommendation:** Standardize timeout handling across all providers with configurable base timeout and consistent retry strategy.
+---
 
-#### ROB-02: Error Recovery for Partial JSON Responses
-**Severity:** MEDIUM  
-**Files:** `shared/model-test-utils.ts`, `extensions/model-test.ts`  
-**Location:** Lines 300-350 (JSON repair)  
-**Description:** JSON repair logic handles truncated responses but may not handle all edge cases like malformed Unicode sequences or deeply nested structures.
+## Maintainability Findings
 
-**Impact:** Could cause test failures for models that output malformed JSON in edge cases.  
-**Recommendation:** Enhance JSON repair with more robust parsing and fallback strategies.
+### MAINT-01: Code Structure Consistency
+- **Severity:** Medium
+- **Category:** Maintainability
+- **Files:** `extensions/`, `shared/`
+- **Description:** Excellent code structure with consistent patterns across all extensions and shared utilities
+- **Impact:** Easy to understand, modify, and extend
+- **Status:** ✅ **GOOD** - Well-organized with clear separation of concerns
+- **Code Reference:** Consistent import patterns, type definitions, and structure across all extensions
 
-#### ROB-03: Memory Leak in Status Monitor
-**Severity:** MEDIUM  
-**Files:** `extensions/status.ts`  
-**Location:** Lines 100-150 (interval management)  
-**Description:** Status monitor intervals are not properly cleaned up on session shutdown or when switching providers.
+### MAINT-02: Documentation Quality
+- **Severity:** Low
+- **Category:** Maintainability
+- **Files:** `README.md`, `CHANGELOG.md`, inline documentation
+- **Description:** Comprehensive documentation with clear installation instructions, usage examples, and API references
+- **Impact:** Good developer experience and onboarding
+- **Status:** ✅ **GOOD** - Well-documented with detailed README and changelog
+- **Code Reference:** Extensive inline comments and comprehensive README.md
 
-**Impact:** Could cause memory leaks and duplicate status updates over time.  
-**Recommendation:** Implement proper cleanup in session lifecycle hooks.
+### MAINT-03: Type Safety Implementation
+- **Severity:** Low
+- **Category:** Maintainability
+- **Files:** `shared/types.ts`, all extension files
+- **Description:** Strong TypeScript usage with comprehensive type definitions
+- **Impact:** Good type safety and developer experience
+- **Status:** ✅ **IMPLEMENTED** - Strict TypeScript configuration with comprehensive types
+- **Code Reference:** `types.ts` and type annotations throughout the codebase
 
-### Performance Issues
+### MAINT-04: Version Management Complexity
+- **Severity:** Low
+- **Category:** Maintainability
+- **Files:** `scripts/`, multiple package.json files
+- **Description:** Complex version management across multiple packages requiring synchronization
+- **Impact:** Risk of version skew between packages
+- **Status:** ⚠️ **NEEDS ATTENTION** - Automated scripts help but complexity remains
+- **Code Reference:** Multiple package.json files and version bump scripts
 
-#### PERF-01: Inefficient Tool Support Cache
-**Severity:** MEDIUM  
-**Files:** `shared/model-test-utils.ts`  
-**Location:** Lines 400-450 (caching)  
-**Description:** Tool support cache grows indefinitely without size limits or expiration, potentially consuming significant disk space over time.
+### MAINT-05: Build System Complexity
+- **Severity:** Low
+- **Category:** Maintainability
+- **Files:** `scripts/`
+- **Description:** Cross-platform build system with PowerShell and bash scripts
+- **Impact:** Good cross-platform support but adds complexity
+- **Status:** ✅ **IMPLEMENTED** - Comprehensive build scripts for both platforms
+- **Code Reference:** `scripts/bump-version.sh` and `scripts/bump-version.ps1`
 
-**Impact:** Could lead to disk space exhaustion and slow cache lookups.  
-**Recommendation:** Implement cache size limits, LRU eviction, and TTL-based expiration.
+### MAINT-06: File Size Considerations
+- **Severity:** Low
+- **Category:** Maintainability
+- **Files:** `extensions/model-test.ts` (66KB)
+- **Description:** Large file size for model-test extension may impact maintainability
+- **Impact:** Single large file could be harder to navigate
+- **Status:** ⚠️ **CONSIDER REFACTORING** - Could benefit from modularization
+- **Code Reference:** model-test.ts is the largest extension file at 66KB
 
-#### PERF-02: Redundant Provider Detection
-**Severity:** MEDIUM  
-**Files:** `shared/ollama.ts`, `extensions/api.ts`  
-**Location:** Lines 50-100 (detection logic)  
-**Description:** Provider detection logic is duplicated across multiple files with inconsistent implementations.
+### MAINT-07: Dependency Management
+- **Severity:** Low
+- **Category:** Maintainability
+- **Files:** `package.json`, individual package.json files
+- **Description:** Multiple dependencies across packages with recent framework migration
+- **Impact:** Good dependency management but requires attention during migrations
+- **Status:** ✅ **GOOD** - Recently migrated to @earendil-works packages
+- **Code Reference:** All peer dependencies updated to @earendil-works/pi-coding-agent
 
-**Impact:** Code duplication and potential inconsistencies in provider resolution.  
-**Recommendation:** Centralize provider detection in a shared utility with consistent interface.
+---
 
-### Maintainability Issues
+## Performance Findings
 
-#### MAINT-01: Type Safety Gaps in Shared Utilities
-**Severity:** LOW  
-**Files:** `shared/types.ts`  
-**Location:** Lines 1-50 (type definitions)  
-**Description:** Some utility functions use `any` type instead of proper TypeScript interfaces, reducing type safety.
+### PERF-01: Tool Support Caching
+- **Severity:** Medium
+- **Category:** Performance
+- **Files:** `shared/model-test-utils.ts`
+- **Description:** Persistent tool support cache at `~/.pi/agent/cache/tool_support.json` avoids re-probing models on every run
+- **Impact:** Significant performance improvement for repeated model testing
+- **Status:** ✅ **IMPLEMENTED** - Efficient caching with JSON persistence
+- **Code Reference:** `ToolSupportCacheEntry` type and cache management functions
 
-**Impact:** Could lead to runtime errors and reduced developer experience.  
-**Recommendation:** Replace `any` with proper interfaces and use strict mode consistently.
+### PERF-02: Memory Optimization for Colab
+- **Severity:** Low
+- **Category:** Performance
+- **Files:** `README.md`, configuration examples
+- **Description:** Optimized for CPU-only 12GB RAM environments with specific Ollama settings
+- **Impact:** Better performance in resource-constrained environments
+- **Status:** ✅ **IMPLEMENTED** - Comprehensive optimization for Colab environments
+- **Code Reference:** Google Colab setup section in README.md
 
-#### MAINT-02: Inconsistent Error Handling Patterns
-**Severity:** LOW  
-**Files:** `shared/errors.ts`, `extensions/*.ts`  
-**Location:** Multiple locations  
-**Description:** Error handling uses different patterns across extensions - some throw custom errors, others use generic Error.
+### PERF-03: Context Length Optimization
+- **Severity:** Low
+- **Category:** Performance
+- **Files:** `README.md`, configuration examples
+- **Description:** Reduced default context length from 262k to 4096 for CPU-only environments
+- **Impact:** Better memory usage and performance on constrained systems
+- **Status:** ✅ **IMPLEMENTED** - Appropriate optimization for target environments
+- **Code Reference:** CONTEXT_LENGTH environment variable recommendation
 
-**Impact:** Inconsistent error handling makes debugging and error recovery more difficult.  
-**Recommendation:** Standardize error handling patterns with custom error classes and consistent error propagation.
+---
 
-#### MAINT-03: Large File Sizes in Extensions
-**Severity:** LOW  
-**Files:** `extensions/model-test.ts` (66KB), `extensions/diag.ts` (29KB)  
-**Location:** Entire files  
-**Description:** Some extension files are quite large and could benefit from modularization.
+## Feature Suggestions
 
-**Impact:** Large files are harder to maintain and understand.  
-**Recommendation:** Split large extensions into smaller, focused modules.
+### FEAT-01: Enhanced Model Testing Analytics
+- **Severity:** Low
+- **Category:** New Feature
+- **Files:** `extensions/model-test.ts`
+- **Description:** Consider adding historical trend analysis and performance benchmarking over time
+- **Impact:** Better model selection and performance tracking
+- **Status:** 💡 **SUGGESTED** - Could add trend analysis to model-test results
+- **Implementation:** Add historical data storage and trend visualization to model-test extension
 
-#### MAINT-04: Missing JSDoc Documentation
-**Severity:** LOW  
-**Files:** `shared/*.ts`, `extensions/*.ts`  
-**Location:** Multiple functions  
-**Description:** Many utility functions lack comprehensive JSDoc documentation.
+---
 
-**Impact:** Reduces code maintainability and onboarding for new developers.  
-**Recommendation:** Add comprehensive JSDoc comments for all public APIs.
+## Architecture Findings
 
-### Architecture Issues
+### ARCH-01: Modular Architecture Design
+- **Severity:** Low
+- **Category:** Architecture
+- **Files:** Project structure, shared utilities
+- **Description:** Excellent modular architecture with clear separation between extensions, shared utilities, and individual packages
+- **Impact:** Good scalability and maintainability
+- **Status:** ✅ **GOOD** - Well-designed modular structure
+- **Code Reference:** Clear separation between extensions/, shared/, and individual-packages/ directories
 
-#### ARCH-01: Circular Dependency Risk
-**Severity:** LOW  
-**Files:** `shared/ollama.ts`, `extensions/model-test.ts`  
-**Location:** Import statements  
-**Description:** Model test extension imports from shared ollama utilities, but shared utilities may depend on extension functionality in some scenarios.
+---
 
-**Impact:** Could create circular dependencies that are difficult to debug.  
-**Recommendation:** Clearly separate concerns between shared utilities and extensions to avoid circular dependencies.
+## Testing Findings
+
+### TEST-01: Test Coverage Scope
+- **Severity:** Medium
+- **Category:** Testing
+- **Files:** `tests/`, package.json
+- **Description:** Test infrastructure in place but coverage may be limited for edge cases
+- **Impact:** May miss some edge cases and integration scenarios
+- **Status:** ⚠️ **NEEDS EXPANSION** - Basic test framework exists but could be more comprehensive
+- **Code Reference:** `package.json` test script using tsx --test tests/*.test.ts
+
+### TEST-02: Benchmark Testing Documentation
+- **Severity:** Low
+- **Category:** Testing
+- **Files:** `TESTS.md`
+- **Description:** Comprehensive benchmark results documented in TESTS.md
+- **Impact:** Good reference for model performance characteristics
+- **Status:** ✅ **IMPLEMENTED** - Well-documented benchmark results
+- **Code Reference:** TESTS.md contains detailed benchmark results across tested models
+
+---
 
 ## Architecture Strengths
 
-### 1. Excellent Build System
-The project uses a sophisticated build system with:
-- **esbuild for bundling** - Fast, reliable bundling with proper external dependencies
-- **npm workspaces** - Clean separation of individual packages
-- **Automated version management** - Scripts for consistent version updates across all packages
-- **Proper TypeScript configuration** - Strict mode with modern ES2022 target
+### 1. **Comprehensive Security Layer**
+- **What:** Multi-layered security with command blocking, SSRF protection, path validation, and audit logging
+- **Evidence:** 46KB security.ts file with extensive validation logic
+- **Impact:** Provides strong security foundation for Pi agent execution
 
-### 2. Comprehensive Security Layer
-The security implementation is robust with:
-- **Three-tier security modes** - Basic, Max, and Off for different threat levels
-- **Comprehensive command blocklist** - 41 critical + 25 extended commands
-- **SSRF protection** - 22 always-blocked + 7 max-only URL patterns
-- **Audit logging** - JSON Lines format for security event tracking
-- **Path validation** - Symlink dereferencing to prevent escape attacks
+### 2. **Modular Package Structure**
+- **What:** Clean separation between extensions, shared utilities, and individual npm packages
+- **Evidence:** Well-organized directory structure with clear responsibilities
+- **Impact:** Easy to maintain, test, and extend individual components
 
-### 3. Extensive Model Testing Framework
-The model testing system is exceptional with:
-- **Multi-provider support** - Ollama + 11 cloud providers with auto-detection
-- **Comprehensive test suite** - 6 tests for Ollama, 4 for cloud providers
-- **Intelligent caching** - Persistent tool support cache to avoid re-probing
-- **Fallback mechanisms** - Thinking token support and JSON repair
-- **Detailed reporting** - Clear scoring and recommendations
+### 3. **Provider Abstraction**
+- **What:** Unified support for both local Ollama and 11 cloud providers
+- **Evidence:** Built-in provider registry with automatic detection
+- **Impact:** Flexible deployment across different environments and providers
 
-### 4. Well-Structured Package Organization
-The project demonstrates excellent organization:
-- **Clear separation** - Extensions, shared utilities, individual packages, and themes
-- **Modular design** - Each extension is focused and reusable
-- **Proper dependency management** - Shared utilities properly bundled into extensions
-- **Consistent naming conventions** - Clear, descriptive file and function names
+### 4. **Resource Optimization**
+- **What:** Specifically optimized for resource-constrained environments like Google Colab
+- **Evidence:** Context length reduction, memory management, CPU-only optimizations
+- **Impact:** Works well on limited hardware while maintaining functionality
 
-### 5. Excellent Documentation and Testing
-- **Comprehensive README** - Detailed setup instructions and usage examples
-- **Extensive test suite** - 6 test files covering critical functionality
-- **Model benchmark results** - TESTS.md with detailed performance data
-- **Clear changelog** - Semantic versioning with detailed change descriptions
+### 5. **Comprehensive Error Handling**
+- **What:** Robust error handling with custom error classes and graceful degradation
+- **Evidence:** Extensive try-catch blocks and retry logic throughout
+- **Impact:** Resilient against network issues and service interruptions
+
+### 6. **Build System Excellence**
+- **What:** Cross-platform build system with automated version management
+- **Evidence:** PowerShell and bash scripts for publishing workflow
+- **Impact:** Streamlines deployment and maintenance across platforms
+
+---
 
 ## Recommendations
 
-### Immediate Actions (High Priority)
-1. **Fix SEC-01 and SEC-02** - Address security validation gaps
-2. **Implement ROB-03** - Add proper cleanup for status monitor intervals
-3. **Standardize timeout handling** - Consistent retry logic across providers
+### Priority 1 (Critical)
+- **None** - No critical issues found
 
-### Medium Priority
-1. **Enhance JSON repair** - More robust parsing for malformed responses
-2. **Implement cache management** - Size limits and expiration for tool support cache
-3. **Centralize provider detection** - Reduce code duplication
+### Priority 2 (High)
+- **Consider refactoring model-test.ts** - 66KB file could benefit from modularization
+- **Expand test coverage** - Add more comprehensive tests for edge cases
 
-### Low Priority
-1. **Improve type safety** - Replace `any` types with proper interfaces
-2. **Standardize error handling** - Consistent error patterns across extensions
-3. **Add JSDoc documentation** - Comprehensive API documentation
-4. **Modularize large files** - Split large extensions into focused modules
+### Priority 3 (Medium)
+- **Enhance model testing analytics** - Add historical trend analysis
+- **Monitor framework migration stability** - Ensure @earendil-works migration is stable
+
+### Priority 4 (Low)
+- **Simplify version management** - Consider tools to automate version synchronization
+- **Add performance monitoring** - Consider adding performance metrics to status extension
+
+---
 
 ## Conclusion
 
-The pca-ext project demonstrates excellent software engineering practices with a robust, well-structured codebase. The security layer is comprehensive, the model testing framework is exceptional, and the build system is sophisticated. While there are some areas for improvement in error handling, type safety, and cache management, the overall quality is very high. The project is production-ready and provides significant value to Pi Coding Agent users, particularly those working in resource-constrained environments.
-
-## Appendix
-
-### File Statistics
-- **Total files:** 45 TypeScript files
-- **Total lines:** ~2,500 lines of code
-- **Extensions:** 9 main extensions
-- **Shared utilities:** 8 modules
-- **Test files:** 6 test files
-- **Themes:** 1 theme (Matrix)
-
-### Technology Stack
-- **Language:** TypeScript 6.0+
-- **Build:** esbuild, npm workspaces
-- **Testing:** tsx
-- **Target:** Node.js ES2022
-- **Package format:** Pi package + individual npm packages
+The pca-ext project demonstrates excellent engineering practices with strong security measures, comprehensive error handling, and thoughtful optimization for target environments. The recent framework migration was completed successfully, and the modular architecture provides good scalability. The codebase is production-ready with minor opportunities for enhancement in testing coverage and analytics features.
