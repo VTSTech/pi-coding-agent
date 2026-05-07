@@ -319,8 +319,17 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async (_event, ctx) => {
-    if (updateInterval) { clearInterval(updateInterval); updateInterval = null; }
-    if (toolTimerInterval) { clearInterval(toolTimerInterval); toolTimerInterval = null; }
+    // Robust cleanup of all intervals to prevent memory leaks
+    if (updateInterval) { 
+      clearInterval(updateInterval); 
+      updateInterval = null; 
+      debugLog("status", "Cleared update interval");
+    }
+    if (toolTimerInterval) { 
+      clearInterval(toolTimerInterval); 
+      toolTimerInterval = null; 
+      debugLog("status", "Cleared tool timer interval");
+    }
     ctxUi = null;
     currentCtx = null;
 
@@ -433,6 +442,7 @@ export default function (pi: ExtensionAPI) {
     if (toolTimerInterval) {
       clearInterval(toolTimerInterval);
       toolTimerInterval = null;
+      debugLog("status", "Tool timer stopped");
     }
   }
 

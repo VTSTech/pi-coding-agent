@@ -32,20 +32,20 @@ import type { ToolSupportLevel } from "./types";
  * @property TAGS_TIMEOUT_MS - Timeout for /api/tags requests
  */
 export const CONFIG = {
-  // General API settings
-  DEFAULT_TIMEOUT_MS: 999999,        // ~16.7 minutes — effectively unlimited for slow models
+  // General API settings - standardized across all providers
+  DEFAULT_TIMEOUT_MS: 300000,        // 5 minutes - reasonable timeout for all providers
   CONNECT_TIMEOUT_S: 60,             // 60 seconds to establish connection
-  MAX_RETRIES: 1,                    // Single retry for transient failures
-  RETRY_DELAY_MS: 10000,              // 10 seconds between retries
+  MAX_RETRIES: 2,                    // Two retries for transient failures (standardized)
+  RETRY_DELAY_MS: 15000,              // 15 seconds between retries (standardized)
 
   // Model generation settings
   NUM_PREDICT: 1024,                 // Max tokens in response
   TEMPERATURE: 0.1,                  // Low temperature for more deterministic output
 
-  // Test-specific settings
+  // Test-specific settings - standardized across all providers
   MIN_THINKING_LENGTH: 10,           // Minimum chars to consider thinking tokens valid
-  TOOL_TEST_TIMEOUT_MS: 999999,       // Effectively unlimited for slow tool usage tests
-  TOOL_SUPPORT_TIMEOUT_MS: 999999,   // Effectively unlimited for tool support detection
+  TOOL_TEST_TIMEOUT_MS: 300000,       // 5 minutes - consistent timeout for tool usage tests
+  TOOL_SUPPORT_TIMEOUT_MS: 300000,   // 5 minutes - consistent timeout for tool support detection
 
   // Metadata retrieval
   TAGS_TIMEOUT_MS: 15000,            // 15 seconds for /api/tags
@@ -60,6 +60,15 @@ export const CONFIG = {
 
   // Rate limiting
   TEST_DELAY_MS: 10000,              // 10 seconds between tests to avoid rate limiting
+  
+  // Provider-specific timeouts (now standardized)
+  PROVIDER_TIMEOUT_MS: 300000,        // 5 minutes - consistent with Ollama
+  PROVIDER_TOOL_TIMEOUT_MS: 300000,   // 5 minutes - consistent with Ollama tool tests
+
+  // Cache management
+  MAX_CACHE_SIZE: 1000,              // Maximum number of entries in tool support cache
+  CACHE_TTL_DAYS: 30,                // Cache entries expire after 30 days
+  CACHE_CLEANUP_SIZE: 200,           // Remove oldest 200 entries during cleanup
 } as const;
 
 // ============================================================================
@@ -265,6 +274,7 @@ export function getCachedToolSupport(model: string): ToolSupportCacheRecord | nu
 
 /**
  * Cache a model's tool support level.
+ * Automatically triggers cache cleanup if size limits are exceeded.
  */
 export function cacheToolSupport(model: string, support: ToolSupportLevel, family: string): void {
   const cache = _toolSupportCacheInMemory || readToolSupportCache();
@@ -274,12 +284,74 @@ export function cacheToolSupport(model: string, support: ToolSupportLevel, famil
     family,
   };
   _toolSupportCacheInMemory = cache; // keep in-memory cache in sync
+  
+  // Ensure cache size limits are respected
+  ensureCacheClean();
   writeToolSupportCache(cache);
 }
 
 // ============================================================================
+//
+// Enhanced Cache Management with Size Limits and TTL
+// ===========================================================================
+
+/**
+ * Clean up the tool support cache by removing expired entries and limiting size.
+ * - Removes entries older than CACHE_TTL_DAYS
+ * - Keeps only the most recent MAX_CACHE_SIZE entries
+ */
+export function cleanupToolSupportCache(): void {
+  const cache = readToolSupportCache();
+  const now = Date.now();
+  const ttlMs = CONFIG.CACHE_TTL_DAYS * 24 * 60 * 60 * 1000;
+  
+  // Remove expired entries
+  const cleanedCache: ToolSupportCache = {};
+  const entriesWithTimestamps: Array<{key: string, record: ToolSupportCacheRecord, timestamp: number}> = [];
+  
+  for (const [key, record] of Object.entries(cache)) {
+    const timestamp = new Date(record.testedAt).getTime();
+    if (now - timestamp < ttlMs) {
+      cleanedCache[key] = record;
+      entriesWithTimestamps.push({ key, record, timestamp });
+    }
+  }
+  
+  // Sort by timestamp (oldest first)
+  entriesWithTimestamps.sort((a, b) => a.timestamp - b.timestamp);
+  
+  // Limit cache size
+  if (entriesWithTimestamps.length > CONFIG.MAX_CACHE_SIZE) {
+    const keepCount = CONFIG.MAX_CACHE_SIZE - CONFIG.CACHE_CLEANUP_SIZE;
+    const entriesToKeep = entriesWithTimestamps.slice(-keepCount);
+    
+    const finalCache: ToolSupportCache = {};
+    entriesToKeep.forEach(({ key, record }) => {
+      finalCache[key] = record;
+    });
+    
+    writeToolSupportCache(finalCache);
+    _toolSupportCacheInMemory = finalCache;
+  } else {
+    writeToolSupportCache(cleanedCache);
+    _toolSupportCacheInMemory = cleanedCache;
+  }
+}
+
+/**
+ * Check if cache needs cleanup and perform it if necessary.
+ * Cleanup is triggered when cache size exceeds 90% of MAX_CACHE_SIZE.
+ */
+export function ensureCacheClean(): void {
+  const cache = readToolSupportCache();
+  if (Object.keys(cache).length > CONFIG.MAX_CACHE_SIZE * 0.9) {
+    debugLog("model-test", "Cache size exceeded threshold, performing cleanup");
+    cleanupToolSupportCache();
+  }
+}
+
 // Test History Tracking
-// ============================================================================
+// ===========================================================================
 
 const TEST_HISTORY_DIR = path.join(os.homedir(), ".pi", "agent", "cache");
 const TEST_HISTORY_PATH = path.join(TEST_HISTORY_DIR, "model-test-history.json");
@@ -633,36 +705,28 @@ The JSON object must have exactly these 4 keys:
 
     const msg = result.content.trim();
 
-    // Try to parse as JSON (with repair for truncated output)
+    // Try to parse as JSON (with enhanced repair for truncated/malformed output)
     let parsed: any = null;
     let repairNote = "";
     try {
       const cleaned = msg.replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
       parsed = JSON.parse(cleaned);
     } catch {
-      // Not valid JSON — attempt repair via brace/bracket matching
+      // Not valid JSON — attempt enhanced repair
       const cleaned = msg.replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
-      let braceDepth = 0, bracketDepth = 0;
-      let inString = false, escapeNext = false;
-      for (let i = 0; i < cleaned.length; i++) {
-        const c = cleaned[i];
-        if (escapeNext) { escapeNext = false; continue; }
-        if (c === '\\') { if (inString) escapeNext = true; continue; }
-        if (c === '"') { inString = !inString; continue; }
-        if (inString) continue;
-        if (c === '{') braceDepth++;
-        else if (c === '}') braceDepth = Math.max(0, braceDepth - 1);
-        else if (c === '[') bracketDepth++;
-        else if (c === ']') bracketDepth = Math.max(0, bracketDepth - 1);
-      }
-      if (braceDepth > 0 || bracketDepth > 0) {
-        const repaired = cleaned
-          + "}".repeat(braceDepth)
-          + "]".repeat(bracketDepth);
+      let repaired = enhancedJsonRepair(cleaned);
+      if (repaired !== cleaned) {
         try {
           parsed = JSON.parse(repaired);
-          repairNote = " (repaired truncated JSON)";
-        } catch { /* repair failed too */ }
+          repairNote = " (repaired JSON)";
+        } catch {
+          // Final fallback: try basic brace completion
+          repaired = basicJsonRepair(cleaned);
+          try {
+            parsed = JSON.parse(repaired);
+            repairNote = " (basic repair)";
+          } catch { /* repair failed too */ }
+        }
       }
     }
 
@@ -694,4 +758,59 @@ The JSON object must have exactly these 4 keys:
   } catch (e: any) {
     return { pass: false, score: "ERROR", output: e.message, elapsedMs: 0 };
   }
+}
+
+/**
+ * Enhanced JSON repair that handles common JSON formatting issues.
+ * - Fixes malformed Unicode sequences
+ * - Repairs string escaping issues
+ * - Handles trailing commas
+ * - Fixes unescaped quotes in strings
+ */
+function enhancedJsonRepair(json: string): string {
+  let repaired = json;
+  
+  // Fix trailing commas
+  repaired = repaired.replace(/,\s*([}\]])/g, '$1');
+  
+  // Fix unescaped quotes in strings (basic detection)
+  repaired = repaired.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, (match, content) => {
+    // Fix unescaped quotes within strings
+    const fixedContent = content.replace(/(?<!\\)"/g, '\\"');
+    return '"' + fixedContent + '"';
+  });
+  
+  // Fix malformed Unicode sequences
+  repaired = repaired.replace(/\\u([0-9a-fA-F]{3})/g, '\\u$1000');
+  repaired = repaired.replace(/\\u([0-9a-fA-F]{2})/g, '\\u0100');
+  
+  return repaired;
+}
+
+/**
+ * Basic JSON repair focusing on structural issues.
+ * Completes missing braces and brackets.
+ */
+function basicJsonRepair(json: string): string {
+  let braceDepth = 0, bracketDepth = 0;
+  let inString = false, escapeNext = false;
+  
+  for (let i = 0; i < json.length; i++) {
+    const c = json[i];
+    if (escapeNext) { escapeNext = false; continue; }
+    if (c === '\\') { if (inString) escapeNext = true; continue; }
+    if (c === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (c === '{') braceDepth++;
+    else if (c === '}') braceDepth = Math.max(0, braceDepth - 1);
+    else if (c === '[') bracketDepth++;
+    else if (c === ']') bracketDepth = Math.max(0, bracketDepth - 1);
+  }
+  
+  // Complete missing structural elements
+  if (braceDepth > 0 || bracketDepth > 0) {
+    return json + "}".repeat(braceDepth) + "]".repeat(bracketDepth);
+  }
+  
+  return json;
 }

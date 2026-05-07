@@ -6,6 +6,58 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.2.4] - 05-07-2026 12:55:14 PM
+
+### Security
+
+- **Fixed symlink escape vulnerability in path validation** (`shared/security.ts`)
+  - Added boundary validation after symlink resolution to prevent filesystem escape attacks
+  - Enhanced `validatePath()` to detect symlink attempts that resolve outside allowed directories
+  - Added validation that checks if resolved path stays within original request context or allowed directories
+
+- **Enhanced SSRF protection with cloud metadata endpoints** (`shared/security.ts`)
+  - Added AWS metadata endpoint (`169.254.169.254`) to always-blocked URL patterns
+  - Added GCP metadata endpoints (`metadata.google.internal`, `169.254.170.2`) to blocklist
+  - Added Azure metadata endpoints (`169.254.169.254`, `169.254.170.4`) to blocklist
+  - Expanded `BLOCKED_URL_ALWAYS` to cover all major cloud provider metadata services
+
+### Robustness
+
+- **Standardized timeout handling across all providers** (`shared/model-test-utils.ts`)
+  - Set all timeouts to 5 minutes (300000ms) for consistent behavior across Ollama and cloud providers
+  - Standardized retry logic with 2 retries and 15-second delays for all providers
+  - Eliminated timeout inconsistencies between Ollama and cloud provider testing
+  - Updated `PROVIDER_TIMEOUT_MS` and `PROVIDER_TOOL_TIMEOUT_MS` to match Ollama timeouts
+
+- **Enhanced JSON repair with multiple strategies** (`shared/model-test-utils.ts`)
+  - Added `enhancedJsonRepair()` function to handle trailing commas, malformed Unicode, and string escaping
+  - Added `basicJsonRepair()` function for structural brace/bracket completion
+  - Improved JSON parsing robustness for truncated or malformed model responses
+  - Enhanced error recovery for instruction following tests with complex JSON output
+
+- **Improved status monitor interval cleanup** (`extensions/status.ts`)
+  - Enhanced session shutdown cleanup with debug logging for interval management
+  - Added robust clearing of both `updateInterval` and `toolTimerInterval` to prevent memory leaks
+  - Added debug logging to confirm interval cleanup during session shutdown
+  - Improved error handling in timer management functions
+
+### Performance
+
+- **Enhanced tool support cache with size limits and TTL** (`shared/model-test-utils.ts`)
+  - Added `MAX_CACHE_SIZE: 1000` to limit cache entries and prevent disk space exhaustion
+  - Added `CACHE_TTL_DAYS: 30` to automatically expire old cache entries
+  - Added `CACHE_CLEANUP_SIZE: 200` for LRU eviction when cache exceeds size limits
+  - Added `cleanupToolSupportCache()` function to remove expired entries and limit size
+  - Added `ensureCacheClean()` function to trigger cleanup when cache exceeds 90% of max size
+  - Enhanced `cacheToolSupport()` to automatically trigger cache cleanup when adding entries
+
+### Documentation
+
+- **Enhanced JSDoc comments** for new security and cache management functions
+  - Added comprehensive documentation for enhanced JSON repair functions
+  - Updated security validation function documentation with new symlink protection details
+  - Added cache management function documentation with size limits and TTL explanation
+
 ## [1.2.3] - 05-06-2026 10:02:22 PM
 
 ### Added

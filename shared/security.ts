@@ -248,7 +248,11 @@ export const BLOCKED_COMMANDS: ReadonlySet<string> = new Set([
  */
 export const BLOCKED_URL_ALWAYS: ReadonlySet<string> = new Set([
   // Cloud metadata endpoints
-  "169.254.169.254",
+  "169.254.169.254", // AWS metadata
+  "metadata.google.internal", // GCP metadata
+  "169.254.170.2", // GCP metadata alternative
+  "169.254.169.254", // Azure metadata
+  "169.254.170.4", // Azure metadata alternative
   // RFC1918 private ranges
   "10.", "192.168.",
   "172.16.", "172.17.", "172.18.", "172.19.", "172.20.", "172.21.",
@@ -357,6 +361,21 @@ export function validatePath(
     resolved = path.resolve(filePath);
     // Resolve symlinks to prevent /tmp symlink bypasses
     try { resolved = fs.realpathSync(resolved); } catch { /* path may not exist yet */ }
+    
+    // SECURITY FIX: Validate that resolved path doesn't escape allowed boundaries
+    // Check if the resolved path is within the original request's directory context
+    const originalResolved = path.resolve(filePath);
+    if (!resolved.startsWith(originalResolved)) {
+      // Symlink resolved to a different location - check if it's allowed
+      const isInAllowedDir = allowedDirs?.some(dir => {
+        const allowedResolved = path.resolve(dir);
+        return resolved.startsWith(allowedResolved);
+      }) ?? false;
+      
+      if (!isInAllowedDir) {
+        return { valid: false, error: "Symlink escape attempt detected: resolved path escapes allowed boundaries" };
+      }
+    }
   } catch {
     return { valid: false, error: "Invalid path format" };
   }
