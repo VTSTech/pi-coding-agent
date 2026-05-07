@@ -46,14 +46,14 @@ import os from "node:os";
 
 // shared/debug.ts
 var DEBUG_ENABLED = process?.env?.PI_EXTENSIONS_DEBUG === "1";
-function debugLog(module, message, ...args) {
+function debugLog2(module, message, ...args) {
   if (!DEBUG_ENABLED) return;
   const timestamp = (/* @__PURE__ */ new Date()).toISOString();
   console.debug(`[pi-ext:${module}] ${timestamp} ${message}`, ...args);
 }
 
 // shared/ollama.ts
-var EXTENSION_VERSION = "1.2.3";
+var EXTENSION_VERSION = "1.2.5";
 var MODELS_JSON_PATH = path.join(os.homedir(), ".pi", "agent", "models.json");
 var _modelsJsonCache = null;
 var _ollamaBaseUrlCache = null;
@@ -73,7 +73,7 @@ function getOllamaBaseUrl() {
       }
     }
   } catch (err) {
-    debugLog("ollama", "failed to parse models.json for base URL", err);
+    debugLog2("ollama", "failed to parse models.json for base URL", err);
   }
   if (process.env.OLLAMA_HOST) {
     const result = `http://${process.env.OLLAMA_HOST.replace(/^https?:\/\//, "")}`;
@@ -95,7 +95,7 @@ function readModelsJson() {
       return data;
     }
   } catch (err) {
-    debugLog("ollama", "failed to read/parse models.json", err);
+    debugLog2("ollama", "failed to read/parse models.json", err);
   }
   const empty = { providers: {} };
   _modelsJsonCache = { data: empty, ts: now };
@@ -182,7 +182,7 @@ async function withRetry(fn, options) {
       lastError = error;
       if (attempt < opts.maxRetries && isRetryableError(error, opts)) {
         const delay = backoffDelay(attempt, opts.baseDelayMs, opts.maxDelayMs);
-        debugLog("ollama", `Retry ${attempt + 1}/${opts.maxRetries} after ${delay}ms: ${error instanceof Error ? error.message : String(error)}`);
+        debugLog2("ollama", `Retry ${attempt + 1}/${opts.maxRetries} after ${delay}ms: ${error instanceof Error ? error.message : String(error)}`);
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }
@@ -211,7 +211,7 @@ async function fetchModelContextLength(baseUrl, modelName) {
       const numCtx = data?.model_info?.["num_ctx"];
       if (typeof numCtx === "number") return numCtx;
     } catch (err) {
-      debugLog("ollama", `failed to fetch context length for ${modelName}`, err);
+      debugLog2("ollama", `failed to fetch context length for ${modelName}`, err);
       return void 0;
     }
     return void 0;
@@ -533,27 +533,27 @@ import * as fs2 from "node:fs";
 import * as os2 from "node:os";
 import * as path2 from "node:path";
 var CONFIG = {
-  // General API settings
-  DEFAULT_TIMEOUT_MS: 999999,
-  // ~16.7 minutes — effectively unlimited for slow models
+  // General API settings - standardized across all providers
+  DEFAULT_TIMEOUT_MS: 3e5,
+  // 5 minutes - reasonable timeout for all providers
   CONNECT_TIMEOUT_S: 60,
   // 60 seconds to establish connection
-  MAX_RETRIES: 1,
-  // Single retry for transient failures
-  RETRY_DELAY_MS: 1e4,
-  // 10 seconds between retries
+  MAX_RETRIES: 2,
+  // Two retries for transient failures (standardized)
+  RETRY_DELAY_MS: 15e3,
+  // 15 seconds between retries (standardized)
   // Model generation settings
   NUM_PREDICT: 1024,
   // Max tokens in response
   TEMPERATURE: 0.1,
   // Low temperature for more deterministic output
-  // Test-specific settings
+  // Test-specific settings - standardized across all providers
   MIN_THINKING_LENGTH: 10,
   // Minimum chars to consider thinking tokens valid
-  TOOL_TEST_TIMEOUT_MS: 999999,
-  // Effectively unlimited for slow tool usage tests
-  TOOL_SUPPORT_TIMEOUT_MS: 999999,
-  // Effectively unlimited for tool support detection
+  TOOL_TEST_TIMEOUT_MS: 3e5,
+  // 5 minutes - consistent timeout for tool usage tests
+  TOOL_SUPPORT_TIMEOUT_MS: 3e5,
+  // 5 minutes - consistent timeout for tool support detection
   // Metadata retrieval
   TAGS_TIMEOUT_MS: 15e3,
   // 15 seconds for /api/tags
@@ -568,8 +568,20 @@ var CONFIG = {
   CONTEXT_BATCH_SIZE: 3,
   // Concurrent requests when fetching model context lengths
   // Rate limiting
-  TEST_DELAY_MS: 1e4
+  TEST_DELAY_MS: 1e4,
   // 10 seconds between tests to avoid rate limiting
+  // Provider-specific timeouts (now standardized)
+  PROVIDER_TIMEOUT_MS: 3e5,
+  // 5 minutes - consistent with Ollama
+  PROVIDER_TOOL_TIMEOUT_MS: 3e5,
+  // 5 minutes - consistent with Ollama tool tests
+  // Cache management
+  MAX_CACHE_SIZE: 1e3,
+  // Maximum number of entries in tool support cache
+  CACHE_TTL_DAYS: 30,
+  // Cache entries expire after 30 days
+  CACHE_CLEANUP_SIZE: 200
+  // Remove oldest 200 entries during cleanup
 };
 var TEST_CONFIG_DIR = path2.join(os2.homedir(), ".pi", "agent");
 var TEST_CONFIG_PATH = path2.join(TEST_CONFIG_DIR, "model-test-config.json");
@@ -710,7 +722,43 @@ function cacheToolSupport(model, support, family) {
     family
   };
   _toolSupportCacheInMemory = cache;
+  ensureCacheClean();
   writeToolSupportCache(cache);
+}
+function cleanupToolSupportCache() {
+  const cache = readToolSupportCache();
+  const now = Date.now();
+  const ttlMs = CONFIG.CACHE_TTL_DAYS * 24 * 60 * 60 * 1e3;
+  const cleanedCache = {};
+  const entriesWithTimestamps = [];
+  for (const [key, record] of Object.entries(cache)) {
+    const timestamp = new Date(record.testedAt).getTime();
+    if (now - timestamp < ttlMs) {
+      cleanedCache[key] = record;
+      entriesWithTimestamps.push({ key, record, timestamp });
+    }
+  }
+  entriesWithTimestamps.sort((a, b) => a.timestamp - b.timestamp);
+  if (entriesWithTimestamps.length > CONFIG.MAX_CACHE_SIZE) {
+    const keepCount = CONFIG.MAX_CACHE_SIZE - CONFIG.CACHE_CLEANUP_SIZE;
+    const entriesToKeep = entriesWithTimestamps.slice(-keepCount);
+    const finalCache = {};
+    entriesToKeep.forEach(({ key, record }) => {
+      finalCache[key] = record;
+    });
+    writeToolSupportCache(finalCache);
+    _toolSupportCacheInMemory = finalCache;
+  } else {
+    writeToolSupportCache(cleanedCache);
+    _toolSupportCacheInMemory = cleanedCache;
+  }
+}
+function ensureCacheClean() {
+  const cache = readToolSupportCache();
+  if (Object.keys(cache).length > CONFIG.MAX_CACHE_SIZE * 0.9) {
+    debugLog("model-test", "Cache size exceeded threshold, performing cleanup");
+    cleanupToolSupportCache();
+  }
 }
 var TEST_HISTORY_DIR = path2.join(os2.homedir(), ".pi", "agent", "cache");
 var TEST_HISTORY_PATH = path2.join(TEST_HISTORY_DIR, "model-test-history.json");
@@ -892,34 +940,18 @@ The JSON object must have exactly these 4 keys:
       parsed = JSON.parse(cleaned);
     } catch {
       const cleaned = msg.replace(/```json?\s*/gi, "").replace(/```/g, "").trim();
-      let braceDepth = 0, bracketDepth = 0;
-      let inString = false, escapeNext = false;
-      for (let i = 0; i < cleaned.length; i++) {
-        const c = cleaned[i];
-        if (escapeNext) {
-          escapeNext = false;
-          continue;
-        }
-        if (c === "\\") {
-          if (inString) escapeNext = true;
-          continue;
-        }
-        if (c === '"') {
-          inString = !inString;
-          continue;
-        }
-        if (inString) continue;
-        if (c === "{") braceDepth++;
-        else if (c === "}") braceDepth = Math.max(0, braceDepth - 1);
-        else if (c === "[") bracketDepth++;
-        else if (c === "]") bracketDepth = Math.max(0, bracketDepth - 1);
-      }
-      if (braceDepth > 0 || bracketDepth > 0) {
-        const repaired = cleaned + "}".repeat(braceDepth) + "]".repeat(bracketDepth);
+      let repaired = enhancedJsonRepair(cleaned);
+      if (repaired !== cleaned) {
         try {
           parsed = JSON.parse(repaired);
-          repairNote = " (repaired truncated JSON)";
+          repairNote = " (repaired JSON)";
         } catch {
+          repaired = basicJsonRepair(cleaned);
+          try {
+            parsed = JSON.parse(repaired);
+            repairNote = " (basic repair)";
+          } catch {
+          }
         }
       }
     }
@@ -948,6 +980,45 @@ The JSON object must have exactly these 4 keys:
   } catch (e) {
     return { pass: false, score: "ERROR", output: e.message, elapsedMs: 0 };
   }
+}
+function enhancedJsonRepair(json) {
+  let repaired = json;
+  repaired = repaired.replace(/,\s*([}\]])/g, "$1");
+  repaired = repaired.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, (match, content) => {
+    const fixedContent = content.replace(/(?<!\\)"/g, '\\"');
+    return '"' + fixedContent + '"';
+  });
+  repaired = repaired.replace(/\\u([0-9a-fA-F]{3})/g, "\\u$1000");
+  repaired = repaired.replace(/\\u([0-9a-fA-F]{2})/g, "\\u0100");
+  return repaired;
+}
+function basicJsonRepair(json) {
+  let braceDepth = 0, bracketDepth = 0;
+  let inString = false, escapeNext = false;
+  for (let i = 0; i < json.length; i++) {
+    const c = json[i];
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (c === "\\") {
+      if (inString) escapeNext = true;
+      continue;
+    }
+    if (c === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (c === "{") braceDepth++;
+    else if (c === "}") braceDepth = Math.max(0, braceDepth - 1);
+    else if (c === "[") bracketDepth++;
+    else if (c === "]") bracketDepth = Math.max(0, bracketDepth - 1);
+  }
+  if (braceDepth > 0 || bracketDepth > 0) {
+    return json + "}".repeat(braceDepth) + "]".repeat(bracketDepth);
+  }
+  return json;
 }
 
 // shared/test-report.ts
@@ -1204,7 +1275,7 @@ function model_test_default(pi) {
             if (parsed.message?.thinking) thinkingContent += parsed.message.thinking;
             if (parsed.done) done = true;
           } catch (err) {
-            debugLog("model-test", "skipped malformed JSON chunk in streaming response", err);
+            debugLog2("model-test", "skipped malformed JSON chunk in streaming response", err);
           }
         }
       }
@@ -1580,7 +1651,7 @@ function model_test_default(pi) {
           const args = typeof fn.arguments === "string" ? JSON.parse(fn.arguments) : fn.arguments || {};
           argsStr = JSON.stringify(args);
         } catch (err) {
-          debugLog("model-test", "failed to parse tool call arguments", err);
+          debugLog2("model-test", "failed to parse tool call arguments", err);
           argsStr = String(fn.arguments);
         }
         const level2 = "native";
@@ -1644,7 +1715,7 @@ function model_test_default(pi) {
       const data = await res.json();
       return (data.models || []).map((m) => m.name).filter(Boolean);
     } catch (err) {
-      debugLog("model-test", "failed to list Ollama models", err);
+      debugLog2("model-test", "failed to list Ollama models", err);
       return [];
     }
   }
@@ -1732,7 +1803,7 @@ function model_test_default(pi) {
         }
       }
     } catch (err) {
-      debugLog("model-test", "failed to fetch model metadata from /api/show", err);
+      debugLog2("model-test", "failed to fetch model metadata from /api/show", err);
     }
     const detectedFamily = detectModelFamily(model);
     lines.push(info(`Size: ${modelSize}  |  Params: ${modelParams}  |  Quant: ${modelQuant}`));
@@ -1877,7 +1948,7 @@ function model_test_default(pi) {
         }
       }
     } catch (err) {
-      debugLog("model-test", "failed to save test history", err);
+      debugLog2("model-test", "failed to save test history", err);
     }
     return lines.join("\n");
   }
@@ -1983,7 +2054,7 @@ function model_test_default(pi) {
         }
       }
     } catch (err) {
-      debugLog("model-test", "failed to save provider test history", err);
+      debugLog2("model-test", "failed to save provider test history", err);
     }
     return lines.join("\n");
   }
@@ -2004,7 +2075,7 @@ function model_test_default(pi) {
         const models = await getOllamaModels();
         return models.map((m) => ({ label: m, description: `Test ${m}` })).filter((m) => m.label.startsWith(prefix));
       } catch (err) {
-        debugLog("model-test", "failed to get model completions", err);
+        debugLog2("model-test", "failed to get model completions", err);
         return [];
       }
     },
@@ -2025,7 +2096,7 @@ function model_test_default(pi) {
         try {
           models = await getOllamaModels();
         } catch (err) {
-          debugLog("model-test", "failed to list Ollama models for --all", err);
+          debugLog2("model-test", "failed to list Ollama models for --all", err);
           ctx.ui.notify("Could not list Ollama models", "error");
           return;
         }

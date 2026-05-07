@@ -1,6 +1,6 @@
 {
   "name": "@vtstech/pi-status",
-  "version": "1.2.3",
+  "version": "1.2.5",
   "description": "System monitor / status bar extension for Pi Coding Agent",
   "main": "status.js",
   "keywords": [
@@ -19,7 +19,7 @@
     "url": "https://github.com/VTSTech/pi-coding-agent"
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": ">=0.66"
+    "@earendil-works/pi-coding-agent": ">=0.66"
   },
   "pi": {
     "extensions": [

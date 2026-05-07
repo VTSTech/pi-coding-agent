@@ -5,14 +5,14 @@ import os from "node:os";
 
 // shared/debug.ts
 var DEBUG_ENABLED = process?.env?.PI_EXTENSIONS_DEBUG === "1";
-function debugLog(module, message, ...args) {
+function debugLog2(module, message, ...args) {
   if (!DEBUG_ENABLED) return;
   const timestamp = (/* @__PURE__ */ new Date()).toISOString();
   console.debug(`[pi-ext:${module}] ${timestamp} ${message}`, ...args);
 }
 
 // shared/ollama.ts
-var EXTENSION_VERSION = "1.2.3";
+var EXTENSION_VERSION = "1.2.5";
 var MODELS_JSON_PATH = path.join(os.homedir(), ".pi", "agent", "models.json");
 var _modelsJsonCache = null;
 var _ollamaBaseUrlCache = null;
@@ -32,7 +32,7 @@ function getOllamaBaseUrl() {
       }
     }
   } catch (err) {
-    debugLog("ollama", "failed to parse models.json for base URL", err);
+    debugLog2("ollama", "failed to parse models.json for base URL", err);
   }
   if (process.env.OLLAMA_HOST) {
     const result = `http://${process.env.OLLAMA_HOST.replace(/^https?:\/\//, "")}`;
@@ -54,7 +54,7 @@ function readModelsJson() {
       return data;
     }
   } catch (err) {
-    debugLog("ollama", "failed to read/parse models.json", err);
+    debugLog2("ollama", "failed to read/parse models.json", err);
   }
   const empty = { providers: {} };
   _modelsJsonCache = { data: empty, ts: now };
@@ -141,7 +141,7 @@ async function withRetry(fn, options) {
       lastError = error;
       if (attempt < opts.maxRetries && isRetryableError(error, opts)) {
         const delay = backoffDelay(attempt, opts.baseDelayMs, opts.maxDelayMs);
-        debugLog("ollama", `Retry ${attempt + 1}/${opts.maxRetries} after ${delay}ms: ${error instanceof Error ? error.message : String(error)}`);
+        debugLog2("ollama", `Retry ${attempt + 1}/${opts.maxRetries} after ${delay}ms: ${error instanceof Error ? error.message : String(error)}`);
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }
@@ -180,7 +180,7 @@ async function fetchModelContextLength(baseUrl, modelName) {
       const numCtx = data?.model_info?.["num_ctx"];
       if (typeof numCtx === "number") return numCtx;
     } catch (err) {
-      debugLog("ollama", `failed to fetch context length for ${modelName}`, err);
+      debugLog2("ollama", `failed to fetch context length for ${modelName}`, err);
       return void 0;
     }
     return void 0;
@@ -225,27 +225,27 @@ import * as fs2 from "node:fs";
 import * as os2 from "node:os";
 import * as path2 from "node:path";
 var CONFIG = {
-  // General API settings
-  DEFAULT_TIMEOUT_MS: 999999,
-  // ~16.7 minutes — effectively unlimited for slow models
+  // General API settings - standardized across all providers
+  DEFAULT_TIMEOUT_MS: 3e5,
+  // 5 minutes - reasonable timeout for all providers
   CONNECT_TIMEOUT_S: 60,
   // 60 seconds to establish connection
-  MAX_RETRIES: 1,
-  // Single retry for transient failures
-  RETRY_DELAY_MS: 1e4,
-  // 10 seconds between retries
+  MAX_RETRIES: 2,
+  // Two retries for transient failures (standardized)
+  RETRY_DELAY_MS: 15e3,
+  // 15 seconds between retries (standardized)
   // Model generation settings
   NUM_PREDICT: 1024,
   // Max tokens in response
   TEMPERATURE: 0.1,
   // Low temperature for more deterministic output
-  // Test-specific settings
+  // Test-specific settings - standardized across all providers
   MIN_THINKING_LENGTH: 10,
   // Minimum chars to consider thinking tokens valid
-  TOOL_TEST_TIMEOUT_MS: 999999,
-  // Effectively unlimited for slow tool usage tests
-  TOOL_SUPPORT_TIMEOUT_MS: 999999,
-  // Effectively unlimited for tool support detection
+  TOOL_TEST_TIMEOUT_MS: 3e5,
+  // 5 minutes - consistent timeout for tool usage tests
+  TOOL_SUPPORT_TIMEOUT_MS: 3e5,
+  // 5 minutes - consistent timeout for tool support detection
   // Metadata retrieval
   TAGS_TIMEOUT_MS: 15e3,
   // 15 seconds for /api/tags
@@ -260,8 +260,20 @@ var CONFIG = {
   CONTEXT_BATCH_SIZE: 3,
   // Concurrent requests when fetching model context lengths
   // Rate limiting
-  TEST_DELAY_MS: 1e4
+  TEST_DELAY_MS: 1e4,
   // 10 seconds between tests to avoid rate limiting
+  // Provider-specific timeouts (now standardized)
+  PROVIDER_TIMEOUT_MS: 3e5,
+  // 5 minutes - consistent with Ollama
+  PROVIDER_TOOL_TIMEOUT_MS: 3e5,
+  // 5 minutes - consistent with Ollama tool tests
+  // Cache management
+  MAX_CACHE_SIZE: 1e3,
+  // Maximum number of entries in tool support cache
+  CACHE_TTL_DAYS: 30,
+  // Cache entries expire after 30 days
+  CACHE_CLEANUP_SIZE: 200
+  // Remove oldest 200 entries during cleanup
 };
 var TEST_CONFIG_DIR = path2.join(os2.homedir(), ".pi", "agent");
 var TEST_CONFIG_PATH = path2.join(TEST_CONFIG_DIR, "model-test-config.json");

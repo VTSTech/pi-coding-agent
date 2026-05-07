@@ -54,7 +54,7 @@ function debugLog(module, message, ...args) {
 }
 
 // shared/ollama.ts
-var EXTENSION_VERSION = "1.2.3";
+var EXTENSION_VERSION = "1.2.5";
 var MODELS_JSON_PATH = path.join(os.homedir(), ".pi", "agent", "models.json");
 var _modelsJsonCache = null;
 var _ollamaBaseUrlCache = null;
@@ -277,6 +277,15 @@ var BLOCKED_COMMANDS = /* @__PURE__ */ new Set([
 var BLOCKED_URL_ALWAYS = /* @__PURE__ */ new Set([
   // Cloud metadata endpoints
   "169.254.169.254",
+  // AWS metadata
+  "metadata.google.internal",
+  // GCP metadata
+  "169.254.170.2",
+  // GCP metadata alternative
+  "169.254.169.254",
+  // Azure metadata
+  "169.254.170.4",
+  // Azure metadata alternative
   // RFC1918 private ranges
   "10.",
   "192.168.",
@@ -363,6 +372,16 @@ function validatePath(filePath, allowedDirs) {
     try {
       resolved = fs3.realpathSync(resolved);
     } catch {
+    }
+    const originalResolved = path3.resolve(filePath);
+    if (!resolved.startsWith(originalResolved)) {
+      const isInAllowedDir = allowedDirs?.some((dir) => {
+        const allowedResolved = path3.resolve(dir);
+        return resolved.startsWith(allowedResolved);
+      }) ?? false;
+      if (!isInAllowedDir) {
+        return { valid: false, error: "Symlink escape attempt detected: resolved path escapes allowed boundaries" };
+      }
     }
   } catch {
     return { valid: false, error: "Invalid path format" };
