@@ -6,6 +6,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.2.3] - 05-06-2026 10:02:22 PM
+
+### Added
+
+- **npm package publishing support** (`scripts/build-tgz.sh`, `dist/`)
+  - Extensions are now published as standalone npm packages under the `@vtstech` scope, enabling `pi install npm:@vtstech/pi-security`, `pi install npm:@vtstech/pi-diag`, etc.
+  - Each package bundles its shared code (inlined via esbuild) and lists Pi core packages as `peerDependencies`, so no separate `@vtstech/pi-shared` install is needed.
+  - Users can install individual extensions without cloning the full repository.
+
+- **Comprehensive build system rewrite** (`scripts/build-tgz.sh`)
+  - Replaced the ad-hoc TypeScript compilation approach with esbuild-based bundling for a consistent, reliable build.
+  - **Shared package**: transpiles each `shared/*.ts` file individually (no bundle) — relative imports between shared modules are preserved since all `.js` files land in the same directory.
+  - **Extensions**: bundles with esbuild, inlining all `shared/*` imports. Pi core packages (`@mariozechner/*`, `typebox`) are marked as externals since Pi provides them at runtime.
+  - Produces self-contained extension `.tgz` files with no runtime dependency on `@vtstech/pi-shared`.
+  - Auto-detects esbuild from local install, global install, or falls back to `npx`.
+  - Generates proper npm-compatible tarballs suitable for direct `npm publish`.
+
+- **Version bump script enhanced** (`scripts/bump-version.sh`)
+  - Now updates `individual-packages/*/package.json` version fields and `@vtstech/pi-shared` dependency references automatically.
+  - Updates version references in `README.md`.
+  - Uses flexible version-matching patterns that work with any semver string.
+
+### Changed
+
+- **`shared/debug.ts` — safer environment access**
+  - Changed `process.env.PI_EXTENSIONS_DEBUG` to `process?.env?.PI_EXTENSIONS_DEBUG` with optional chaining, preventing crashes in edge-case environments where `process` or `process.env` may be undefined.
+
+- **`shared/config-io.ts` — simplified Node.js imports**
+  - Changed `node:fs`, `node:path`, and `node:os` imports to `fs`, `path`, and `os` for broader compatibility with esbuild bundling and older Node.js versions.
+
+- **`shared/package.json` — removed unnecessary peer dependency**
+  - Removed `peerDependencies` entry for `@mariozechner/pi-coding-agent`. The shared package is bundled into each extension at build time and never installed standalone via npm, so the peer dependency was misleading.
+
+- **README updated with npm installation instructions**
+  - Replaced TGZ installer references with individual npm package installation documentation.
+  - Added table of all 9 available `@vtstech/*` packages with descriptions.
+  - Updated file structure section to reflect current build output.
+
+### Removed
+
+- **Deprecated documentation files** (`audit.md`, `brief.md`)
+  - Removed `audit.md` (327 lines) and `brief.md` (184 lines). All relevant information has been incorporated into README.md and CHANGELOG.md.
+
+---
+
 ## [1.2.2] - 05-06-2026
 
 ### Fixed
