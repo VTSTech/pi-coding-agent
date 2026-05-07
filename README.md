@@ -49,54 +49,41 @@ Pin to a specific tag:
 pi install git:github.com/VTSTech/pi-coding-agent@v1.2.3
 ```
 
-### Individual Packages (TGZ-based Installation)
+### Individual Packages (npm)
 
-Install only what you need using the Pi TGZ Installer extension. The git-based installation scripts are deprecated and will be removed in a future version.
-
-#### Method: Pi TGZ Installer Extension (Recommended)
-
-Install individual packages using the `@vtstech/pi-tgz-installer` extension - perfect for installing packages from local or remote TGZ files:
-
-<img width="1654" height="532" alt="image" src="https://github.com/user-attachments/assets/543b4f5a-ab59-436f-83d6-77c1547ba368" />
+Install only what you need. Each extension is published as a standalone npm package under the `@vtstech` scope. All shared code is bundled into each package, so there are no extra dependencies to install.
 
 ```bash
-# First, install the TGZ Installer extension
-pi install @vtstech/pi-tgz-installer
+# Install individual extensions
+pi install npm:@vtstech/pi-diag
+pi install npm:@vtstech/pi-model-test
+pi install npm:@vtstech/pi-security
+pi install npm:@vtstech/pi-soul
+pi install npm:@vtstech/pi-status
+pi install npm:@vtstech/pi-api
+pi install npm:@vtstech/pi-ollama-sync
+pi install npm:@vtstech/pi-openrouter-sync
+pi install npm:@vtstech/pi-react-fallback
 
-# Install individual packages directly from TGZ files in this repository
-# Just tell Pi
-
-/tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-api-1.2.3.tgz
-/tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-diag-1.2.3.tgz
-/tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-model-test-1.2.3.tgz
-/tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-ollama-sync-1.2.3.tgz
-/tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-openrouter-sync-1.2.3.tgz
-/tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-security-1.2.3.tgz
-/tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-shared-1.2.3.tgz
-/tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-soul-1.2.3.tgz
-/tgz-install https://github.com/VTSTech/pi-coding-agent/raw/refs/heads/main/dist/pi-status-1.2.3.tgz
-
-# Or install all packages at once
-for pkg in ./dist/pi-*.tgz; do pi tgz-install "$pkg"; done
+# Update installed packages
+pi update
 ```
 
-The TGZ Installer extension provides a `tgz-install` command that installs pi-packages directly from TGZ files, making it easy to install individual packages without cloning the entire repository.
+**Available packages:**
 
-> **Note:** Git-based installation scripts (`./scripts/install-package-*.sh`) are deprecated and will be removed in a future version. Please migrate to the TGZ-based installation method above.
+| Package | Description |
+|---------|-------------|
+| `@vtstech/pi-diag` | System diagnostic suite |
+| `@vtstech/pi-model-test` | Model benchmark — Ollama & cloud providers |
+| `@vtstech/pi-security` | Command/path/SSRF protection |
+| `@vtstech/pi-soul` | SoulSpec persona management |
+| `@vtstech/pi-status` | System resource monitor & status bar |
+| `@vtstech/pi-api` | API mode switcher |
+| `@vtstech/pi-ollama-sync` | Ollama ↔ models.json sync |
+| `@vtstech/pi-openrouter-sync` | OpenRouter → models.json sync |
+| `@vtstech/pi-react-fallback` | ReAct fallback for non-native tool models |
 
 ### Manual Install
-
-```bash
-git clone https://github.com/VTSTech/pi-coding-agent.git
-cd pi-coding-agent
-cp extensions/*.ts ~/.pi/agent/extensions/
-cp themes/*.json ~/.pi/agent/themes/
-pi -c
-```
-
-> **Note:** npm installation is deprecated. Use the git-based installation methods above for better reliability and no permission issues.
-
-### Manual install
 
 ```bash
 git clone https://github.com/VTSTech/pi-coding-agent.git
@@ -677,8 +664,8 @@ pi-coding-agent/
 │   └── types.ts             # TypeScript types & error classes
 ├── themes/
 │   └── matrix.json          # Matrix movie theme
-├── individual-packages/    # Individual packages for git-based installation
-│   ├── pi-shared/          # Shared utilities (dependency for all packages)
+├── individual-packages/    # Source for individual npm packages
+│   ├── pi-shared/          # Shared utilities (bundled into extensions)
 │   ├── pi-api/             # API mode switcher
 │   ├── pi-diag/            # System diagnostics
 │   ├── pi-model-test/      # Model benchmarking
@@ -688,25 +675,11 @@ pi-coding-agent/
 │   ├── pi-security/        # Security extensions
 │   ├── pi-soul/            # SoulSpec personas
 │   └── pi-status/          # System monitoring
-├── npm-packages/            # Deprecated: npm package manifests (legacy support only)
-│   ├── shared/              # @vtstech/pi-shared
-│   ├── api/                 # @vtstech/pi-api
-│   ├── diag/                # @vtstech/pi-diag
-│   ├── model-test/          # @vtstech/pi-model-test
-│   ├── ollama-sync/         # @vtstech/pi-ollama-sync
-│   ├── openrouter-sync/     # @vtstech/pi-openrouter-sync
-│   ├── react-fallback/      # @vtstech/pi-react-fallback
-│   ├── security/            # @vtstech/pi-security
-│   ├── soul/                # @vtstech/pi-soul
-│   └── status/              # @vtstech/pi-status
+├── dist/                    # Built npm packages (published to npmjs.com)
 ├── scripts/
-│   ├── install-package.sh           # Install individual package (local)
-│   ├── install-package-remote.sh    # Install individual package (remote)
-│   ├── install-all-packages.sh      # Install all packages (local)
-│   ├── build-packages.sh            # Build npm packages (deprecated)
-│   ├── bump-version.sh              # Linux/macOS version bump script
-│   ├── bump-version.ps1             # Windows PowerShell version bump script
-│   └── publish-packages.sh          # Publish to npm (deprecated)
+│   ├── build-tgz.sh              # Build all individual .tgz packages
+│   ├── bump-version.sh           # Linux/macOS version bump script
+│   └── bump-version.ps1          # Windows PowerShell version bump script
 ├── CHANGELOG.md             # Version history
 ├── TESTS.md                 # Model benchmark results
 ├── VERSION                  # Single source of truth for version
