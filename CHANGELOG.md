@@ -28,14 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Documentation
 
 - **Updated package.json version references** (all individual packages)
-  - Manually updated all individual package versions from 1.2.3 to 1.2.4
+  - Manually updated all individual package versions from 1.2.3/1.2.4 to 1.2.5
   - Updated `@vtstech/pi-shared` dependency versions to match package version
   - Ensured consistent versioning across all packages and dependencies
 
 ### Maintenance
 
 - **Fixed version consistency issues** (multiple package files)
-  - Updated VERSION file to 1.2.4
+  - Updated VERSION file to 1.2.5
   - Updated main package.json and package-workspace.json versions
   - Ensured all individual packages have consistent version numbers
   - Fixed version skew between source and built packages
