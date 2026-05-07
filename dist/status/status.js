@@ -302,6 +302,15 @@ var BLOCKED_COMMANDS = /* @__PURE__ */ new Set([
 var BLOCKED_URL_ALWAYS = /* @__PURE__ */ new Set([
   // Cloud metadata endpoints
   "169.254.169.254",
+  // AWS metadata
+  "metadata.google.internal",
+  // GCP metadata
+  "169.254.170.2",
+  // GCP metadata alternative
+  "169.254.169.254",
+  // Azure metadata
+  "169.254.170.4",
+  // Azure metadata alternative
   // RFC1918 private ranges
   "10.",
   "192.168.",
@@ -610,10 +619,12 @@ function status_default(pi) {
     if (updateInterval) {
       clearInterval(updateInterval);
       updateInterval = null;
+      debugLog("status", "Cleared update interval");
     }
     if (toolTimerInterval) {
       clearInterval(toolTimerInterval);
       toolTimerInterval = null;
+      debugLog("status", "Cleared tool timer interval");
     }
     ctxUi = null;
     currentCtx = null;
@@ -700,6 +711,7 @@ function status_default(pi) {
     if (toolTimerInterval) {
       clearInterval(toolTimerInterval);
       toolTimerInterval = null;
+      debugLog("status", "Tool timer stopped");
     }
   }
   pi.on("tool_call", (event) => {
