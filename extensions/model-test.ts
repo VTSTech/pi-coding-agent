@@ -1,4 +1,4 @@
-import type { ExtensionAPI, AgentToolResult } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, AgentToolResult } from "@earendil-works/pi-coding-agent";
 
 // ── Shared imports ───────────────────────────────────────────────────────
 import {

@@ -18,7 +18,7 @@
  * GitHub: https://github.com/VTSTech
  * Website: www.vts-tech.org
  */
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   type PiModelEntry,
   type PiModelsJson,

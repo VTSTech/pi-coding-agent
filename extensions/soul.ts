@@ -12,9 +12,9 @@
  *
  * Written by VTSTech — https://www.vts-tech.org
  */
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { StringEnum } from "@mariozechner/pi-ai";
+import { StringEnum } from "@earendil-works/pi-ai";
 import { debugLog } from "../shared/debug";
 import { section, ok, fail, warn, info } from "../shared/format";
 import { EXTENSION_VERSION } from "../shared/ollama";

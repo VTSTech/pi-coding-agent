@@ -21,9 +21,23 @@ export class ExtensionError extends Error {
  * Error thrown when a configuration file is invalid, missing, or cannot be read.
  */
 export class ConfigError extends ExtensionError {
-  constructor(message: string) {
+  constructor(message: string, public readonly configPath?: string, public readonly suggestion?: string) {
     super(message, "CONFIG_ERROR");
     this.name = "ConfigError";
+  }
+  
+  /**
+   * Create a user-friendly error message with suggestions.
+   */
+  toUserMessage(): string {
+    let msg = this.message;
+    if (this.configPath) {
+      msg += ` (Config: ${this.configPath})`;
+    }
+    if (this.suggestion) {
+      msg += `\n💡 Suggestion: ${this.suggestion}`;
+    }
+    return msg;
   }
 }
 
