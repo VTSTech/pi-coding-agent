@@ -500,7 +500,8 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify(`Security audit failed: ${e.message}`, "error");
       }
     },
-  });
+  }
+});
 
   // ── security_audit tool (LLM-callable) ──────────────────────────────
 
