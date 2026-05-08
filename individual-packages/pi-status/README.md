@@ -4,9 +4,11 @@ System monitor extension for the [Pi Coding Agent](https://github.com/badlogic/p
 
 Adds composable named status items to the framework footer using `ctx.ui.setStatus()`. Each metric gets its own named slot so it coexists cleanly with other extensions' status items.
 
-## Install
-
 ```bash
+# Install as part of the bundle
+pi install git:github.com/VTSTech/pi-coding-agent
+
+# Or install individually
 pi install "npm:@vtstech/pi-status"
 ```
 
