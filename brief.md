@@ -1,148 +1,194 @@
-# PCA-EXT Project Brief
+# Pi Coding Agent Extensions — Intelligence Brief
 
-**Generated:** 2026-05-07  
-**Project:** pca-ext (@vtstech/pi-coding-agent-extensions)  
-**Version:** 1.2.5  
-**Type:** Pi Coding Agent extensions package  
-**Repository:** https://github.com/VTSTech/pi-coding-agent
+*Generated: 2026-05-08*
+*Codebase: pca-ext (v1.2.6)*
+
+---
 
 ## Project Overview
 
-A comprehensive Pi package providing 9 extensions for the Pi Coding Agent, optimized for resource-constrained environments like Google Colab (CPU-only, 12GB RAM) with Ollama local models and cloud providers. Extensions include security, diagnostics, model benchmarking, synchronization tools, and system monitoring. All extensions battle-tested on real hardware with local Ollama models and cloud providers.
+`@vtstech/pi-coding-agent-extensions` is a **Pi Package** providing custom extensions, themes, and configurations for the [Pi Coding Agent](https://github.com/badlogic/pi-mono). It's optimized for resource-constrained environments like Google Colab (CPU-only, 12GB RAM) with Ollama serving small local models (0.3B–2B parameters), and cloud providers via OpenRouter.
 
-## Tech Stack
+**Primary Use Cases:**
+- Model benchmarking across Ollama and 11 cloud providers
+- Security layer (command blocklist, SSRF protection, path validation)
+- System diagnostics and resource monitoring
+- ReAct fallback for non-native tool models
+- SoulSpec persona management
 
-- **Language:** TypeScript (strict mode, ES2022 target)
-- **Runtime:** Node.js
-- **Build:** esbuild for bundling, npm workspaces
-- **Package Format:** Pi package with individual npm packages
-- **Testing:** tsx test runner
-- **Framework:** Pi Coding Agent v0.66+ (@earendil-works/pi-coding-agent)
+---
 
-## Directory Structure
+## Architecture
 
 ```
 pca-ext/
-├── extensions/          # 9 main extension files
-├── shared/             # Shared utilities and types
-├── individual-packages/ # Source for npm packages
-├── themes/             # UI themes (Matrix theme)
-├── dist/               # Built packages
-├── scripts/            # Build and version scripts
-└── tests/              # Test files
+├── extensions/          # 9 main extension files (default exports)
+│   ├── model-test.ts    # Model benchmark suite (Ollama + cloud providers)
+│   ├── security.ts      # Security layer (commands, SSRF, paths)
+│   ├── diag.ts          # System diagnostics suite
+│   ├── status.ts        # Resource monitor + status bar
+│   ├── api.ts           # API mode switcher (mode, URL, thinking, compat)
+│   ├── ollama-sync.ts   # Ollama ↔ models.json sync
+│   ├── openrouter-sync.ts # OpenRouter → models.json sync
+│   ├── react-fallback.ts # Text-based tool calling bridge
+│   └── soul.ts          # SoulSpec persona loader
+├── shared/              # Shared utilities (no relative imports across shared/)
+│   ├── security.ts      # Core security logic (1,230 lines)
+│   ├── ollama.ts        # Ollama/Provider utilities (789 lines)
+│   ├── model-test-utils.ts # Test utilities (812 lines)
+│   ├── format.ts        # ANSI formatting helpers (401 lines)
+│   ├── react-parser.ts  # Multi-dialect ReAct parser (552 lines)
+│   ├── types.ts         # TypeScript types
+│   ├── errors.ts        # Typed error classes
+│   └── config-io.ts     # JSON config read/write helpers
+├── tests/               # 6 test files (ts-test)
+├── themes/              # Matrix JSON theme
+└── individual-packages/ # Source for 9 npm packages
 ```
+
+---
 
 ## Critical Files Index
 
-### Core Extensions (extensions/)
-- **api.ts** (30KB) - API mode switcher, URL management, thinking settings, compat flags
-- **diag.ts** (29KB) - System diagnostic suite with security validation
-- **model-test.ts** (66KB) - Model benchmarking for Ollama and 11 cloud providers
-- **security.ts** (21KB) - Command/path/SSRF protection with 3 security modes
-- **soul.ts** (25KB) - SoulSpec persona management with progressive disclosure
-- **status.ts** (19KB) - System resource monitor with status bar integration
-- **ollama-sync.ts** (11KB) - Ollama ↔ models.json synchronization
-- **openrouter-sync.ts** (11KB) - OpenRouter → models.json synchronization
-- **react-fallback.ts** (13KB) - ReAct fallback for non-native tool models
+### Extensions (Entry Points)
 
-### Shared Utilities (shared/)
-- **ollama.ts** (27KB) - Ollama API helpers, provider detection, retry logic
-- **security.ts** (46KB) - Security validation, SSRF protection, audit logging
-- **model-test-utils.ts** (31KB) - Test utilities, config, history management
-- **react-parser.ts** (21KB) - Multi-dialect ReAct text parser
-- **types.ts** (4KB) - TypeScript types and error classes
-- **format.ts** (13KB) - Shared formatting utilities
+| File | Purpose | Key Functions |
+|------|---------|---------------|
+| `extensions/model-test.ts` | Model benchmarking | `testModelOllama()`, `testModelProvider()`, `testReasoning()`, `testToolUsage()` |
+| `extensions/security.ts` | Security layer | `sanitizeCommand()`, `validatePath()`, `isSafeUrl()` |
+| `extensions/diag.ts` | System diagnostics | `runDiagnostics()` |
+| `extensions/status.ts` | Status bar | `updateMetrics()`, `renderStatusBar()` |
+| `extensions/api.ts` | API switcher | `setMode()`, `setUrl()`, `setThink()` |
+| `extensions/ollama-sync.ts` | Ollama sync | `syncOllamaModels()` |
+| `extensions/openrouter-sync.ts` | OpenRouter sync | `syncOpenRouterModels()` |
+| `extensions/react-fallback.ts` | ReAct fallback | `parseReactText()` |
+| `extensions/soul.ts` | SoulSpec personas | `loadSoul()`, `listSouls()` |
 
-### Configuration
-- **package.json** - Pi package manifest with extensions/themes paths
-- **tsconfig.json** - Strict TypeScript configuration
-- **package-workspace.json** - npm workspace configuration
+### Shared Modules
 
-## Entry Points
+| File | Lines | Purpose | Critical Constants |
+|------|-------|---------|-------------------|
+| `shared/security.ts` | 1,230 | Security validation | `CRITICAL_COMMANDS` (41), `EXTENDED_COMMANDS` (25), `BLOCKED_URL_ALWAYS` (22), `BLOCKED_URL_MAX_ONLY` (7) |
+| `shared/ollama.ts` | 789 | Provider detection, mutexes | `EXTENSION_VERSION`, `BUILTIN_PROVIDERS` (11 providers), `acquireModelsJsonLock()` |
+| `shared/model-test-utils.ts` | 812 | Test helpers, cache | `CONFIG`, `WEATHER_TOOL_DEFINITION`, `readToolSupportCache()` |
+| `shared/react-parser.ts` | 552 | ReAct dialect parsing | `ALL_DIALECT_PATTERNS`, `parseReactWithPatterns()` |
+| `shared/format.ts` | 401 | ANSI formatting | `ok()`, `fail()`, `warn()`, `info()`, `section()` |
 
-### Primary Entry Points
-- **Pi Package:** `pi install git:github.com/VTSTech/pi-coding-agent`
-- **Individual Extensions:** `pi install npm:@vtstech/pi-<extension>`
+---
 
-### CLI Commands
-- `/diag` - System diagnostic suite
-- `/model-test [model]` - Model benchmarking
-- `/security mode [basic|max|off]` - Security mode toggle
-- `/souls` / `/soul <name>` - SoulSpec persona management
-- `/ollama-sync [url]` - Ollama model synchronization
-- `/openrouter-sync <ids...>` - OpenRouter model synchronization
-- `/api [mode|url|think]` - API configuration
+## Security Model
 
-## Key Features
+### Command Blocklist (Partitioned)
 
-### Security Layer
-- 3 security modes: basic, max, off
-- 41 critical commands always blocked + 25 extended commands (max mode)
-- SSRF protection with 22 always-blocked + 7 max-only URL patterns
-- Path validation with symlink dereferencing and boundary checking
-- Shell injection detection with regex patterns
-- Audit logging to ~/.pi/agent/audit.log (JSON Lines)
-- Fixed symlink escape vulnerability in v1.2.4
+| Mode | Commands Blocked |
+|------|------------------|
+| **Always Blocked (CRITICAL)** | 41 commands (mkfs, dd, shred, rm, sudo, wget, curl, apt, npm, ssh, kill, chmod, chown, etc.) |
+| **Max Mode Only (EXTENDED)** | 25 additional commands (rm, del, sudo, wget, curl, apt, pip, npm, systemctl, vi, git) |
+| **Basic Mode** | CRITICAL only; localhost URLs allowed |
+| **Off Mode** | All security checks bypassed |
 
-### Model Testing
-- Supports Ollama and 11 cloud providers (OpenRouter, Anthropic, Google, OpenAI, Groq, DeepSeek, Mistral, xAI, Together, Fireworks, Cohere)
-- 6 test categories for Ollama, 4 for cloud providers
-- Automatic provider detection and URL resolution
-- Tool support caching with persistent storage
-- Thinking token fallback for models like qwen3
-- JSON repair for truncated responses
+### SSRF Protection
 
-### System Integration
-- Status bar integration with CPU/RAM/swap monitoring (local Ollama only)
-- Progressive disclosure for personas (Level 1-3)
-- Remote Ollama support via tunnel URL auto-detection
-- Matrix theme with neon green aesthetics
-- Cross-platform build system with PowerShell/bash scripts
+- **Always Blocked:** Cloud metadata IPs (169.254.169.254), RFC1918 ranges (10.x, 192.168.x, 172.16-31.x)
+- **Max Mode Only:** localhost, 127.x, 0.0.0.0, ::1
+- **DNS Rebinding:** Detected via `resolveAndCheckHostname()`
 
-### Package Management
-- Individual npm packages under @vtstech scope
-- Shared utilities bundled into each package
-- Version synchronization across all packages
-- Automated build scripts for cross-platform publishing
+### Path Validation
+
+- Blocked: `/etc`, `/root`, `/usr`, `/bin`, `/sbin`, `/boot`, `/dev`, `/proc`, `/sys`, `/var`
+- Sensitive: `.ssh/`, `.gnupg/`, shadow, passwd
+- **Symlink Escapes:** Detected via `fs.realpathSync()` boundary validation (SEC-01 fix)
+- Allowed: `/home`, `/tmp`, cwd (basic) or `~/.pi/agent/tmp/` (SEC-04)
+
+---
 
 ## Known Landmines
 
-1. **ReAct Mode Default:** ReAct fallback is disabled by default (persistent config at ~/.pi/agent/react-mode.json)
-2. **Security Mode Default:** Starts in max mode if ~/.pi/agent/security.json doesn't exist
-3. **Remote Ollama:** URLs are auto-saved to models.json after sync
-4. **Tool Support:** Some models require ReAct mode to function properly
-5. **Memory Constraints:** Ollama models optimized for 12GB RAM environments
-6. **Framework Migration:** Recently migrated from @mariozechner to @earendil-works packages
+### 1. **Empty `brief.md` causes audit loop** 
+If `brief.md` exists but is empty/whitespace, audit mode runs instead of load mode. The file at `/workspace/brief.md` was 0 bytes.
+
+### 2. **Security: Off mode path validation not bypassed for all operations**
+While `checkBashToolInput`, `checkFileToolInput`, and `checkHttpToolInput` all check `mode === "off"` early, custom tools calling shared validators directly must pass the mode parameter. Some internal callers may miss this.
+
+### 3. **Race condition window in models.json updates**
+The `readModifyWriteModelsJson` mutex prevents concurrent access, but if a process reads `models.json` directly (bypassing the API) while a sync is in progress, it may see partial state.
+
+### 4. **Context window display discrepancy**
+`status.ts` shows "CtxMax + RespMax" combined, but native context length is fetched via `/api/show` in `ollama-sync.ts`. The display value may differ from what Ollama actually uses if `num_ctx` is set in model options.
+
+### 5. **Tool support cache can grow unbounded before cleanup**
+Cache cleanup triggers at 90% of `MAX_CACHE_SIZE` (1000), but with concurrent extensions adding entries, the cache could temporarily exceed limits before the next check.
+
+### 6. **ReAct parsing dialect detection order matters**
+`ALL_DIALECT_PATTERNS` checks dialects in order. If a model mixes patterns (e.g., "Action:" then "Function:"), only the first match is used.
+
+---
 
 ## Request Lifecycle
 
-1. **Extension Loading:** Pi discovers extensions/ and themes/ directories
-2. **Security Check:** Commands validated against security mode and blocklists
-3. **Provider Resolution:** models.json → built-in registry → fallback
-4. **Tool Execution:** Security validation → tool execution → audit logging
-5. **Status Updates:** System metrics updated every 5s (1s during active tools)
+### Ollama Model Test Flow
 
-## Configuration Files
+```
+/model-test qwen3:0.6b
+    └─► ExtensionAPI slash command
+        └─► getCurrentModel() → "qwen3:0.6b"
+        └─► detectProvider() → {kind: "ollama", ...}
+        └─► testModelOllama()
+            ├─► testReasoning() → ollamaChat() → /api/chat
+            ├─► testThinking() → ollamaChat({think:true}) → /api/chat
+            ├─► testToolUsage() → makeOllamaToolChatFn() → /api/chat with tools
+            ├─► testReactParsing() → /api/chat (no tools)
+            ├─► testInstructionFollowing() → ollamaChat() → /api/chat
+            └─► testToolSupport() → /api/chat, cache to ~/.pi/agent/cache/tool_support.json
+        └─► updateModelsJsonReasoning() → readModifyWriteModelsJson()
+```
 
-- **~/.pi/agent/security.json** - Security mode and audit settings
-- **~/.pi/agent/react-mode.json** - ReAct fallback toggle
-- **~/.pi/agent/cache/tool_support.json** - Model tool support cache
-- **models.json** - Provider and model configuration
-- **~/.pi/agent/audit.log** - Security audit log (JSON Lines)
-- **VERSION** - Single source of truth for package version
+### Security Check Flow (Bash Tool)
 
-## Recent Changes (v1.2.5)
+```
+bash tool call
+    └─► checkBashToolInput()
+        ├─► sanitizeCommand()
+        │   ├─► Unicode normalize (NFKC)
+        │   ├─► Strip control chars
+        │   ├─► Check injection patterns (;, $(), backticks)
+        │   ├─► Split on &&, ||, |
+        │   └─► Check each sub-command against CRITICAL/EXTENDED blocklists
+        └─► appendAuditEntry() → buffered write to ~/.pi/agent/audit.log
+```
 
-- **Framework Migration:** Updated all peer dependencies from @mariozechner to @earendil-works packages
-- **Build System:** Enhanced cross-platform publishing scripts with dist folder support
-- **Version Consistency:** Fixed version skew between source and built packages
-- **Security:** Fixed symlink escape vulnerability in path validation (v1.2.4)
+---
 
-## Google Colab Optimization
+## Development Quick Reference
 
-Extensions optimized for CPU-only 12GB RAM environments with recommended Ollama settings:
-- CONTEXT_LENGTH: 4096 (reduced from 262k)
-- MAX_LOADED_MODELS: 1
-- KV_CACHE_TYPE: f16
-- BATCH_SIZE: 512
-- NO_CUDA: 1
+```bash
+# Run tests
+npm run test
+
+# Type check
+npm run typecheck
+
+# Build individual packages (scripts/build-tgz.sh)
+# Install from git
+pi install git:github.com/VTSTech/pi-coding-agent
+
+# Install individual npm packages
+pi install npm:@vtstech/pi-model-test
+```
+
+---
+
+## Extension Points
+
+| Hook | Purpose | Extensions Using |
+|------|---------|------------------|
+| `session_start` | Initialize per-session state | status, security, model-test |
+| `session_shutdown` | Cleanup timers, flush buffers | status, security |
+| `tool_call` | Pre-validate tool inputs | security |
+| `tool_result` | Post-process results | status (timing) |
+| `agent_start` / `agent_end` | Track duration | status (Resp timer) |
+
+---
+
+*End of Brief*
+*For detailed findings, see `audit.md`*

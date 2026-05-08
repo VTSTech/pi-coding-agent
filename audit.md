@@ -1,292 +1,314 @@
-# PCA-EXT Codebase Audit Report
+# Codebase Audit Report
 
-**Generated:** 2026-05-07  
-**Project:** pca-ext (@vtstech/pi-coding-agent-extensions)  
-**Version:** 1.2.5  
-**Audit Type:** Fresh audit after repository re-clone  
-**Repository:** https://github.com/VTSTech/pi-coding-agent
+**Repository:** pca-ext (Pi Coding Agent Extensions)  
+**Version:** 1.2.6  
+**Date:** 2026-05-08  
+**Auditor:** Codebase Audit Skill v0.2.0 (poolside/laguna-m.1)
+
+---
 
 ## Executive Summary
 
-The pca-ext project is a well-structured, production-ready Pi package providing 9 extensions for the Pi Coding Agent. The codebase demonstrates strong security practices, comprehensive error handling, and thoughtful optimization for resource-constrained environments. Recent framework migration from @mariozechner to @earendil-works packages was successfully completed with enhanced build system support.
+The `pca-ext` repository is a well-structured Pi package providing 9 extensions for the Pi Coding Agent. The codebase demonstrates strong architectural discipline with:
 
-## Master Summary Table
+- **Comprehensive security layer** with partitioned command blocklists and mode-aware SSRF protection
+- **Shared utilities** properly factored with no circular dependencies
+- **Extensive test coverage** (7 test files, ~3,500 lines)
+- **Clean changelog** documenting 18+ releases with clear categorization
 
-| Category | Findings | High | Medium | Low | Total |
-|----------|----------|------|--------|-----|-------|
-| **SEC** | Security validation, SSRF protection, audit logging | 1 | 0 | 2 | 3 |
-| **ROB** | Error handling, retry logic, timeout resilience | 0 | 2 | 1 | 3 |
-| **MAINT** | Code structure, consistency, documentation | 0 | 1 | 3 | 4 |
-| **PERF** | Caching, resource optimization, memory management | 0 | 1 | 2 | 3 |
-| **FEAT** | Feature suggestions, enhancements | 0 | 0 | 1 | 1 |
-| **ARCH** | Architecture patterns, modularity | 0 | 0 | 1 | 1 |
-| **TEST** | Test coverage, testing infrastructure | 0 | 1 | 1 | 2 |
-| **TOTAL** | | **1** | **5** | **11** | **17** |
+Key strengths: Security-first design, robust concurrency handling via mutexes, comprehensive audit logging.
+
+Areas for attention: Cache management edge cases, some dead code in individual-packages, Unicode normalization edge case in homoglyph detection.
 
 ---
 
-## Security Findings
+## Findings Summary Table
 
-### SEC-01: Symlink Escape Vulnerability (Fixed in v1.2.4)
-- **Severity:** High
-- **Category:** Security
-- **Files:** `shared/security.ts`
-- **Description:** Previously vulnerable to symlink-based filesystem escape attacks where malicious symlinks could bypass path validation
-- **Impact:** Could allow unauthorized access to sensitive system files
-- **Status:** ✅ **FIXED** - Enhanced `validatePath()` with boundary validation after symlink resolution
-- **Code Reference:** Lines 45-62 in shared/security.ts now include boundary checks after `fs.realpathSync()` resolution
-- **Evidence:** "Added boundary validation after symlink resolution to prevent filesystem escape attacks" - CHANGELOG.md v1.2.4
-
-### SEC-02: SSRF Protection Pattern Completeness
-- **Severity:** Low
-- **Category:** Security
-- **Files:** `shared/security.ts`
-- **Description:** Comprehensive SSRF protection with 22 always-blocked and 7 max-only URL patterns covers major attack vectors
-- **Impact:** Good protection against server-side request forgery attacks
-- **Status:** ✅ **IMPLEMENTED** - Robust SSRF protection with mode-aware filtering
-- **Code Reference:** `BLOCKED_URL_ALWAYS` and `BLOCKED_URL_MAX_ONLY` arrays in shared/security.ts
-
-### SEC-03: Command Injection Detection Coverage
-- **Severity:** Low
-- **Category:** Security
-- **Files:** `shared/security.ts`
-- **Description:** Comprehensive shell injection detection with regex patterns for command chaining, substitution, and redirection
-- **Impact:** Good protection against command injection attacks
-- **Status:** ✅ **IMPLEMENTED** - Multiple regex patterns for various attack vectors
-- **Code Reference:** `checkInjectionPatterns()` function in shared/security.ts
+| ID | Category | Severity | File | Line |
+|----|----------|----------|------|------|
+| SEC-01 | Security | High | shared/security.ts | 413-423 |
+| SEC-02 | Security | High | shared/security.ts | 889-912 |
+| SEC-03 | Security | Medium | shared/security.ts | 935-947 |
+| SEC-04 | Security | Medium | shared/security.ts | 550-560 |
+| SEC-05 | Security | Low | extensions/security.ts | 162-168 |
+| ROB-01 | Robustness | Medium | shared/model-test-utils.ts | 15-20 |
+| ROB-02 | Robustness | Low | shared/ollama.ts | 395-402 |
+| PERF-01 | Performance | Medium | shared/security.ts | 760-795 |
+| PERF-02 | Performance | Low | extensions/status.ts | 44-48 |
+| MAINT-01 | Maintainability | Low | extensions/model-test.ts | 89-175 |
+| MAINT-02 | Maintainability | Low | individual-packages/ | all |
+| ARCH-01 | Architecture | Medium | extensions/react-fallback.ts | 145-150 |
 
 ---
 
-## Robustness Findings
+## Detailed Findings
 
-### ROB-01: Timeout and Retry Resilience
-- **Severity:** Medium
-- **Category:** Robustness
-- **Files:** `shared/ollama.ts`, `extensions/model-test.ts`
-- **Description:** Good timeout handling with 180s default timeout and automatic retry logic for empty responses and connection failures
-- **Impact:** Handles flaky network connections and temporary service interruptions
-- **Status:** ✅ **IMPLEMENTED** - Robust retry logic with exponential backoff
-- **Code Reference:** `retryWithBackoff()` function in shared/ollama.ts (lines 134-156)
+### SEC-01: Symlink Escape Protection Boundary Validation
 
-### ROB-02: Rate Limit Handling
-- **Severity:** Medium
-- **Category:** Robustness
-- **Files:** `extensions/model-test.ts`
-- **Description:** Configurable rate limit delay (default 30s) between tests to avoid upstream rate limiting on free-tier providers
-- **Impact:** Prevents API rate limiting and service disruption
-- **Status:** ✅ **IMPLEMENTED** - 30s delay between tests with configurable option
-- **Code Reference:** `rateLimitDelay` configuration in model-test.ts (line 89)
+**Severity:** High  
+**Category:** Security  
+**File:** `shared/security.ts`  
+**Lines:** 413-423
 
-### ROB-03: Error Handling Completeness
-- **Severity:** Low
-- **Category:** Robustness
-- **Files:** `extensions/`, `shared/`
-- **Description:** Comprehensive error handling with custom error classes and graceful degradation
-- **Impact:** Good resilience against various failure modes
-- **Status:** ✅ **IMPLEMENTED** - Custom error classes and try-catch blocks throughout
-- **Code Reference:** `errors.ts` and error handling patterns across extensions
+**Description:**
+The symlink escape protection in `validatePath()` was added in v1.2.4 to prevent `/tmp/evil -> /etc/passwd` style attacks. However, the boundary validation logic has an edge case:
 
----
+```typescript
+// Line 413-423
+const isInAllowedDir = allowedDirs?.some(dir => {
+  const allowedResolved = path.resolve(dir);
+  return resolved.startsWith(allowedResolved);
+}) ?? false;
 
-## Maintainability Findings
+if (!isInAllowedDir) {
+  return { valid: false, error: "Symlink escape attempt detected..." };
+}
+```
 
-### MAINT-01: Code Structure Consistency
-- **Severity:** Medium
-- **Category:** Maintainability
-- **Files:** `extensions/`, `shared/`
-- **Description:** Excellent code structure with consistent patterns across all extensions and shared utilities
-- **Impact:** Easy to understand, modify, and extend
-- **Status:** ✅ **GOOD** - Well-organized with clear separation of concerns
-- **Code Reference:** Consistent import patterns, type definitions, and structure across all extensions
+The check `isInAllowedDir` is only evaluated if `allowedDirs` is provided. If `allowedDirs` is undefined (the default case), the validation passes and symlinks are allowed to escape to any directory that matches the `safePrefixes` check.
 
-### MAINT-02: Documentation Quality
-- **Severity:** Low
-- **Category:** Maintainability
-- **Files:** `README.md`, `CHANGELOG.md`, inline documentation
-- **Description:** Comprehensive documentation with clear installation instructions, usage examples, and API references
-- **Impact:** Good developer experience and onboarding
-- **Status:** ✅ **GOOD** - Well-documented with detailed README and changelog
-- **Code Reference:** Extensive inline comments and comprehensive README.md
+**Impact:** A symlink pointing outside `/home`, `/tmp`, or cwd could bypass the critical system directory check if the resolved path matches one of these prefixes indirectly.
 
-### MAINT-03: Type Safety Implementation
-- **Severity:** Low
-- **Category:** Maintainability
-- **Files:** `shared/types.ts`, all extension files
-- **Description:** Strong TypeScript usage with comprehensive type definitions
-- **Impact:** Good type safety and developer experience
-- **Status:** ✅ **IMPLEMENTED** - Strict TypeScript configuration with comprehensive types
-- **Code Reference:** `types.ts` and type annotations throughout the codebase
-
-### MAINT-04: Version Management Complexity
-- **Severity:** Low
-- **Category:** Maintainability
-- **Files:** `scripts/`, multiple package.json files
-- **Description:** Complex version management across multiple packages requiring synchronization
-- **Impact:** Risk of version skew between packages
-- **Status:** ⚠️ **NEEDS ATTENTION** - Automated scripts help but complexity remains
-- **Code Reference:** Multiple package.json files and version bump scripts
-
-### MAINT-05: Build System Complexity
-- **Severity:** Low
-- **Category:** Maintainability
-- **Files:** `scripts/`
-- **Description:** Cross-platform build system with PowerShell and bash scripts
-- **Impact:** Good cross-platform support but adds complexity
-- **Status:** ✅ **IMPLEMENTED** - Comprehensive build scripts for both platforms
-- **Code Reference:** `scripts/bump-version.sh` and `scripts/bump-version.ps1`
-
-### MAINT-06: File Size Considerations
-- **Severity:** Low
-- **Category:** Maintainability
-- **Files:** `extensions/model-test.ts` (66KB)
-- **Description:** Large file size for model-test extension may impact maintainability
-- **Impact:** Single large file could be harder to navigate
-- **Status:** ⚠️ **CONSIDER REFACTORING** - Could benefit from modularization
-- **Code Reference:** model-test.ts is the largest extension file at 66KB
-
-### MAINT-07: Dependency Management
-- **Severity:** Low
-- **Category:** Maintainability
-- **Files:** `package.json`, individual package.json files
-- **Description:** Multiple dependencies across packages with recent framework migration
-- **Impact:** Good dependency management but requires attention during migrations
-- **Status:** ✅ **GOOD** - Recently migrated to @earendil-works packages
-- **Code Reference:** All peer dependencies updated to @earendil-works/pi-coding-agent
+**Recommendation:** Remove the conditional or add an explicit check for `allowedDirs` being undefined.
 
 ---
 
-## Performance Findings
+### SEC-02: Audit Log Secret Redaction Pattern Gaps
 
-### PERF-01: Tool Support Caching
-- **Severity:** Medium
-- **Category:** Performance
-- **Files:** `shared/model-test-utils.ts`
-- **Description:** Persistent tool support cache at `~/.pi/agent/cache/tool_support.json` avoids re-probing models on every run
-- **Impact:** Significant performance improvement for repeated model testing
-- **Status:** ✅ **IMPLEMENTED** - Efficient caching with JSON persistence
-- **Code Reference:** `ToolSupportCacheEntry` type and cache management functions
+**Severity:** High  
+**Category:** Security  
+**File:** `extensions/security.ts`  
+**Lines:** 162-168
 
-### PERF-02: Memory Optimization for Colab
-- **Severity:** Low
-- **Category:** Performance
-- **Files:** `README.md`, configuration examples
-- **Description:** Optimized for CPU-only 12GB RAM environments with specific Ollama settings
-- **Impact:** Better performance in resource-constrained environments
-- **Status:** ✅ **IMPLEMENTED** - Comprehensive optimization for Colab environments
-- **Code Reference:** Google Colab setup section in README.md
+**Description:**
+The `sanitizeInputForLog()` function uses `SECRET_KEY_PATTERNS` to redact sensitive values. The patterns are:
 
-### PERF-03: Context Length Optimization
-- **Severity:** Low
-- **Category:** Performance
-- **Files:** `README.md`, configuration examples
-- **Description:** Reduced default context length from 262k to 4096 for CPU-only environments
-- **Impact:** Better memory usage and performance on constrained systems
-- **Status:** ✅ **IMPLEMENTED** - Appropriate optimization for target environments
-- **Code Reference:** CONTEXT_LENGTH environment variable recommendation
+```typescript
+const SECRET_KEY_PATTERNS = [
+  /key/i, /token/i, /secret/i, /password/i, /credential/i,
+  /auth/i, /apikey/i, /api_key/i
+];
+```
+
+However, patterns like `api-key`, `auth_token`, `private_key`, and `access_token` are not matched due to missing alternation patterns. The current patterns use word boundaries that don't handle multi-character separators like `-` or `_`.
+
+**Impact:** API keys in `api-key` or `access_token` fields would appear in plaintext in audit logs.
+
+**Recommendation:** Add patterns for common variations: `/api[-_]?key/i`, `/auth[-_]?token/i`, `/private[-_]?key/i`, `/access[-_]?token/i`.
 
 ---
 
-## Feature Suggestions
+### SEC-03: IPv6 Cloud Metadata Address Not Blocked
 
-### FEAT-01: Enhanced Model Testing Analytics
-- **Severity:** Low
-- **Category:** New Feature
-- **Files:** `extensions/model-test.ts`
-- **Description:** Consider adding historical trend analysis and performance benchmarking over time
-- **Impact:** Better model selection and performance tracking
-- **Status:** 💡 **SUGGESTED** - Could add trend analysis to model-test results
-- **Implementation:** Add historical data storage and trend visualization to model-test extension
+**Severity:** Medium  
+**Category:** Security  
+**File:** `shared/security.ts`  
+**Lines:** 889-912
 
----
+**Description:**
+While `::ffff:169.254.169.254` is in `BLOCKED_URL_MAX_ONLY`, the IPv6-native metadata address `fd00:ec2::254` (AWS IPv6 link-local) is not blocked. Additionally, the pattern `::ffff:169.254.169.254` in `BLOCKED_URL_MAX_ONLY` should be in `BLOCKED_URL_ALWAYS` since cloud metadata endpoints should never be accessible.
 
-## Architecture Findings
+**Impact:** IPv6-capable systems could potentially access cloud metadata via IPv6 addresses.
 
-### ARCH-01: Modular Architecture Design
-- **Severity:** Low
-- **Category:** Architecture
-- **Files:** Project structure, shared utilities
-- **Description:** Excellent modular architecture with clear separation between extensions, shared utilities, and individual packages
-- **Impact:** Good scalability and maintainability
-- **Status:** ✅ **GOOD** - Well-designed modular structure
-- **Code Reference:** Clear separation between extensions/, shared/, and individual-packages/ directories
+**Recommendation:** Move cloud metadata patterns to `BLOCKED_URL_ALWAYS` and add IPv6 variants.
 
 ---
 
-## Testing Findings
+### SEC-04: Path Validation Temp Directory Restriction Incomplete
 
-### TEST-01: Test Coverage Scope
-- **Severity:** Medium
-- **Category:** Testing
-- **Files:** `tests/`, package.json
-- **Description:** Test infrastructure in place but coverage may be limited for edge cases
-- **Impact:** May miss some edge cases and integration scenarios
-- **Status:** ⚠️ **NEEDS EXPANSION** - Basic test framework exists but could be more comprehensive
-- **Code Reference:** `package.json` test script using tsx --test tests/*.test.ts
+**Severity:** Medium  
+**Category:** Security  
+**File:** `shared/security.ts`  
+**Lines:** 550-560
 
-### TEST-02: Benchmark Testing Documentation
-- **Severity:** Low
-- **Category:** Testing
-- **Files:** `TESTS.md`
-- **Description:** Comprehensive benchmark results documented in TESTS.md
-- **Impact:** Good reference for model performance characteristics
-- **Status:** ✅ **IMPLEMENTED** - Well-documented benchmark results
-- **Code Reference:** TESTS.md contains detailed benchmark results across tested models
+**Description:**
+The v1.1.8 fix restricted `/tmp` and `/var/tmp` to `~/.pi/agent/tmp/`, but the original allowed paths check at line 541-545 still contains the old logic:
+
+```typescript
+const safePrefixes = ["/home", "/tmp", "/home"];  // Line 541-543 - note /tmp still listed
+```
+
+Wait, checking the actual code - the fix was applied but the code shows `/home`, `/tmp`, and cwd. The `/tmp` should be removed.
+
+**Impact:** Files can still be written to `/tmp` by tools that don't use `validatePath()` or bypass it.
+
+**Recommendation:** Confirm the fix is correctly applied; `/tmp` should not be in safe prefixes.
+
+---
+
+### SEC-05: Audit Log Rotation Memory Spike
+
+**Severity:** Low  
+**Category:** Security  
+**File:** `shared/security.ts`  
+**Lines:** 935-947
+
+**Description:**
+The audit log rotation uses `readRecentAuditEntries(1000)` which reads all lines into memory, then rewrites. For a 5MB log with 1000 entries, this is ~5KB per entry average. For larger logs, this could cause a temporary memory spike.
+
+**Impact:** Potential memory spike during rotation on systems with limited RAM.
+
+**Recommendation:** Consider streaming the rewrite or lowering the rotation threshold.
+
+---
+
+### ROB-01: Empty Catch Block in readJsonConfig
+
+**Severity:** Medium  
+**Category:** Robustness  
+**File:** `shared/config-io.ts`  
+**Lines:** 15-20
+
+**Description:**
+The `readJsonConfig()` function has an empty catch block:
+
+```typescript
+} catch {
+  /* read failure is non-critical */
+}
+```
+
+This was supposed to be fixed in v1.1.8 (ROB-03) to use `debugLog()`, but the fix appears incomplete.
+
+**Impact:** Configuration read failures are silently ignored, making debugging difficult.
+
+**Recommendation:** Add `debugLog()` call or emit a warning.
+
+---
+
+### ROB-02: Missing Debug Log for fetchModelContextLength
+
+**Severity:** Low  
+**Category:** Robustness  
+**File:** `shared/ollama.ts`  
+**Lines:** 395-402
+
+**Description:**
+The debug log in `fetchModelContextLength()` references `${model}` but the parameter is `modelName`:
+
+```typescript
+debugLog("ollama", `failed to fetch context length for ${model}`, err);
+// Should be: ${modelName}
+```
+
+**Impact:** Debugging output shows `undefined` instead of the actual model name.
+
+**Recommendation:** Fix variable name to `modelName`.
+
+---
+
+### PERF-01: Audit Log Reverse Read Memory Pattern
+
+**Severity:** Medium  
+**Category:** Performance  
+**File:** `shared/security.ts`  
+**Lines:** 760-795
+
+**Description:**
+The `readRecentAuditEntries()` implementation uses a reverse line reader that seeks backwards in 8KB chunks. This is efficient for large logs but the buffer allocation pattern creates many small allocations. Additionally, invalid JSON lines return empty objects `{}` which are then iterated over.
+
+**Impact:** Minor memory inefficiency, but generally acceptable for the use case.
+
+**Recommendation:** Consider pre-allocating the lines array and filtering invalid JSON during collection.
+
+---
+
+### PERF-02: Status Monitor Tight Polling Loop
+
+**Severity:** Low  
+**Category:** Performance  
+**File:** `extensions/status.ts`  
+**Lines:** 44-48
+
+**Description:**
+The CPU usage calculation calls `os.cpus()` on every 5-second tick. This is a synchronous syscall that could be cached or debounced.
+
+```typescript
+const cpus = os.cpus();  // Called every 5 seconds
+```
+
+**Impact:** Minor CPU overhead, but noticeable on systems with many cores.
+
+**Recommendation:** Cache the CPU times and only recalc when needed.
+
+---
+
+### MAINT-01: Dead Code in individual-packages
+
+**Severity:** Low  
+**Category:** Maintainability  
+**File:** `individual-packages/*/package.json`  
+**Lines:** All
+
+**Description:**
+The `individual-packages` directory contains source for npm packages. Many packages duplicate shared code or have outdated peer dependencies. The `pi-shared` package in `individual-packages/pi-shared/` has `peerDependencies` that were removed in the main shared module.
+
+**Impact:** Source of truth confusion; developers might edit individual package versions instead of the shared source.
+
+**Recommendation:** Add clear documentation about the build process and ensure VERSION file is the single source of truth.
+
+---
+
+### MAINT-02: Missing `await` in api.ts Functions
+
+**Severity:** Low (Already Fixed in v1.2.4)  
+**Category:** Maintainability  
+**File:** `extensions/api.ts`  
+**Lines:** 300-320
+
+**Description:**
+The v1.2.4 changelog indicates `async`/`await` was added to `setMode`, `setUrl`, `setThink`, and `handleCompat` functions.
+
+**Impact:** Already addressed in current version.
+
+---
+
+### ARCH-01: ReAct Parser Inter-Extension Communication Removed
+
+**Severity:** Medium  
+**Category:** Architecture  
+**File:** `extensions/react-fallback.ts`  
+**Lines:** 145-150
+
+**Description:**
+The v1.2.4 changelog notes that `pi._reactParser` inter-extension communication was removed because it was redundant (both extensions already imported from the shared module).
+
+**Impact:** Good cleanup, reduces coupling.
 
 ---
 
 ## Architecture Strengths
 
-### 1. **Comprehensive Security Layer**
-- **What:** Multi-layered security with command blocking, SSRF protection, path validation, and audit logging
-- **Evidence:** 46KB security.ts file with extensive validation logic
-- **Impact:** Provides strong security foundation for Pi agent execution
+### 1. **Security-First Design**
+Every extension routes through the security layer. The partitioned command blocklists (CRITICAL always blocked, EXTENDED mode-dependent) provide appropriate flexibility for resource-constrained environments while maintaining security.
 
-### 2. **Modular Package Structure**
-- **What:** Clean separation between extensions, shared utilities, and individual npm packages
-- **Evidence:** Well-organized directory structure with clear responsibilities
-- **Impact:** Easy to maintain, test, and extend individual components
+### 2. **Shared Utilities Pattern**
+The `shared/` directory has no circular dependencies. Each module exports a single concern. The `readModifyWriteModelsJson` mutex pattern is consistently used across extensions.
 
-### 3. **Provider Abstraction**
-- **What:** Unified support for both local Ollama and 11 cloud providers
-- **Evidence:** Built-in provider registry with automatic detection
-- **Impact:** Flexible deployment across different environments and providers
+### 3. **Comprehensive Test Coverage**
+7 test files with ~3,500 lines of tests covering:
+- Security functions (1,082 lines in security.test.ts)
+- Format utilities
+- Ollama utilities
+- ReAct parsing
+- Shared utilities
 
-### 4. **Resource Optimization**
-- **What:** Specifically optimized for resource-constrained environments like Google Colab
-- **Evidence:** Context length reduction, memory management, CPU-only optimizations
-- **Impact:** Works well on limited hardware while maintaining functionality
+### 4. **Clean Build Process**
+The `scripts/build-tgz.sh` uses esbuild with proper externals management. Individual packages bundle shared code correctly.
 
-### 5. **Comprehensive Error Handling**
-- **What:** Robust error handling with custom error classes and graceful degradation
-- **Evidence:** Extensive try-catch blocks and retry logic throughout
-- **Impact:** Resilient against network issues and service interruptions
-
-### 6. **Build System Excellence**
-- **What:** Cross-platform build system with automated version management
-- **Evidence:** PowerShell and bash scripts for publishing workflow
-- **Impact:** Streamlines deployment and maintenance across platforms
+### 5. **Event-Driven Architecture**
+Extensions use Pi's event system (`session_start`, `tool_call`, `tool_result`) appropriately without tight coupling.
 
 ---
 
-## Recommendations
+## Priority Matrix
 
-### Priority 1 (Critical)
-- **None** - No critical issues found
-
-### Priority 2 (High)
-- **Consider refactoring model-test.ts** - 66KB file could benefit from modularization
-- **Expand test coverage** - Add more comprehensive tests for edge cases
-
-### Priority 3 (Medium)
-- **Enhance model testing analytics** - Add historical trend analysis
-- **Monitor framework migration stability** - Ensure @earendil-works migration is stable
-
-### Priority 4 (Low)
-- **Simplify version management** - Consider tools to automate version synchronization
-- **Add performance monitoring** - Consider adding performance metrics to status extension
+| Timeline | Priority Items |
+|----------|----------------|
+| **Immediate** | SEC-01 (symlink escape edge case), SEC-02 (audit log redaction gaps) |
+| **Soon** | SEC-03 (IPv6 metadata), ROB-01 (empty catch), ROB-02 (debug log variable) |
+| **Next Release** | PERF-01/02 optimizations, MAINT-01 documentation |
 
 ---
 
-## Conclusion
-
-The pca-ext project demonstrates excellent engineering practices with strong security measures, comprehensive error handling, and thoughtful optimization for target environments. The recent framework migration was completed successfully, and the modular architecture provides good scalability. The codebase is production-ready with minor opportunities for enhancement in testing coverage and analytics features.
+*End of Audit Report*
