@@ -56,9 +56,19 @@ import {
  * (OpenRouter, Anthropic, Google, OpenAI, Groq, etc.).
  *
  * Usage:
- *   /model-test              — test the current Pi model
- *   /model-test qwen3:0.6b   — test a specific model
- *   /model-test --all        — test all models (Ollama only)
+ *   /model-test                    — test the current Pi model
+ *   /model-test qwen3:0.6b          — test a specific model
+ *   /model-test --all              — test all models (Ollama only)
+ *   /model-test --help             — show detailed help
+ *   /model-test --list             — list available models
+ *   /model-test --history          — show test history
+ *   /model-test --clear-cache      — clear tool support cache
+ *
+ * Examples:
+ *   /model-test                    # Test current model
+ *   /model-test gpt-4              # Test specific model
+ *   /model-test --all              # Test all Ollama models
+ *   /model-test --history 7d      # Show last 7 days of history
  */
 export default function (pi: ExtensionAPI) {
 
@@ -1510,7 +1520,8 @@ export default function (pi: ExtensionAPI) {
   // ── Register /model-test command ─────────────────────────────────────
 
   pi.registerCommand("model-test", {
-    description: "Test a model for reasoning, thinking, tool usage, ReAct parsing, instruction following, and tool support level. Supports both Ollama and cloud providers. Use: /model-test [model] or /model-test --all",
+    description: "Test a model for reasoning, thinking, tool usage, ReAct parsing, instruction following, and tool support level. Supports both Ollama and cloud providers.",
+    detailedHelp: "\n\n🔍 Model Testing Extension\n\nThis extension tests AI models across multiple dimensions:\n• Reasoning & Thinking: Logic puzzles, math problems, creative thinking\n• Tool Usage: Ability to use available tools effectively\n• Instruction Following: How well the model follows complex instructions\n• Tool Support: Native vs ReAct fallback tool calling capability\n\n📋 Usage Examples:\n  /model-test                    # Test current model\n  /model-test qwen3:0.6b        # Test specific model\n  /model-test --all             # Test all Ollama models\n  /model-test --help            # Show this help\n  /model-test --list           # List available models\n  /model-test --history         # Show test history\n  /model-test --clear-cache     # Clear tool support cache\n\n🔧 Supported Providers:\n• Ollama (local/remote)\n• OpenRouter\n• Anthropic Claude\n• Google Gemini\n• OpenAI GPT\n• Groq\n• DeepSeek\n• Mistral\n• xAI\n• Together\n• Fireworks\n• Cohere\n\n💡 Tips:\n• Use --all to benchmark all your Ollama models\n• Check --history to see past test results\n• Clear cache if you encounter unexpected tool support issues\n• Results show detailed scoring and recommendations\n",
     getArgumentCompletions: async (prefix) => {
       try {
         const models = await getOllamaModels();
@@ -1525,6 +1536,80 @@ export default function (pi: ExtensionAPI) {
       }
 
       const arg = args.trim();
+
+      // Handle help and utility commands
+      if (arg === "--help") {
+        ctx.ui.notify(
+          "🔍 Model Testing Extension\n\n" +
+          "📋 Usage:\n" +
+          "  /model-test [model]     - Test current or specific model\n" +
+          "  /model-test --all        - Test all Ollama models\n" +
+          "  /model-test --list       - List available models\n" +
+          "  /model-test --history    - Show test history\n" +
+          "  /model-test --clear-cache - Clear tool support cache\n\n" +
+          "🔧 Examples:\n" +
+          "  /model-test              # Test current model\n" +
+          "  /model-test gpt-4        # Test specific model\n" +
+          "  /model-test --all        # Benchmark all Ollama models\n\n" +
+          "💡 Use tab completion to see available models",
+          "info"
+        );
+        return;
+      }
+
+      if (arg === "--list") {
+        try {
+          const models = await getOllamaModels();
+          const providerInfo = detectProvider(ctx);
+          ctx.ui.notify(
+            `📋 Available Models\n\n` +
+            `Provider: ${providerInfo.name} (${providerInfo.kind})\n` +
+            `Models: ${models.length}\n\n` +
+            models.map(m => `• ${m}`).join("\n")
+          , "info");
+        } catch (err) {
+          ctx.ui.notify("Could not list models", "error");
+        }
+        return;
+      }
+
+      if (arg === "--history") {
+        try {
+          const history = readTestHistory();
+          if (history.length === 0) {
+            ctx.ui.notify("No test history found", "info");
+            return;
+          }
+          
+          const recent = history.slice(-10); // Show last 10 tests
+          const historyText = recent.map((entry, i) => 
+            `${i + 1}. ${entry.model} - ${entry.timestamp}\n   Score: ${entry.score}\n   Duration: ${entry.durationMs}ms`
+          ).join("\n\n");
+          
+          ctx.ui.notify(
+            `📊 Test History (last 10)\n\n${historyText}`,
+            "info"
+          );
+        } catch (err) {
+          ctx.ui.notify("Could not read test history", "error");
+        }
+        return;
+      }
+
+      if (arg === "--clear-cache") {
+        try {
+          const fs = require("node:fs");
+          if (fs.existsSync(TOOL_SUPPORT_CACHE_PATH)) {
+            fs.unlinkSync(TOOL_SUPPORT_CACHE_PATH);
+            ctx.ui.notify("Tool support cache cleared successfully", "info");
+          } else {
+            ctx.ui.notify("No cache file found to clear", "info");
+          }
+        } catch (err) {
+          ctx.ui.notify("Could not clear cache", "error");
+        }
+        return;
+      }
 
       if (arg === "--all") {
         // --all only works for Ollama providers
@@ -1585,7 +1670,20 @@ export default function (pi: ExtensionAPI) {
           details: { model, timestamp: new Date().toISOString() },
         });
       } catch (e: any) {
-        ctx.ui.notify(`Model test failed: ${e.message}`, "error");
+        let errorMessage = "Model test failed";
+        if (e.name === "ApiError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "ExtensionTimeoutError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "SecurityError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "ConfigError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.message) {
+          errorMessage += `: ${e.message}`;
+        }
+        
+        ctx.ui.notify(errorMessage, "error");
       }
     },
   });
@@ -1621,8 +1719,21 @@ export default function (pi: ExtensionAPI) {
           isError: false,
         } as AgentToolResult;
       } catch (e: any) {
+        let errorMessage = "Model test failed";
+        if (e.name === "ApiError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "ExtensionTimeoutError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "SecurityError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "ConfigError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.message) {
+          errorMessage += `: ${e.message}`;
+        }
+        
         return {
-          content: [{ type: "text", text: `Model test failed: ${e.message}` }],
+          content: [{ type: "text", text: errorMessage }],
           isError: true,
         } as AgentToolResult;
       }
