@@ -10,6 +10,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { debugLog } from "./debug";
 import type { ToolSupportLevel } from "./types";
 
 // ============================================================================
@@ -52,18 +53,14 @@ export const CONFIG = {
   MODEL_INFO_TIMEOUT_MS: 30000,      // 30 seconds for model info lookup
 
   // Provider API settings
-  PROVIDER_TIMEOUT_MS: 999999,       // Effectively unlimited for cloud provider API calls
-  PROVIDER_TOOL_TIMEOUT_MS: 120000,   // 120 seconds for tool usage tests on providers
+  PROVIDER_TIMEOUT_MS: 300000,        // 5 minutes - consistent with Ollama
+  PROVIDER_TOOL_TIMEOUT_MS: 300000,   // 5 minutes - consistent with Ollama tool tests
 
   // Context length fetching
   CONTEXT_BATCH_SIZE: 3,             // Concurrent requests when fetching model context lengths
 
   // Rate limiting
   TEST_DELAY_MS: 10000,              // 10 seconds between tests to avoid rate limiting
-  
-  // Provider-specific timeouts (now standardized)
-  PROVIDER_TIMEOUT_MS: 300000,        // 5 minutes - consistent with Ollama
-  PROVIDER_TOOL_TIMEOUT_MS: 300000,   // 5 minutes - consistent with Ollama tool tests
 
   // Cache management
   MAX_CACHE_SIZE: 1000,              // Maximum number of entries in tool support cache
@@ -811,6 +808,3 @@ function basicJsonRepair(json: string): string {
   if (braceDepth > 0 || bracketDepth > 0) {
     return json + "}".repeat(braceDepth) + "]".repeat(bracketDepth);
   }
-  
-  return json;
-}
