@@ -78,11 +78,37 @@ export default function (pi: ExtensionAPI) {
   // that receives an already-split args[] array, matching the /api command pattern.
 
   pi.registerCommand("security", {
-    description: "Manage security mode — usage: /security mode [basic|max]",
+    description: "Manage security mode and view security information",
+    detailedHelp: "\n\n🔒 Security Extension\n\nManages security enforcement mode and provides security information.\n\n📋 Usage:\n  /security mode              - Show current security mode\n  /security mode basic         - Enable basic security (critical commands only)\n  /security mode max          - Enable maximum security (all commands)\n  /security mode off          - Disable security (not recommended)\n  /security audit             - Show detailed security audit report\n  /security --help            - Show this help\n\n🔧 Security Modes:\n• basic: Blocks 41 critical commands, allows localhost\n• max: Blocks 66 total commands, full SSRF protection\n• off: No security checks (development only)\n\n📊 Features:\n• Command blocklist validation\n• Path validation (sensitive directory protection)\n• SSRF protection (URL filtering)\n• Shell injection detection\n• Audit logging with JSON format\n\n💡 Tips:\n• Use basic mode for development\n• Use max mode for production\n• Check audit log for security events\n• View stats to monitor security violations\n",
     handler: async (args, ctx) => {
       try {
         const parts = args.trim().split(/\s+/);
         const sub = parts[0]?.toLowerCase() || "";
+
+        // Handle help command
+        if (args.trim() === "--help") {
+          ctx.ui.notify(
+            "🔒 Security Extension\n\n" +
+            "📋 Usage:\n" +
+            "  /security mode              - Show current security mode\n" +
+            "  /security mode basic         - Enable basic security\n" +
+            "  /security mode max          - Enable maximum security\n" +
+            "  /security mode off          - Disable security\n" +
+            "  /security audit             - Show detailed audit report\n\n" +
+            "🔧 Security Modes:\n" +
+            "• basic: Blocks 41 critical commands, allows localhost\n" +
+            "• max: Blocks 66 total commands, full SSRF protection\n" +
+            "• off: No security checks (development only)\n\n" +
+            "📊 Features:\n" +
+            "• Command blocklist validation\n" +
+            "• Path validation (sensitive directory protection)\n" +
+            "• SSRF protection (URL filtering)\n" +
+            "• Shell injection detection\n" +
+            "• Audit logging with JSON format\n",
+            "info"
+          );
+          return;
+        }
 
         if (sub === "mode") {
           const value = parts[1]?.toLowerCase();
@@ -436,7 +462,29 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerCommand("security-audit", {
     description: "Show security audit report — blocked operations, stats, and recent log",
-    handler: async (_args, ctx) => {
+    detailedHelp: "\n\n🔍 Security Audit Command\n\nDisplays a comprehensive security audit report including:\n• Session security statistics\n• Blocked operations with reasons\n• Recent audit log entries\n• Security mode information\n• Active security checks\n\n📋 Usage:\n  /security-audit              - Show full audit report\n  /security-audit --help      - Show this help\n\n📊 Report Sections:\n• Security Mode: Current enforcement level\n• Blocklist Summary: Commands and URLs blocked\n• Session Statistics: Operations allowed/blocked\n• Blocked by Rule: Breakdown of security violations\n• Recent Audit Log: Last 20 security events\n• Summary: Overall security status\n\n💡 Note: Audit logs are stored in ~/.pi/agent/audit.log\n",
+    handler: async (args, ctx) => {
+      // Handle help command
+      if (args.trim() === "--help") {
+        ctx.ui.notify(
+          "🔍 Security Audit Command\n\n" +
+          "📋 Usage:\n" +
+          "  /security-audit              - Show full audit report\n" +
+          "  /security-audit --help      - Show this help\n\n" +
+          "📊 Report Sections:\n" +
+          "• Security Mode: Current enforcement level\n" +
+          "• Blocklist Summary: Commands and URLs blocked\n" +
+          "• Session Statistics: Operations allowed/blocked\n" +
+          "• Blocked by Rule: Breakdown of security violations\n" +
+          "• Recent Audit Log: Last 20 security events\n" +
+          "• Summary: Overall security status\n\n" +
+          "💡 Note: Audit logs are stored in ~/.pi/agent/audit.log\n",
+          "info"
+        );
+        return;
+      }
+      
+      if (!ctx.hasUI) {
       if (!ctx.hasUI) {
         ctx.ui.notify("Security audit requires TUI mode", "error");
         return;

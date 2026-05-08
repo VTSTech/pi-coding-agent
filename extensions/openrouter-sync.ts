@@ -164,7 +164,37 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("openrouter-sync", {
     description:
       "Add OpenRouter model(s) to models.json. Use: /or-sync <url-or-id> [url-or-id ...]",
+    detailedHelp: "\n\n🌐 OpenRouter Synchronization Extension\n\nAdds OpenRouter model IDs to Pi's models.json configuration under\nthe 'openrouter' provider. Creates the provider if it doesn't exist.\n\n📋 Usage:\n  /openrouter-sync <model>                  - Add single model\n  /openrouter-sync --help                  - Show this help\n  /openrouter-sync <model1> <model2>        - Add multiple models\n  /or-sync <model>                          - Short alias\n\n🔧 Supported Formats:\n• Full URLs: https://openrouter.ai/liquid/lfm-2.5-1.2b-thinking:free\n• Bare IDs: liquid/lfm-2.5-1.2b-thinking:free\n• Mixed: https://openrouter.ai/model1 liquid/model2:tag\n\n📊 Features:\n• Automatic provider creation and ordering\n• Duplicate model detection (skips existing)\n• Atomic configuration updates\n• Built-in provider configuration\n• Position above ollama in provider list\n\n💡 Tips:\n• Use /or-sync as a shorter alias\n• Models are never removed, only added\n• Run /reload after sync to apply changes\n• Works with all OpenRouter free and paid models\n",
     async handler(args, ctx) {
+      // Handle help command
+      if (args.trim() === "--help") {
+        ctx.ui.notify(
+          "🌐 OpenRouter Synchronization Extension\n\n" +
+          "📋 Usage:\n" +
+          "  /openrouter-sync <model>                  - Add single model\n" +
+          "  /openrouter-sync --help                  - Show this help\n" +
+          "  /openrouter-sync <model1> <model2>        - Add multiple models\n" +
+          "  /or-sync <model>                          - Short alias\n\n" +
+          "🔧 Supported Formats:\n" +
+          "• Full URLs: https://openrouter.ai/liquid/lfm-2.5-1.2b-thinking:free\n" +
+          "• Bare IDs: liquid/lfm-2.5-1.2b-thinking:free\n" +
+          "• Mixed: https://openrouter.ai/model1 liquid/model2:tag\n\n" +
+          "📊 Features:\n" +
+          "• Automatic provider creation and ordering\n" +
+          "• Duplicate model detection (skips existing)\n" +
+          "• Atomic configuration updates\n" +
+          "• Built-in provider configuration\n" +
+          "• Position above ollama in provider list\n\n" +
+          "💡 Tips:\n" +
+          "• Use /or-sync as a shorter alias\n" +
+          "• Models are never removed, only added\n" +
+          "• Run /reload after sync to apply changes\n" +
+          "• Works with all OpenRouter free and paid models\n",
+          "info"
+        );
+        return;
+      }
+      
       const modelIds = parseModelIds(args);
 
       if (modelIds.length === 0) {

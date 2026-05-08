@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.2.6] - 05-08-2026 1:01:00 PM
+
+### Added
+
+- **Enhanced Error Messages**: Added user-friendly error messages with suggestions for all error types (API errors, timeout errors, security errors, configuration errors, tool errors)
+- **Extension Help Support**: Added `--help` option to all extension commands for comprehensive usage information
+- **Documentation Examples**: Created comprehensive `EXTENSION_EXAMPLES.md` with practical usage examples and troubleshooting guides
+- **Model Test Enhancement**: Added utility commands `/model-test --help`, `/model-test --list`, `/model-test --history`, `/model-test --clear-cache`
+- **Security Extension Help**: Added detailed help for `/security` and `/security-audit` commands
+- **Diagnostic Extension Help**: Added comprehensive help for `/diag` with quick and security-focused options
+- **Soul Extension Help**: Added detailed help for `/souls` and `/soul` commands with disclosure level information
+- **API Extension Help**: Added comprehensive help for `/api` command with all subcommands and API modes
+- **Ollama Sync Help**: Added detailed help for `/ollama-sync` command with remote URL support
+- **OpenRouter Sync Help**: Added comprehensive help for `/openrouter-sync` and `/or-sync` commands
+- **ReAct Fallback Help**: Added detailed help for `/react-mode` and `/react-parse` commands
+
 ## [1.2.5] - 05-07-2026 1:39:34 PM
 
 ### Dependencies

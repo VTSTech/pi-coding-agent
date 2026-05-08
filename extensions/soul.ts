@@ -732,7 +732,29 @@ export default function (pi: ExtensionAPI) {
   // Add command to list souls
   pi.registerCommand("souls", {
     description: "List available souls",
+    detailedHelp: "\n\n🎭 Soul Management\n\nLists all available SoulSpec personas that can be loaded for your session.\n\n📋 Usage:\n  /souls                      - List all available souls\n  /souls --help              - Show this help\n\n📊 Information Displayed:\n• Soul name and display name\n• Description and purpose\n• Disclosure level summary\n• Location in filesystem\n\n💡 Tips:\n• Souls are stored in souls/ directories\n• Look for souls in: .pi/souls, ./souls, ~/.pi/agent/souls\n• Each soul should have a soul.json manifest\n",
     handler: async (args, ctx) => {
+      // Handle help command
+      if (args.trim() === "--help") {
+        ctx.ui.notify(
+          "🎭 Soul Management\n\n" +
+          "📋 Usage:\n" +
+          "  /souls                      - List all available souls\n" +
+          "  /souls --help              - Show this help\n\n" +
+          "📊 Information Displayed:\n" +
+          "• Soul name and display name\n" +
+          "• Description and purpose\n" +
+          "• Disclosure level summary\n" +
+          "• Location in filesystem\n\n" +
+          "💡 Tips:\n" +
+          "• Souls are stored in souls/ directories\n" +
+          "• Look for souls in: .pi/souls, ./souls, ~/.pi/agent/souls\n" +
+          "• Each soul should have a soul.json manifest\n",
+          "info"
+        );
+        return;
+      }
+      
       debugLog("soul", "Listing souls command");
       
       const souls = soulLoader.getAllSouls();
@@ -764,7 +786,39 @@ export default function (pi: ExtensionAPI) {
   // Add command to use a soul
   pi.registerCommand("soul", {
     description: "Use a soul for the current session",
+    detailedHelp: "\n\n🎭 SoulSpec Persona System\n\nLoads and manages AI agent personas defined in SoulSpec format with\nprogressive disclosure support and environment-specific customization.\n\n📋 Usage:\n  /soul <soul-name>            - Load a soul with standard disclosure (level 2)\n  /soul <soul-name> --level 1  - Load with minimal disclosure\n  /soul <soul-name> --level 2  - Load with standard disclosure (default)\n  /soul <soul-name> --level 3  - Load with full detailed information\n  /soul <soul-name> --info     - Show soul information without loading\n  /soul --help                - Show this help\n\n🔧 Disclosure Levels:\n• Level 1: Basic information only (minimal details)\n• Level 2: Standard disclosure with core capabilities\n• Level 3: Full detailed information and background\n\n📊 Soul Information:\n• Display name and description\n• Personality traits and communication style\n• Technical expertise and capabilities\n• Environmental constraints and preferences\n• Hardware specifications (for embodied agents)\n\n💡 Tips:\n• Use --info to preview a soul before loading\n• Adjust disclosure level based on your needs\n• Souls are automatically discovered from multiple directories\n• Each soul should have a soul.json manifest file\n",
     handler: async (args, ctx) => {
+      // Handle help command
+      if (args.trim() === "--help") {
+        ctx.ui.notify(
+          "🎭 SoulSpec Persona System\n\n" +
+          "📋 Usage:\n" +
+          "  /soul <soul-name>            - Load a soul with standard disclosure (level 2)\n" +
+          "  /soul <soul-name> --level 1  - Load with minimal disclosure\n" +
+          "  /soul <soul-name> --level 2  - Load with standard disclosure (default)\n" +
+          "  /soul <soul-name> --level 3  - Load with full detailed information\n" +
+          "  /soul <soul-name> --info     - Show soul information without loading\n" +
+          "  /soul --help                - Show this help\n\n" +
+          "🔧 Disclosure Levels:\n" +
+          "• Level 1: Basic information only (minimal details)\n" +
+          "• Level 2: Standard disclosure with core capabilities\n" +
+          "• Level 3: Full detailed information and background\n\n" +
+          "📊 Soul Information:\n" +
+          "• Display name and description\n" +
+          "• Personality traits and communication style\n" +
+          "• Technical expertise and capabilities\n" +
+          "• Environmental constraints and preferences\n" +
+          "• Hardware specifications (for embodied agents)\n\n" +
+          "💡 Tips:\n" +
+          "• Use --info to preview a soul before loading\n" +
+          "• Adjust disclosure level based on your needs\n" +
+          "• Souls are automatically discovered from multiple directories\n" +
+          "• Each soul should have a soul.json manifest file\n",
+          "info"
+        );
+        return;
+      }
+      
       debugLog("soul", `Using soul command with: ${args}`);
       
       if (!args) {

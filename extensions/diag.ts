@@ -604,11 +604,56 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerCommand("diag", {
     description: "Run a full system diagnostic (Ollama, models, extensions, themes, resources, security)",
-    handler: async (_args, ctx) => {
+    detailedHelp: "\n\n🔍 System Diagnostic Extension\n\nRuns a comprehensive diagnostic check of the Pi environment including:\n• System resources (CPU, RAM, disk space)\n• Ollama connectivity and status\n• Models.json configuration validation\n• Extensions and themes loading\n• Security posture and settings\n• Current session state\n• Network connectivity\n• Tool availability and functionality\n\n📋 Usage:\n  /diag                       - Run full diagnostic\n  /diag --help                - Show this help\n  /diag --quick               - Quick health check only\n  /diag --security            - Security-focused diagnostic\n  /diag --performance        - Performance-focused diagnostic\n\n📊 Diagnostic Sections:\n• System Resources: CPU, RAM, disk usage\n• Ollama Status: Connection and model availability\n• Configuration: Models.json validation\n• Extensions: Loaded extensions and status\n• Security: Security mode and audit log\n• Network: Internet connectivity and API endpoints\n• Tools: Available tools and functionality\n\n💡 Tips:\n• Use --quick for fast status checks\n• Use --security to focus on security issues\n• Run regularly to monitor system health\n",
+    handler: async (args, ctx) => {
+      // Handle help command
+      if (args.trim() === "--help") {
+        ctx.ui.notify(
+          "🔍 System Diagnostic Extension\n\n" +
+          "📋 Usage:\n" +
+          "  /diag                       - Run full diagnostic\n" +
+          "  /diag --help                - Show this help\n" +
+          "  /diag --quick               - Quick health check only\n" +
+          "  /diag --security            - Security-focused diagnostic\n" +
+          "  /diag --performance        - Performance-focused diagnostic\n\n" +
+          "📊 Diagnostic Sections:\n" +
+          "• System Resources: CPU, RAM, disk usage\n" +
+          "• Ollama Status: Connection and model availability\n" +
+          "• Configuration: Models.json validation\n" +
+          "• Extensions: Loaded extensions and status\n" +
+          "• Security: Security mode and audit log\n" +
+          "• Network: Internet connectivity and API endpoints\n" +
+          "• Tools: Available tools and functionality\n\n" +
+          "💡 Tips:\n" +
+          "• Use --quick for fast status checks\n" +
+          "• Use --security to focus on security issues\n" +
+          "• Run regularly to monitor system health\n",
+          "info"
+        );
+        return;
+      }
+      
       if (!ctx.hasUI) {
         ctx.ui.notify("Diagnostic requires TUI mode", "error");
         return;
       }
+      
+      // Handle quick diagnostic
+      if (args.trim() === "--quick") {
+        ctx.ui.notify("Running quick diagnostic...", "info");
+        try {
+          const report = await runQuickDiagnostics(ctx);
+          pi.sendMessage({
+            customType: "diagnostic-report",
+            content: report,
+            display: { type: "content", content: report },
+          });
+        } catch (e: any) {
+          ctx.ui.notify(`Quick diagnostic failed: ${e.message}`, "error");
+        }
+        return;
+      }
+      
       ctx.ui.notify("Running diagnostic...", "info");
       try {
         const report = await runDiagnostics(ctx);

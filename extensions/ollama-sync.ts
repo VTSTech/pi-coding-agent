@@ -181,6 +181,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerCommand("ollama-sync", {
     description: "Sync models from Ollama into models.json. Use: /ollama-sync [url]",
+    detailedHelp: "\n\n🔄 Ollama Synchronization Extension\n\nSynchronizes available models from an Ollama instance (local or remote)\ninto Pi's models.json configuration file with metadata extraction.\n\n📋 Usage:\n  /ollama-sync                 - Sync with local Ollama\n  /ollama-sync --help         - Show this help\n  /ollama-sync <url>          - Sync with remote Ollama instance\n  /ollama-sync <tunnel-url>   - Sync with tunnel URL\n\n🔧 Features:\n• Automatic model metadata extraction (parameters, quantization, family)\n• Context length detection and optimization\n• Memory usage estimation (GPU/CPU)\n• Reasoning model auto-detection\n• Change detection (added/removed models)\n• Atomic configuration updates\n\n📊 Sync Information:\n• Model parameters and quantization level\n• Context length and memory requirements\n• Model family detection\n• Reasoning capability flags\n• Size estimation for GPU/CPU memory\n\n💡 Tips:\n• Use /reload after sync to apply changes\n• Remote URLs are auto-saved to models.json\n• Works with tunnel services like ngrok\n• Syncs automatically when models are added/removed\n",
     getArgumentCompletions: async () => {
       const url = getOllamaBaseUrl();
       return [
@@ -188,6 +189,38 @@ export default function (pi: ExtensionAPI) {
       ];
     },
     async handler(args, ctx) {
+      // Handle help command
+      if (args.trim() === "--help") {
+        ctx.ui.notify(
+          "🔄 Ollama Synchronization Extension\n\n" +
+          "📋 Usage:\n" +
+          "  /ollama-sync                 - Sync with local Ollama\n" +
+          "  /ollama-sync --help         - Show this help\n" +
+          "  /ollama-sync <url>          - Sync with remote Ollama instance\n" +
+          "  /ollama-sync <tunnel-url>   - Sync with tunnel URL\n\n" +
+          "🔧 Features:\n" +
+          "• Automatic model metadata extraction (parameters, quantization, family)\n" +
+          "• Context length detection and optimization\n" +
+          "• Memory usage estimation (GPU/CPU)\n" +
+          "• Reasoning model auto-detection\n" +
+          "• Change detection (added/removed models)\n" +
+          "• Atomic configuration updates\n\n" +
+          "📊 Sync Information:\n" +
+          "• Model parameters and quantization level\n" +
+          "• Context length and memory requirements\n" +
+          "• Model family detection\n" +
+          "• Reasoning capability flags\n" +
+          "• Size estimation for GPU/CPU memory\n\n" +
+          "💡 Tips:\n" +
+          "• Use /reload after sync to apply changes\n" +
+          "• Remote URLs are auto-saved to models.json\n" +
+          "• Works with tunnel services like ngrok\n" +
+          "• Syncs automatically when models are added/removed\n",
+          "info"
+        );
+        return;
+      }
+      
       const arg = args.trim();
       const overrideUrl = arg || undefined;
       ctx.ui.setStatus("ollama-sync", "Fetching models from Ollama...");

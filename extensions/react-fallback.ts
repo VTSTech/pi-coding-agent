@@ -204,7 +204,36 @@ The bridge will match your tool name (fuzzy matching supported) and normalize ar
 
   pi.registerCommand("react-mode", {
     description: "Toggle ReAct fallback mode for models without native tool calling",
-    handler: async (_args, ctx) => {
+    detailedHelp: "\n\n🔄 ReAct Fallback Extension\n\nEnables tool calling for models that don't support Pi's native\nfunction calling. Provides a universal bridge tool + ReAct text parser.\n\n📋 Usage:\n  /react-mode                 - Toggle ReAct mode\n  /react-mode --help          - Show this help\n  /react-parse <text>         - Test the ReAct parser\n\n🔧 Features:\n• Universal tool calling bridge\n• Multi-dialect ReAct parsing\n• Fuzzy tool name matching\n• Argument normalization\n• Automatic dialect detection\n• JSON schema extraction\n\n📊 Mode Effects:\n• Enabled: Bridge tool available, ReAct instructions in prompt\n• Disabled: Native tool calling only, no bridge tool\n\n💡 Tips:\n• Enable for models that can't use tools directly\n• Works with: Llama 2, Mistral, smaller models, custom models\n• Disable when using native tool models (GPT-4, Claude 3, etc.)\n• Use /react-parse to test parsing capabilities\n",
+    handler: async (args, ctx) => {
+      // Handle help command
+      if (args.trim() === "--help") {
+        ctx.ui.notify(
+          "🔄 ReAct Fallback Extension\n\n" +
+          "📋 Usage:\n" +
+          "  /react-mode                 - Toggle ReAct mode\n" +
+          "  /react-mode --help          - Show this help\n" +
+          "  /react-parse <text>         - Test the ReAct parser\n\n" +
+          "🔧 Features:\n" +
+          "• Universal tool calling bridge\n" +
+          "• Multi-dialect ReAct parsing\n" +
+          "• Fuzzy tool name matching\n" +
+          "• Argument normalization\n" +
+          "• Automatic dialect detection\n" +
+          "• JSON schema extraction\n\n" +
+          "📊 Mode Effects:\n" +
+          "• Enabled: Bridge tool available, ReAct instructions in prompt\n" +
+          "• Disabled: Native tool calling only, no bridge tool\n\n" +
+          "💡 Tips:\n" +
+          "• Enable for models that can't use tools directly\n" +
+          "• Works with: Llama 2, Mistral, smaller models, custom models\n" +
+          "• Disable when using native tool models (GPT-4, Claude 3, etc.)\n" +
+          "• Use /react-parse to test parsing capabilities\n",
+          "info"
+        );
+        return;
+      }
+      
       reactModeEnabled = !reactModeEnabled;
       writeReactConfig({ enabled: reactModeEnabled });
       const status = reactModeEnabled ? "ENABLED" : "DISABLED";
@@ -245,7 +274,40 @@ The bridge will match your tool name (fuzzy matching supported) and normalize ar
 
   pi.registerCommand("react-parse", {
     description: "Test the ReAct parser against a text input: /react-parse <text>",
+    detailedHelp: "\n\n🔍 ReAct Parser Test Tool\n\nTests the ReAct text parsing capabilities against sample input.\nDetects different ReAct dialects and extracts tool calls.\n\n📋 Usage:\n  /react-parse <text>         - Test parsing on input text\n  /react-parse --help        - Show this help\n\n🔍 Parser Features:\n• Multi-dialect support (React, Auto-GPT, BabyAGI, etc.)\n• JSON schema extraction\n• Fuzzy tool name matching\n• Argument normalization\n• Thought and final answer detection\n\n📊 Output Information:\n• Detected dialect and format\n• Parsed tool name and arguments\n• Thought process extraction\n• Final answer detection\n• JSON schema parsing\n• Parse success/failure status\n\n💡 Examples:\n  /react-parse 'Thought: I need to check the weather. Action: weather_args, 20'
+  /react-parse 'I will use the tool {\"name\": \"bash\", \"args\": {\"command\": \"ls\"}}'
+  /react-parse 'Let me think about this...'
+",
     handler: async (args, ctx) => {
+      // Handle help command
+      if (args.trim() === "--help") {
+        ctx.ui.notify(
+          "🔍 ReAct Parser Test Tool\n\n" +
+          "📋 Usage:\n" +
+          "  /react-parse <text>         - Test parsing on input text\n" +
+          "  /react-parse --help        - Show this help\n\n" +
+          "🔍 Parser Features:\n" +
+          "• Multi-dialect support (React, Auto-GPT, BabyAGI, etc.)\n" +
+          "• JSON schema extraction\n" +
+          "• Fuzzy tool name matching\n" +
+          "• Argument normalization\n" +
+          "• Thought and final answer detection\n\n" +
+          "📊 Output Information:\n" +
+          "• Detected dialect and format\n" +
+          "• Parsed tool name and arguments\n" +
+          "• Thought process extraction\n" +
+          "• Final answer detection\n" +
+          "• JSON schema parsing\n" +
+          "• Parse success/failure status\n\n" +
+          "💡 Examples:\n" +
+          "  /react-parse 'Thought: I need to check the weather. Action: weather_args, 20'\n" +
+          "  /react-parse 'I will use the tool {\\\"name\\\": \\\"bash\\\", \\\"args\\\": {\\\"command\\\": \\\"ls\\\"}}'\n" +
+          "  /react-parse 'Let me think about this...'\n",
+          "info"
+        );
+        return;
+      }
+      
       const text = args.trim();
       if (!text) {
         ctx.ui.notify("Provide text to parse: /react-parse <text>", "error");
