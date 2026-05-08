@@ -808,3 +808,6 @@ function basicJsonRepair(json: string): string {
   if (braceDepth > 0 || bracketDepth > 0) {
     return json + "}".repeat(braceDepth) + "]".repeat(bracketDepth);
   }
+  
+  return json;
+}
