@@ -274,10 +274,7 @@ The bridge will match your tool name (fuzzy matching supported) and normalize ar
 
   pi.registerCommand("react-parse", {
     description: "Test the ReAct parser against a text input: /react-parse <text>",
-    detailedHelp: "\n\n🔍 ReAct Parser Test Tool\n\nTests the ReAct text parsing capabilities against sample input.\nDetects different ReAct dialects and extracts tool calls.\n\n📋 Usage:\n  /react-parse <text>         - Test parsing on input text\n  /react-parse --help        - Show this help\n\n🔍 Parser Features:\n• Multi-dialect support (React, Auto-GPT, BabyAGI, etc.)\n• JSON schema extraction\n• Fuzzy tool name matching\n• Argument normalization\n• Thought and final answer detection\n\n📊 Output Information:\n• Detected dialect and format\n• Parsed tool name and arguments\n• Thought process extraction\n• Final answer detection\n• JSON schema parsing\n• Parse success/failure status\n\n💡 Examples:\n  /react-parse 'Thought: I need to check the weather. Action: weather_args, 20'
-  /react-parse 'I will use the tool {\"name\": \"bash\", \"args\": {\"command\": \"ls\"}}'
-  /react-parse 'Let me think about this...'
-",
+    detailedHelp: `\n\n🔍 ReAct Parser Test Tool\n\nTests the ReAct text parsing capabilities against sample input.\nDetects different ReAct dialects and extracts tool calls.\n\n📋 Usage:\n  /react-parse <text>         - Test parsing on input text\n  /react-parse --help        - Show this help\n\n🔍 Parser Features:\n• Multi-dialect support (React, Auto-GPT, BabyAGI, etc.)\n• JSON schema extraction\n• Fuzzy tool name matching\n• Argument normalization\n• Thought and final answer detection\n\n📊 Output Information:\n• Detected dialect and format\n• Parsed tool name and arguments\n• Thought process extraction\n• Final answer detection\n• JSON schema parsing\n• Parse success/failure status\n\n💡 Examples:\n  /react-parse 'Thought: I need to check the weather. Action: weather_args, 20'\n  /react-parse 'I will use the tool {"name": "bash", "args": {"command": "ls"}}'\n  /react-parse 'Let me think about this...'\n`,
     handler: async (args, ctx) => {
       // Handle help command
       if (args.trim() === "--help") {

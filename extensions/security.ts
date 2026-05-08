@@ -485,7 +485,6 @@ export default function (pi: ExtensionAPI) {
       }
       
       if (!ctx.hasUI) {
-      if (!ctx.hasUI) {
         ctx.ui.notify("Security audit requires TUI mode", "error");
         return;
       }
