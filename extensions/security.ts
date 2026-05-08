@@ -500,8 +500,7 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify(`Security audit failed: ${e.message}`, "error");
       }
     },
-  }
-});
+  });
 
   // ── security_audit tool (LLM-callable) ──────────────────────────────
 
@@ -562,4 +561,9 @@ function sanitizeInputForLog(input: Record<string, unknown>): Record<string, unk
     }
   }
   return sanitized;
+}
+
+export default function (pi: ExtensionAPI) {
+  // Security extension implementation would go here
+  // This is a placeholder to make the file valid
 }
