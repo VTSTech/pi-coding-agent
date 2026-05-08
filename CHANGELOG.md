@@ -12,7 +12,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Enhanced Error Messages**: Added user-friendly error messages with suggestions for all error types (API errors, timeout errors, security errors, configuration errors, tool errors)
 - **Extension Help Support**: Added `--help` option to all extension commands for comprehensive usage information
-- **Documentation Examples**: Created comprehensive `EXTENSION_EXAMPLES.md` with practical usage examples and troubleshooting guides
 - **Model Test Enhancement**: Added utility commands `/model-test --help`, `/model-test --list`, `/model-test --history`, `/model-test --clear-cache`
 - **Security Extension Help**: Added detailed help for `/security` and `/security-audit` commands
 - **Diagnostic Extension Help**: Added comprehensive help for `/diag` with quick and security-focused options
