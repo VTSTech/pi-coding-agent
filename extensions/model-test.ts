@@ -1388,6 +1388,31 @@ export default function (pi: ExtensionAPI) {
 
     // Save test history
     try {
+      // Conditionally define variables based on test type
+      let historyTools = { score: "SKIP", pass: false, toolCall: "n/a" };
+      let historyReact = { score: "SKIP", pass: false, toolCall: "n/a", dialect: undefined };
+      let historyThinking = { supported: false };
+      let historyToolSupport = { level: "SKIP", evidence: "basic flow" };
+      
+      if (testType === "02") {
+        historyTools = {
+          score: tools.score,
+          pass: tools.score === "STRONG" || tools.score === "MODERATE",
+          toolCall: tools.toolCall
+        };
+        historyReact = {
+          score: react.score,
+          pass: react.score === "STRONG" || react.score === "MODERATE",
+          toolCall: react.toolCall,
+          dialect: react.dialect
+        };
+        historyThinking = { supported: thinking.supported };
+        historyToolSupport = {
+          level: toolSupport.level,
+          evidence: toolSupport.evidence
+        };
+      }
+
       const historyEntry: TestHistoryEntry = {
         timestamp: new Date().toISOString(),
         model,
@@ -1395,11 +1420,11 @@ export default function (pi: ExtensionAPI) {
         providerName: providerName || "ollama",
         tests: {
           reasoning: { score: reasoning.score, pass: reasoning.score === "STRONG" || reasoning.score === "MODERATE", answer: reasoning.answer },
-          thinking: { supported: thinking.supported },
-          toolUsage: { score: tools.score, pass: tools.score === "STRONG" || tools.score === "MODERATE", toolCall: tools.toolCall },
-          reactParsing: { score: react.score, pass: react.score === "STRONG" || react.score === "MODERATE", toolCall: react.toolCall, dialect: react.dialect },
+          thinking: historyThinking,
+          toolUsage: historyTools,
+          reactParsing: historyReact,
           instructionFollowing: { score: instructions.score, pass: instructions.pass },
-          toolSupport: { level: toolSupport.level, evidence: toolSupport.evidence },
+          toolSupport: historyToolSupport,
         },
         passedCount: passed,
         totalCount: total,
@@ -1558,6 +1583,17 @@ export default function (pi: ExtensionAPI) {
 
     // Save test history
     try {
+      // Conditionally define variables based on test type
+      let historyToolTest = { score: "SKIP", pass: false, toolCall: "n/a" };
+      
+      if (testType === "02") {
+        historyToolTest = {
+          score: toolTest.score,
+          pass: toolTest.pass,
+          toolCall: toolTest.toolCall
+        };
+      }
+
       const historyEntry: TestHistoryEntry = {
         timestamp: new Date().toISOString(),
         model,
@@ -1566,7 +1602,7 @@ export default function (pi: ExtensionAPI) {
         tests: {
           reasoning: { score: reasoning.score, pass: reasoning.score === "STRONG" || reasoning.score === "MODERATE", answer: reasoning.answer },
           thinking: { supported: false },
-          toolUsage: { score: toolTest.score, pass: toolTest.pass, toolCall: toolTest.toolCall },
+          toolUsage: historyToolTest,
           reactParsing: { score: "SKIP", pass: false, toolCall: "n/a" },
           instructionFollowing: { score: instructions.score, pass: instructions.pass },
           toolSupport: { level: "native", evidence: "provider-native (not probed)" },
