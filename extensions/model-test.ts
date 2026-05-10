@@ -47,6 +47,34 @@ import {
   type TestSummaryRow,
 } from "../shared/test-report";
 
+// ── Verbose output helpers ───────────────────────────────────────────────
+
+/**
+ * Add verbose output to the test report if verbose flag is set.
+ * Shows the actual prompts and responses instead of just results.
+ */
+function addVerboseOutput(lines: string[], verbose: boolean, ...tests: Array<{
+  prompt: string;
+  response: string;
+  score?: string;
+  toolCall?: string;
+}>) {
+  if (!verbose) return;
+  
+  lines.push(section("VERBOSE OUTPUT"));
+  for (const test of tests) {
+    lines.push(info(`Prompt: ${test.prompt}`));
+    lines.push(info(`Response: ${sanitizeForReport(test.response)}`));
+    if (test.score) {
+      lines.push(info(`Score: ${test.score}`));
+    }
+    if (test.toolCall) {
+      lines.push(info(`Tool Call: ${test.toolCall}`));
+    }
+    lines.push("");
+  }
+}
+
 /**
  * Model testing extension for Pi Coding Agent.
  * Tests models for reasoning/thinking ability, tool usage capability,
@@ -153,7 +181,7 @@ export default function (pi: ExtensionAPI) {
     } else if (result.score === "WEAK") {
       lines.push(warn(`Tool call: ${result.toolCall} (${result.score}) — malformed call`));
     } else if (result.score === "FAIL") {
-      const hasResponse = result.response && result.response.trim().length > 0;
+      const hasResponse = result.response && typeof result.response === 'string' && result.response.trim().length > 0;
       lines.push(fail(`Tool call: none — ${hasResponse ? "model responded in text instead" : "model returned empty response"} (${result.score})`));
     } else {
       lines.push(fail(`Error: ${result.toolCall}`));
@@ -170,107 +198,6 @@ export default function (pi: ExtensionAPI) {
       } else {
         lines.push(info("Text response: (empty)"));
       }
-    }
-  }
-
-  // ── Enhanced Test Constants and Helpers (for test type 02) ───────────
-
-  interface ReasoningTest {
-    name: string;
-    prompt: string;
-    expectedAnswer: string;
-    category: "math" | "logic" | "spatial" | "commonsense" | "code";
-  }
-
-  const REASONING_TESTS: ReasoningTest[] = [
-    { name: "snail_wall", prompt: "A snail climbs 3 feet up a wall each day, but slides back 2 feet each night. The wall is 10 feet tall. How many days does it take the snail to reach the top? Think step by step. ANSWER: <number>", expectedAnswer: "8", category: "logic" },
-    { name: "math_sequence", prompt: "What is the next number in this sequence: 2, 6, 18, 54, ? Think step by step. ANSWER: <number>", expectedAnswer: "162", category: "math" },
-    { name: "spatial_directions", prompt: "If you face north and turn 90 degrees clockwise, then face west and turn 180 degrees counter-clockwise, which direction are you facing? ANSWER: <direction>", expectedAnswer: "south", category: "spatial" },
-    { name: "commonsense", prompt: "A rooster laid an egg on top of the world's highest building. Which side is the egg on? ANSWER: <side>", expectedAnswer: "the other side", category: "commonsense" },
-    { name: "code_simplify", prompt: "Simplify this code to one line: let x = 0; for(let i=1; i<=5; i++) x += i; ANSWER: <code>", expectedAnswer: "15", category: "code" },
-  ];
-
-  function scoreReasoningExtended(msg: string, expectedAnswer: string): { score: string; pass: boolean } {
-    const allNumbers = msg.match(/\b(\d+)\b/g) || [];
-    const answer = allNumbers.length > 0 ? allNumbers[allNumbers.length - 1] : "?";
-    const isCorrect = answer.toLowerCase().includes(expectedAnswer.toLowerCase());
-    const reasoningPatterns = ["because", "therefore", "since", "step", "subtract", "minus", "each day", "each night", "slides", "climbs", "night", "reaches", "finally", "last day", "sequence", "pattern", "multiply", "clockwise", "counter", "facing", "egg", "rooster"];
-    const hasReasoning = reasoningPatterns.some(w => msg.toLowerCase().includes(w)) || /^\s*\d+\.\s/m.test(msg);
-    if (isCorrect && hasReasoning) return { score: "STRONG", pass: true };
-    if (isCorrect) return { score: "MODERATE", pass: true };
-    if (hasReasoning) return { score: "WEAK", pass: false };
-    return { score: "FAIL", pass: false };
-  }
-
-  function averageScore(scores: string[]): string {
-    const weights: Record<string, number> = { STRONG: 3, MODERATE: 2, WEAK: 1, FAIL: 0, ERROR: 0 };
-    const avg = scores.reduce((sum, s) => sum + (weights[s] || 0), 0) / scores.length;
-    if (avg >= 2.5) return "STRONG";
-    if (avg >= 1.5) return "MODERATE";
-    if (avg >= 0.5) return "WEAK";
-    return "FAIL";
-  }
-
-  const MULTISTEP_INSTRUCTION = `You must respond with ONLY a valid JSON object. No markdown, no explanation.
-The JSON object must have exactly these keys:
-{
-  "name": "<your model name>",
-  "can_count": true,
-  "sum": 42,
-  "language": "English",
-  "colors": ["red", "blue", "green"],
-  "timestamp": "<current time in ISO format>"
-}
-Return only the JSON.`;
-
-  const CALC_TOOL_DEFINITION = {
-    type: "function" as const,
-    function: { name: "calculate", description: "Perform a mathematical calculation", parameters: { type: "object", properties: { expression: { type: "string" } }, required: ["expression"] } },
-  };
-
-  // ── Enhanced Test Functions (for test type 02) ───────────────────────
-
-  async function testReasoningExtended(chatFn: ChatFn, model: string): Promise<{ score: string; scores: string[]; answers: string[] }> {
-    const results: { score: string; answer: string }[] = [];
-    for (const test of REASONING_TESTS) {
-      try {
-        const result = await chatFn(model, [{ role: "user", content: test.prompt }]);
-        const msg = result.content.trim();
-        const nums = msg.match(/\b(\d+)\b/g) || [];
-        const answer = nums.length > 0 ? nums[nums.length - 1] : "?";
-        results.push({ score: scoreReasoningExtended(msg, test.expectedAnswer).score, answer });
-      } catch { results.push({ score: "ERROR", answer: "?" }); }
-    }
-    return { score: averageScore(results.map(r => r.score)), scores: results.map(r => r.score), answers: results.map(r => r.answer) };
-  }
-
-  async function testInstructionFollowingExtended(chatFn: ChatFn, model: string): Promise<{ pass: boolean; score: string; output: string; schemaValid: boolean; elapsedMs: number }> {
-    const start = Date.now();
-    try {
-      const result = await chatFn(model, [{ role: "user", content: MULTISTEP_INSTRUCTION }]);
-      const parsed = JSON.parse(result.content.trim());
-      const schemaValid = !!(parsed.name && parsed.can_count === true && parsed.sum === 42 && parsed.language && parsed.colors?.length === 3 && parsed.timestamp);
-      if (schemaValid) return { pass: true, score: "STRONG", output: JSON.stringify(parsed), schemaValid, elapsedMs: Date.now() - start };
-      if (parsed.name && parsed.sum === 42) return { pass: true, score: "MODERATE", output: JSON.stringify(parsed), schemaValid: false, elapsedMs: Date.now() - start };
-      return { pass: false, score: "WEAK", output: JSON.stringify(parsed), schemaValid: false, elapsedMs: Date.now() - start };
-    } catch (e: any) {
-      return { pass: false, score: "FAIL", output: e.message, schemaValid: false, elapsedMs: Date.now() - start };
-    }
-  }
-
-  async function testToolUsageExtended(chatFn: ChatFn, model: string): Promise<{ pass: boolean; score: string; toolCalls: string[]; response: string; elapsedMs: number }> {
-    try {
-      const result = await chatFn(model, [{ role: "system", content: "Use tools when needed." }, { role: "user", content: "What's weather in Tokyo and calculate 15*24?" }], { tools: [WEATHER_TOOL_DEFINITION, CALC_TOOL_DEFINITION] });
-      const toolCalls = result.toolCalls || [];
-      const hasWeather = toolCalls.some((t: any) => t.function?.name === "get_weather");
-      const hasCalc = toolCalls.some((t: any) => t.function?.name === "calculate");
-      let score = "FAIL";
-      if (hasWeather && hasCalc && toolCalls.length >= 2) score = "STRONG";
-      else if (hasWeather || hasCalc) score = "MODERATE";
-      else if (toolCalls.length > 0) score = "WEAK";
-      return { pass: toolCalls.length > 0, score, toolCalls: toolCalls.map((t: any) => t.function?.name || "?"), response: result.content, elapsedMs: result.elapsedMs };
-    } catch (e: any) {
-      return { pass: false, score: "ERROR", toolCalls: [], response: e.message, elapsedMs: 0 };
     }
   }
 
@@ -1241,7 +1168,7 @@ Return only the JSON.`;
    * @returns A multi-line benchmark report string.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async function testModelOllama(model: string, providerInfo?: ProviderInfo, ctx?: any): Promise<string> {
+  async function testModelOllama(model: string, providerInfo?: ProviderInfo, ctx?: any, verbose?: boolean): Promise<string> {
     const lines: string[] = [];
     const totalStart = Date.now();
 
@@ -1466,6 +1393,15 @@ Return only the JSON.`;
       }
     } catch (err) { debugLog("model-test", "failed to save test history", err); }
 
+    // Add verbose output if requested
+    addVerboseOutput(lines, verbose || false,
+      { prompt: "A snail climbs 3ft up a wall each day, slides 2ft back each night. Wall is 10ft. How many days?", response: reasoning.reasoning, score: reasoning.score },
+      { prompt: "Multiply 37 by 43. Explain your reasoning step by step.", response: thinking.answerContent, score: thinking.supported ? "YES" : "NO" },
+      { prompt: "What's the weather in Paris?", response: tools.response, score: tools.score, toolCall: tools.toolCall },
+      { prompt: "What's the weather in Tokyo? (ReAct format)", response: react.response, score: react.score, toolCall: react.toolCall },
+      { prompt: "Respond with ONLY a JSON object with keys: name, can_count, sum (15+27), language", response: instructions.output, score: instructions.score }
+    );
+
     return lines.join("\n");
   }
 
@@ -1474,7 +1410,7 @@ Return only the JSON.`;
    * Tests: connectivity, reasoning, instruction following, tool usage.
    * Skips: thinking, ReAct parsing, tool support detection, model metadata.
    */
-  async function testModelProvider(providerInfo: ProviderInfo, model: string, ctx?: any): Promise<string> {
+  async function testModelProvider(providerInfo: ProviderInfo, model: string, ctx?: any, verbose?: boolean): Promise<string> {
     const lines: string[] = [];
     const totalStart = Date.now();
 
@@ -1599,67 +1535,29 @@ Return only the JSON.`;
       }
     } catch (err) { debugLog("model-test", "failed to save provider test history", err); }
 
-    return lines.join("\n");
-  }
+    // Add verbose output if requested
+    addVerboseOutput(lines, verbose || false,
+      { prompt: "A snail climbs 3ft up a wall each day, slides 2ft back each night. Wall is 10ft. How many days?", response: reasoning.reasoning, score: reasoning.score },
+      { prompt: "Respond with ONLY a JSON object with keys: name, can_count, sum (15+27), language", response: instructions.output, score: instructions.score },
+      { prompt: "What's the weather in Paris?", response: toolTest.response, score: toolTest.score, toolCall: toolTest.toolCall }
+    );
 
-  // ── Extended test (test type 02) ─────────────────────────────────────
-
-  async function testModelExtended(model: string, ctx?: any): Promise<string> {
-    const lines: string[] = [];
-    const totalStart = Date.now();
-    const providerInfo = ctx ? detectProvider(ctx) : { kind: "ollama" as const, name: "ollama" };
-
-    lines.push(sharedBranding);
-    lines.push(section(`MODEL: ${model}`));
-    lines.push(info(`Provider: ${providerInfo.name} (${providerInfo.kind})`));
-
-    const chatFn = providerInfo.kind === "builtin" ? makeProviderChatFn(providerInfo) : makeOllamaChatFn();
-
-    // 1. Extended Reasoning test
-    lines.push(section("REASONING TEST (EXTENDED)"));
-    lines.push(info(`Testing ${REASONING_TESTS.length} reasoning puzzles...`));
-    await rateLimitDelay(lines);
-    const reasoning = await testReasoningExtended(chatFn, model);
-    lines.push(info(`Scores: ${reasoning.scores.join(", ")}`));
-    lines.push(ok(`Average score: ${reasoning.score}`));
-
-    // 2. Extended Instruction Following test
-    lines.push(section("INSTRUCTION FOLLOWING TEST (EXTENDED)"));
-    lines.push(info("Testing multi-step JSON schema compliance..."));
-    await rateLimitDelay(lines);
-    const instructions = await testInstructionFollowingExtended(chatFn, model);
-    lines.push(info(`Time: ${msHuman(instructions.elapsedMs)}`));
-    reportInstructionScore(lines, instructions);
-
-    // 3. Extended Tool Usage test
-    lines.push(section("TOOL USAGE TEST (EXTENDED)"));
-    lines.push(info("Testing chained tool calls..."));
-    await rateLimitDelay(lines);
-    const tools = await testToolUsageExtended(chatFn, model);
-    lines.push(info(`Time: ${msHuman(tools.elapsedMs)}`));
-    if (tools.score === "STRONG" || tools.score === "MODERATE") lines.push(ok(`Tool calls: ${tools.toolCalls.join(", ")} (${tools.score})`));
-    else lines.push(fail(`Tool calls: ${tools.toolCalls.length > 0 ? tools.toolCalls.join(", ") : "none"} (${tools.score})`));
-
-    const totalMs = Date.now() - totalStart;
-    const passed = [reasoning.score === "STRONG" || reasoning.score === "MODERATE", instructions.pass, tools.pass].filter(Boolean).length;
-    lines.push(...formatTestSummary([{ name: "Reasoning", pass: reasoning.score === "STRONG" || reasoning.score === "MODERATE", score: reasoning.score }, { name: "Instructions", pass: instructions.pass, score: instructions.score }, { name: "Tool Usage", pass: tools.pass, score: tools.score }], totalMs));
-    lines.push(...formatRecommendation(model, passed, 3));
     return lines.join("\n");
   }
 
   /**
    * Main entry point: detect provider and dispatch to the appropriate test suite.
    */
-  async function testModel(model: string, ctx?: any): Promise<string> {
+  async function testModel(model: string, ctx?: any, verbose?: boolean): Promise<string> {
     const providerInfo = ctx ? detectProvider(ctx) : { kind: "ollama" as const, name: "ollama" };
 
     if (providerInfo.kind === "ollama") {
-      return testModelOllama(model, providerInfo, ctx);
+      return testModelOllama(model, providerInfo, ctx, verbose);
     } else if (providerInfo.kind === "builtin") {
-      return testModelProvider(providerInfo, model, ctx);
+      return testModelProvider(providerInfo, model, ctx, verbose);
     } else {
       // Unknown provider — try Ollama as fallback
-      return testModelOllama(model);
+      return testModelOllama(model, undefined, undefined, verbose);
     }
   }
 
@@ -1689,20 +1587,21 @@ Return only the JSON.`;
           "🔍 Model Testing Extension\n\n" +
           "📋 Usage:\n" +
           "  /model-test [model]     - Test current or specific model\n" +
-          "  /model-test -t 02       - Test with extended flow (multiple puzzles)\n" +
           "  /model-test --all        - Test all Ollama models\n" +
           "  /model-test --list       - List available models\n" +
           "  /model-test --history    - Show test history\n" +
-          "  /model-test --clear-cache - Clear tool support cache\n\n" +
+          "  /model-test --clear-cache - Clear tool support cache\n" +
+          "  /model-test -v           - Verbose mode (show prompts/responses)\n" +
+          "  /model-test -v 01        - Verbose mode with test type 01\n" +
+          "  /model-test -v 02        - Verbose mode with test type 02\n\n" +
           "🔧 Test Types:\n" +
           "  -t 01 (default) - Original test flow\n" +
           "  -t 02           - Extended flow with multiple reasoning puzzles\n\n" +
           "🔧 Examples:\n" +
           "  /model-test              # Test current model\n" +
           "  /model-test gpt-4        # Test specific model\n" +
-          "  /model-test -t 02        # Test current model with extended flow\n" +
-          "  /model-test -t 02 qwen3:0.6b  # Test specific model with extended flow\n" +
-          "  /model-test --all        # Benchmark all Ollama models\n\n" +
+          "  /model-test --all        # Benchmark all Ollama models\n" +
+          "  /model-test -v           # Test with verbose output\n\n" +
           "💡 Use tab completion to see available models",
           "info"
         );
@@ -1727,15 +1626,22 @@ Return only the JSON.`;
 
       if (arg === "--history") {
         try {
-          const history = readTestHistory();
-          if (history.length === 0) {
+          const historyFile = readTestHistory();
+          // Flatten all entries from all models into a single array
+          const allEntries: TestHistoryEntry[] = [];
+          for (const model of Object.keys(historyFile)) {
+            allEntries.push(...historyFile[model]);
+          }
+          // Sort by timestamp (newest first) and take last 10
+          const sorted = allEntries.sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 10);
+          
+          if (sorted.length === 0) {
             ctx.ui.notify("No test history found", "info");
             return;
           }
           
-          const recent = history.slice(-10); // Show last 10 tests
-          const historyText = recent.map((entry, i) => 
-            `${i + 1}. ${entry.model} - ${entry.timestamp}\n   Score: ${entry.score}\n   Duration: ${entry.durationMs}ms`
+          const historyText = sorted.map((entry, i) => 
+            `${i + 1}. ${entry.model} @ ${entry.providerName} (${entry.providerKind})\n   Score: ${entry.passedCount}/${entry.totalCount} passed, ${entry.totalMs}ms`
           ).join("\n\n");
           
           ctx.ui.notify(
@@ -1763,12 +1669,16 @@ Return only the JSON.`;
         return;
       }
 
-      // Parse test type flag (-t 01 or -t 02)
+      // Parse test type flag (-t 01 or -t 02) and verbose flag (-v)
       let testType = "01";
-      const testTypeMatch = arg.match(/^-t\s*(01|02)$/);
-      const actualArg = testTypeMatch ? arg.replace(/^-t\s*(01|02)\s*/, "") : arg;
+      let verbose = false;
+      const testTypeMatch = arg.match(/^(-t\s*(01|02)|-v\s*(01|02)?)/);
+      const actualArg = testTypeMatch ? arg.replace(/^(-t\s*(01|02)|-v\s*(01|02)?)\s*/, "") : arg;
       if (testTypeMatch) {
-        testType = testTypeMatch[1];
+        // Check if -v was used
+        verbose = arg.startsWith("-v");
+        // Extract test type from the matched group
+        testType = testTypeMatch[2] || testTypeMatch[3] || "01";
       }
 
       if (actualArg === "--all") {
@@ -1798,9 +1708,7 @@ Return only the JSON.`;
         for (const model of models) {
           ctx.ui.notify(`Testing ${model}...`, "info");
           try {
-            const report = testType === "02"
-              ? await testModelExtended(model, ctx)
-              : await testModel(model, ctx);
+            const report = await testModel(model, ctx, verbose);
             pi.sendMessage({
               customType: "model-test-report",
               content: report,
@@ -1816,7 +1724,7 @@ Return only the JSON.`;
       }
 
       // Test specific model
-      const model = actualArg || getCurrentModel(ctx);
+      const model = arg || getCurrentModel(ctx);
       if (!model) {
         ctx.ui.notify("No model specified and no model currently selected", "error");
         return;
@@ -1824,9 +1732,7 @@ Return only the JSON.`;
 
       ctx.ui.notify(`Testing ${model}...`, "info");
       try {
-        const report = testType === "02"
-          ? await testModelExtended(model, ctx)
-          : await testModel(model, ctx);
+        const report = await testModel(model, ctx, verbose);
         pi.sendMessage({
           customType: "model-test-report",
           content: report,
@@ -1866,13 +1772,10 @@ Return only the JSON.`;
       type: "object",
       properties: {
         model: { type: "string", description: "Model name to test (e.g. qwen3:0.6b, anthropic/claude-3.5-sonnet). If omitted, tests the current model." },
-        test_type: { type: "string", description: "Test flow type: '01' (default) for original test, '02' for extended flow with multiple reasoning puzzles." },
       },
     } as any,
     execute: async (_toolCallId, _params, _signal, _onUpdate, ctx) => {
-      const params = _params as any;
-      const model = params?.model as string || getCurrentModel(ctx);
-      const testType = params?.test_type as string || "01";
+      const model = ((_params as any)?.model as string) || getCurrentModel(ctx);
       if (!model) {
         return {
           content: [{ type: "text", text: "No model currently selected to test." }],
@@ -1880,9 +1783,7 @@ Return only the JSON.`;
         } as AgentToolResult;
       }
       try {
-        const report = testType === "02"
-          ? await testModelExtended(model, ctx)
-          : await testModel(model, ctx);
+        const report = await testModel(model, ctx, false);
         return {
           content: [{ type: "text", text: report }],
           isError: false,

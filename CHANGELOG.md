@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.2.7] - 05-10-2026 12:38:58 PM
+
+### Added
+- **Verbose mode for model testing**: Added `-v` flag to show actual prompts and model responses instead of just result summaries
+- **Combined flag support**: Can use `-v` with test types (`-v 01`, `-v 02`) for verbose output with specific test flows
+- **Enhanced test reporting**: Verbose output includes test prompts, model responses, scores, and tool calls in a dedicated "VERBOSE OUTPUT" section
+
+### Fixed
+- **History command bug**: Fixed `./model-test --history` error "could not read test history" by properly handling the TestHistoryFile object format
+- **Improved history display**: History now shows flattened entries from all models, sorted by timestamp, with better formatting including provider information
+- **Type safety fixes**: Added proper type checking for response fields to prevent TypeScript errors
+
+### Technical Details
+- Added `addVerboseOutput()` helper function for consistent verbose formatting
+- Updated argument parsing to handle both `-t` and `-v` flags simultaneously
+- Enhanced history reading logic to flatten and sort entries across all models
+- Fixed TypeScript compilation issues with optional response fields
+
+### Usage Examples
+```bash
+# Verbose mode - shows prompts and responses
+/model-test -v
+
+# Verbose with extended test flow
+/model-test -v 02
+
+# Verbose with specific model
+/model-test -v qwen3:0.6b
+
+# Fixed history command (now works correctly)
+/model-test --history
+```
+
 ## [1.2.6] - 05-08-2026 1:01:00 PM
 
 ### Added
