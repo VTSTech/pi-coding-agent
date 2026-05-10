@@ -33,18 +33,19 @@ function formatTestSummary(tests, totalMs) {
   lines.push(info(`Score: ${passed}/${tests.length} tests passed`));
   return lines;
 }
-function formatRecommendation(model, passed, total, via) {
+function formatRecommendation(model, passed, total, via, testFlow) {
   const suffix = via ? ` via ${via}` : "";
+  const flowSuffix = testFlow ? ` (${testFlow} flow)` : "";
   const lines = [];
   lines.push(section("RECOMMENDATION"));
   if (passed === total) {
-    lines.push(ok(`${model} is a STRONG model${suffix} \u2014 full capability`));
+    lines.push(ok(`${model} is a STRONG model${suffix}${flowSuffix} \u2014 full capability`));
   } else if (passed > 0 && passed >= total - 1) {
-    lines.push(ok(`${model} is a GOOD model${suffix} \u2014 most capabilities work`));
+    lines.push(ok(`${model} is a GOOD model${suffix}${flowSuffix} \u2014 most capabilities work`));
   } else if (passed > 0 && passed >= total - 2) {
-    lines.push(warn(`${model} is USABLE${suffix} \u2014 some capabilities are limited`));
+    lines.push(warn(`${model} is USABLE${suffix}${flowSuffix} \u2014 some capabilities are limited`));
   } else {
-    lines.push(fail(`${model} is WEAK${suffix} \u2014 limited capabilities for agent use`));
+    lines.push(fail(`${model} is WEAK${suffix}${flowSuffix} \u2014 limited capabilities for agent use`));
   }
   return lines;
 }

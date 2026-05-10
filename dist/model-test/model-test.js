@@ -1,3 +1,10 @@
+var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
+  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
+}) : x)(function(x) {
+  if (typeof require !== "undefined") return require.apply(this, arguments);
+  throw Error('Dynamic require of "' + x + '" is not supported');
+});
+
 // shared/format.ts
 function section(title) {
   return `
@@ -46,14 +53,14 @@ import os from "node:os";
 
 // shared/debug.ts
 var DEBUG_ENABLED = process?.env?.PI_EXTENSIONS_DEBUG === "1";
-function debugLog2(module, message, ...args) {
+function debugLog(module, message, ...args) {
   if (!DEBUG_ENABLED) return;
   const timestamp = (/* @__PURE__ */ new Date()).toISOString();
   console.debug(`[pi-ext:${module}] ${timestamp} ${message}`, ...args);
 }
 
 // shared/ollama.ts
-var EXTENSION_VERSION = "1.2.5";
+var EXTENSION_VERSION = "1.2.7";
 var MODELS_JSON_PATH = path.join(os.homedir(), ".pi", "agent", "models.json");
 var _modelsJsonCache = null;
 var _ollamaBaseUrlCache = null;
@@ -73,7 +80,7 @@ function getOllamaBaseUrl() {
       }
     }
   } catch (err) {
-    debugLog2("ollama", "failed to parse models.json for base URL", err);
+    debugLog("ollama", "failed to parse models.json for base URL", err);
   }
   if (process.env.OLLAMA_HOST) {
     const result = `http://${process.env.OLLAMA_HOST.replace(/^https?:\/\//, "")}`;
@@ -95,7 +102,7 @@ function readModelsJson() {
       return data;
     }
   } catch (err) {
-    debugLog2("ollama", "failed to read/parse models.json", err);
+    debugLog("ollama", "failed to read/parse models.json", err);
   }
   const empty = { providers: {} };
   _modelsJsonCache = { data: empty, ts: now };
@@ -182,7 +189,7 @@ async function withRetry(fn, options) {
       lastError = error;
       if (attempt < opts.maxRetries && isRetryableError(error, opts)) {
         const delay = backoffDelay(attempt, opts.baseDelayMs, opts.maxDelayMs);
-        debugLog2("ollama", `Retry ${attempt + 1}/${opts.maxRetries} after ${delay}ms: ${error instanceof Error ? error.message : String(error)}`);
+        debugLog("ollama", `Retry ${attempt + 1}/${opts.maxRetries} after ${delay}ms: ${error instanceof Error ? error.message : String(error)}`);
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }
@@ -211,7 +218,7 @@ async function fetchModelContextLength(baseUrl, modelName) {
       const numCtx = data?.model_info?.["num_ctx"];
       if (typeof numCtx === "number") return numCtx;
     } catch (err) {
-      debugLog2("ollama", `failed to fetch context length for ${modelName}`, err);
+      debugLog("ollama", `failed to fetch context length for ${modelName}`, err);
       return void 0;
     }
     return void 0;
@@ -465,8 +472,8 @@ function parseReactWithPatterns(text, dp, tightLoose = false, availableTools) {
   if (match) {
     let toolName = match[1].trim().replace(/[`"']/g, "");
     if (looseMatch && !tightLoose && availableTools) {
-      const tools = availableTools || [];
-      for (const real of tools) {
+      const tools2 = availableTools || [];
+      for (const real of tools2) {
         const rl = real.toLowerCase().replace(/_/g, "");
         if (toolName.toLowerCase().includes(rl)) {
           toolName = real;
@@ -478,7 +485,7 @@ function parseReactWithPatterns(text, dp, tightLoose = false, availableTools) {
         for (const w of words) {
           const wc = w.replace(/[^a-zA-Z0-9_-]/g, "");
           if (wc.length < 3) continue;
-          for (const real of tools) {
+          for (const real of tools2) {
             const rl = real.toLowerCase().replace(/_/g, "");
             if (rl.includes(wc.toLowerCase())) {
               toolName = real;
@@ -560,21 +567,16 @@ var CONFIG = {
   MODEL_INFO_TIMEOUT_MS: 3e4,
   // 30 seconds for model info lookup
   // Provider API settings
-  PROVIDER_TIMEOUT_MS: 999999,
-  // Effectively unlimited for cloud provider API calls
-  PROVIDER_TOOL_TIMEOUT_MS: 12e4,
-  // 120 seconds for tool usage tests on providers
+  PROVIDER_TIMEOUT_MS: 3e5,
+  // 5 minutes - consistent with Ollama
+  PROVIDER_TOOL_TIMEOUT_MS: 3e5,
+  // 5 minutes - consistent with Ollama tool tests
   // Context length fetching
   CONTEXT_BATCH_SIZE: 3,
   // Concurrent requests when fetching model context lengths
   // Rate limiting
   TEST_DELAY_MS: 1e4,
   // 10 seconds between tests to avoid rate limiting
-  // Provider-specific timeouts (now standardized)
-  PROVIDER_TIMEOUT_MS: 3e5,
-  // 5 minutes - consistent with Ollama
-  PROVIDER_TOOL_TIMEOUT_MS: 3e5,
-  // 5 minutes - consistent with Ollama tool tests
   // Cache management
   MAX_CACHE_SIZE: 1e3,
   // Maximum number of entries in tool support cache
@@ -844,13 +846,13 @@ var REASONING_PROMPT = `A snail climbs 3 feet up a wall each day, but slides bac
 var TOOL_SYSTEM_PROMPT = "You are a helpful assistant. Use the available tools when needed.";
 var TOOL_USER_PROMPT = "What's the weather like in Paris right now?";
 async function testToolUsageUnified(chatFn, model, options) {
-  const tools = options?.tools || [WEATHER_TOOL_DEFINITION];
+  const tools2 = options?.tools || [WEATHER_TOOL_DEFINITION];
   const systemPrompt = options?.systemPrompt || TOOL_SYSTEM_PROMPT;
   try {
     const result = await chatFn(model, [
       { role: "system", content: systemPrompt },
       { role: "user", content: TOOL_USER_PROMPT }
-    ], { tools });
+    ], { tools: tools2 });
     const content = result.content;
     const toolCalls = result.toolCalls;
     if (toolCalls && toolCalls.length > 0) {
@@ -1035,27 +1037,43 @@ function formatTestSummary(tests, totalMs) {
     lines.push(t.pass ? ok(`${t.name}: ${t.score}`) : fail(`${t.name}: ${t.score}`));
   }
   lines.push(info(`Total time: ${msHuman(totalMs)}`));
-  const passed = tests.filter((t) => t.pass).length;
-  lines.push(info(`Score: ${passed}/${tests.length} tests passed`));
+  const passed2 = tests.filter((t) => t.pass).length;
+  lines.push(info(`Score: ${passed2}/${tests.length} tests passed`));
   return lines;
 }
-function formatRecommendation(model, passed, total, via) {
+function formatRecommendation(model, passed2, total2, via, testFlow) {
   const suffix = via ? ` via ${via}` : "";
+  const flowSuffix = testFlow ? ` (${testFlow} flow)` : "";
   const lines = [];
   lines.push(section("RECOMMENDATION"));
-  if (passed === total) {
-    lines.push(ok(`${model} is a STRONG model${suffix} \u2014 full capability`));
-  } else if (passed > 0 && passed >= total - 1) {
-    lines.push(ok(`${model} is a GOOD model${suffix} \u2014 most capabilities work`));
-  } else if (passed > 0 && passed >= total - 2) {
-    lines.push(warn(`${model} is USABLE${suffix} \u2014 some capabilities are limited`));
+  if (passed2 === total2) {
+    lines.push(ok(`${model} is a STRONG model${suffix}${flowSuffix} \u2014 full capability`));
+  } else if (passed2 > 0 && passed2 >= total2 - 1) {
+    lines.push(ok(`${model} is a GOOD model${suffix}${flowSuffix} \u2014 most capabilities work`));
+  } else if (passed2 > 0 && passed2 >= total2 - 2) {
+    lines.push(warn(`${model} is USABLE${suffix}${flowSuffix} \u2014 some capabilities are limited`));
   } else {
-    lines.push(fail(`${model} is WEAK${suffix} \u2014 limited capabilities for agent use`));
+    lines.push(fail(`${model} is WEAK${suffix}${flowSuffix} \u2014 limited capabilities for agent use`));
   }
   return lines;
 }
 
 // extensions/model-test.ts
+function addVerboseOutput(lines, verbose, ...tests) {
+  if (!verbose) return;
+  lines.push(section("VERBOSE OUTPUT"));
+  for (const test of tests) {
+    lines.push(info(`Prompt: ${test.prompt}`));
+    lines.push(info(`Response: ${sanitizeForReport(test.response)}`));
+    if (test.score) {
+      lines.push(info(`Score: ${test.score}`));
+    }
+    if (test.toolCall) {
+      lines.push(info(`Tool Call: ${test.toolCall}`));
+    }
+    lines.push("");
+  }
+}
 function model_test_default(pi) {
   const effectiveConfig = getEffectiveConfig();
   function ollamaBase() {
@@ -1100,7 +1118,7 @@ function model_test_default(pi) {
     } else if (result.score === "WEAK") {
       lines.push(warn(`Tool call: ${result.toolCall} (${result.score}) \u2014 malformed call`));
     } else if (result.score === "FAIL") {
-      const hasResponse = result.response && result.response.trim().length > 0;
+      const hasResponse = result.response && typeof result.response === "string" && result.response.trim().length > 0;
       lines.push(fail(`Tool call: none \u2014 ${hasResponse ? "model responded in text instead" : "model returned empty response"} (${result.score})`));
     } else {
       lines.push(fail(`Error: ${result.toolCall}`));
@@ -1131,15 +1149,15 @@ function model_test_default(pi) {
   }
   function makeOllamaToolChatFn() {
     return async (model, messages, options) => {
-      const tools = options?.tools || void 0;
+      const tools2 = options?.tools || void 0;
       const body = {
         model,
         messages,
         stream: false,
         options: { num_predict: CONFIG.NUM_PREDICT, temperature: CONFIG.TEMPERATURE }
       };
-      if (tools && tools.length > 0) {
-        body.tools = tools;
+      if (tools2 && tools2.length > 0) {
+        body.tools = tools2;
       }
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), CONFIG.TOOL_TEST_TIMEOUT_MS);
@@ -1275,7 +1293,7 @@ function model_test_default(pi) {
             if (parsed.message?.thinking) thinkingContent += parsed.message.thinking;
             if (parsed.done) done = true;
           } catch (err) {
-            debugLog2("model-test", "skipped malformed JSON chunk in streaming response", err);
+            debugLog("model-test", "skipped malformed JSON chunk in streaming response", err);
           }
         }
       }
@@ -1412,8 +1430,8 @@ function model_test_default(pi) {
         response = result.response;
         elapsedMs = result.elapsedMs;
         const msg2 = response?.message?.content || "";
-        const thinking2 = response?.message?.thinking || "";
-        if (msg2.trim().length === 0 && thinking2.trim().length === 0) {
+        const thinking3 = response?.message?.thinking || "";
+        if (msg2.trim().length === 0 && thinking3.trim().length === 0) {
           throw new Error("empty \u2014 will retry with thinking");
         }
       } catch (firstErr) {
@@ -1428,8 +1446,8 @@ function model_test_default(pi) {
         }
       }
       let msg = response?.message?.content || "";
-      const thinking = response?.message?.thinking || "";
-      const effectiveMsg = msg.trim().length > 0 ? msg : thinking;
+      const thinking2 = response?.message?.thinking || "";
+      const effectiveMsg = msg.trim().length > 0 ? msg : thinking2;
       if (effectiveMsg.trim().length === 0) {
         return { pass: false, score: "ERROR", reasoning: "Empty response from Ollama (no content or thinking tokens)", answer: "?", elapsedMs };
       }
@@ -1452,13 +1470,13 @@ function model_test_default(pi) {
         { role: "user", content: prompt }
       ], { think: true });
       const msg = response?.message?.content || "";
-      const thinking = response?.message?.thinking || "";
-      const hasThinking = !!thinking && thinking.length > CONFIG.MIN_THINKING_LENGTH;
+      const thinking2 = response?.message?.thinking || "";
+      const hasThinking = !!thinking2 && thinking2.length > CONFIG.MIN_THINKING_LENGTH;
       const thinkTagMatch = msg.match(/<think[^>]*>([\s\S]*?)<\/think>/i);
       const hasThinkTags = !!thinkTagMatch;
       return {
         supported: hasThinking || hasThinkTags,
-        thinkingContent: hasThinking ? thinking : hasThinkTags ? thinkTagMatch[1] : "none",
+        thinkingContent: hasThinking ? thinking2 : hasThinkTags ? thinkTagMatch[1] : "none",
         answerContent: hasThinkTags ? msg.replace(/<think[^>]*>[\s\S]*?<\/think>/gi, "").trim() : msg,
         elapsedMs
       };
@@ -1602,7 +1620,7 @@ function model_test_default(pi) {
         elapsedMs: 0
       };
     }
-    const tools = [WEATHER_TOOL_DEFINITION];
+    const tools2 = [WEATHER_TOOL_DEFINITION];
     const body = {
       model,
       messages: [
@@ -1612,7 +1630,7 @@ function model_test_default(pi) {
         },
         { role: "user", content: "What's the weather like in Tokyo right now? Use the get_weather tool to find out." }
       ],
-      tools,
+      tools: tools2,
       stream: false,
       options: { num_predict: 1024, temperature: 0.1 }
     };
@@ -1651,7 +1669,7 @@ function model_test_default(pi) {
           const args = typeof fn.arguments === "string" ? JSON.parse(fn.arguments) : fn.arguments || {};
           argsStr = JSON.stringify(args);
         } catch (err) {
-          debugLog2("model-test", "failed to parse tool call arguments", err);
+          debugLog("model-test", "failed to parse tool call arguments", err);
           argsStr = String(fn.arguments);
         }
         const level2 = "native";
@@ -1715,7 +1733,7 @@ function model_test_default(pi) {
       const data = await res.json();
       return (data.models || []).map((m) => m.name).filter(Boolean);
     } catch (err) {
-      debugLog2("model-test", "failed to list Ollama models", err);
+      debugLog("model-test", "failed to list Ollama models", err);
       return [];
     }
   }
@@ -1758,7 +1776,7 @@ function model_test_default(pi) {
       return { updated: false, message: `Failed to update models.json: ${e.message}` };
     }
   }
-  async function testModelOllama(model, providerInfo, ctx) {
+  async function testModelOllama(model, providerInfo, ctx, verbose = false, testType = "01") {
     const lines = [];
     const totalStart = Date.now();
     lines.push(branding);
@@ -1766,7 +1784,7 @@ function model_test_default(pi) {
     lines.push(info("Provider: Ollama (local/remote)"));
     const modelsJson = readModelsJson();
     let apiMode = "ollama";
-    const providerName = ctx?.model?.provider || providerInfo?.name || "";
+    const providerName = ctx?.model?.provider || providerInfo?.name || "ollama";
     if (providerName && modelsJson) {
       const providerCfg = (modelsJson.providers || {})[providerName];
       if (providerCfg) {
@@ -1803,7 +1821,7 @@ function model_test_default(pi) {
         }
       }
     } catch (err) {
-      debugLog2("model-test", "failed to fetch model metadata from /api/show", err);
+      debugLog("model-test", "failed to fetch model metadata from /api/show", err);
     }
     const detectedFamily = detectModelFamily(model);
     lines.push(info(`Size: ${modelSize}  |  Params: ${modelParams}  |  Quant: ${modelQuant}`));
@@ -1815,58 +1833,6 @@ function model_test_default(pi) {
     lines.push(info(`Time: ${msHuman(reasoning.elapsedMs)}`));
     reportReasoningScore(lines, reasoning);
     lines.push(info(`Response: ${sanitizeForReport(reasoning.reasoning)}`));
-    lines.push(section("THINKING TEST"));
-    lines.push(info('Prompt: "Multiply 37 by 43. Explain your reasoning step by step."'));
-    await rateLimitDelay(lines);
-    const thinking = await testThinking(model);
-    lines.push(info(`Time: ${msHuman(thinking.elapsedMs)}`));
-    if (thinking.supported) {
-      lines.push(ok(`Thinking/reasoning tokens: SUPPORTED`));
-      lines.push(info(`Thinking content: ${sanitizeForReport(thinking.thinkingContent)}`));
-    } else {
-      lines.push(fail(`Thinking/reasoning tokens: NOT SUPPORTED`));
-    }
-    lines.push(info(`Answer output: ${sanitizeForReport(thinking.answerContent)}`));
-    lines.push(section("MODELS.JSON SYNC"));
-    const reasoningUpdate = updateModelsJsonReasoning(model, thinking.supported);
-    lines.push(info(reasoningUpdate.message));
-    lines.push(section("TOOL USAGE TEST"));
-    lines.push(info(`Prompt: "What's the weather in Paris?" (with get_weather tool available)`));
-    lines.push(info("Testing..."));
-    await rateLimitDelay(lines);
-    const tools = await testToolUsage(model);
-    lines.push(info(`Time: ${msHuman(tools.elapsedMs)}`));
-    reportToolScore(lines, tools);
-    lines.push(section("REACT PARSING TEST"));
-    lines.push(info(`Prompt: "What's the weather in Tokyo?" (ReAct format, no native tools)`));
-    lines.push(info("Testing..."));
-    await rateLimitDelay(lines);
-    const react = await testReactParsing(model);
-    lines.push(info(`Time: ${msHuman(react.elapsedMs)}`));
-    const dialectTag = react.dialect && react.dialect !== "react" ? ` [${react.dialect} dialect]` : "";
-    if (react.score === "STRONG") {
-      lines.push(ok(`ReAct parsed: ${react.toolCall} (${react.score})${dialectTag}`));
-      if (react.thought) {
-        lines.push(info(`Thought: ${sanitizeForReport(react.thought)}`));
-      }
-    } else if (react.score === "MODERATE") {
-      lines.push(ok(`ReAct parsed: ${react.toolCall} (${react.score})${dialectTag}`));
-      if (react.thought) {
-        lines.push(info(`Thought: ${sanitizeForReport(react.thought)}`));
-      }
-    } else if (react.score === "WEAK") {
-      lines.push(warn(`ReAct parsed: ${react.toolCall} (${react.score}) \u2014 wrong tool or malformed args${dialectTag}`));
-      if (react.thought) {
-        lines.push(info(`Thought: ${sanitizeForReport(react.thought)}`));
-      }
-    } else if (react.score === "FAIL") {
-      lines.push(fail(`ReAct parsing: ${react.toolCall} (${react.score})${dialectTag}`));
-      if (react.response) {
-        lines.push(info(`Response: ${sanitizeForReport(react.response)}`));
-      }
-    } else {
-      lines.push(fail(`Error: ${react.toolCall}`));
-    }
     lines.push(section("INSTRUCTION FOLLOWING TEST"));
     lines.push(info("Prompt: Respond with ONLY a JSON object with keys: name, can_count, sum (15+27), language"));
     lines.push(info("Testing..."));
@@ -1875,53 +1841,144 @@ function model_test_default(pi) {
     lines.push(info(`Time: ${msHuman(instructions.elapsedMs)}`));
     reportInstructionScore(lines, instructions);
     lines.push(info(`Output: ${sanitizeForReport(instructions.output)}`));
-    lines.push(section("TOOL SUPPORT DETECTION"));
-    lines.push(info("Probing model for tool calling capability (native / ReAct / none)"));
-    lines.push(info("Testing..."));
-    await rateLimitDelay(lines);
-    const toolSupport = await testToolSupport(model, detectedFamily);
-    lines.push(info(`Time: ${msHuman(toolSupport.elapsedMs)}`));
-    const supportLabel = (level) => {
-      switch (level) {
-        case "native":
-          return "NATIVE (structured API tool_calls)";
-        case "react":
-          return "REACT (Action:/Action Input: text format)";
-        case "none":
-          return "NONE (no tool support detected)";
-        default:
-          return "UNKNOWN";
-      }
-    };
-    if (toolSupport.cached) {
-      lines.push(info(`Result: ${supportLabel(toolSupport.level)} \u2014 from cache`));
-    } else {
-      if (toolSupport.level === "native") {
-        lines.push(ok(`Tool support: ${supportLabel(toolSupport.level)}`));
-      } else if (toolSupport.level === "react") {
-        lines.push(ok(`Tool support: ${supportLabel(toolSupport.level)}`));
+    if (testType === "02") {
+      lines.push(section("THINKING TEST"));
+      lines.push(info('Prompt: "Multiply 37 by 43. Explain your reasoning step by step."'));
+      await rateLimitDelay(lines);
+      const thinking2 = await testThinking(model);
+      lines.push(info(`Time: ${msHuman(thinking2.elapsedMs)}`));
+      if (thinking2.supported) {
+        lines.push(ok(`Thinking/reasoning tokens: SUPPORTED`));
+        lines.push(info(`Thinking content: ${sanitizeForReport(thinking2.thinkingContent)}`));
       } else {
-        lines.push(warn(`Tool support: ${supportLabel(toolSupport.level)}`));
+        lines.push(fail(`Thinking/reasoning tokens: NOT SUPPORTED`));
       }
+      lines.push(info(`Answer output: ${sanitizeForReport(thinking2.answerContent)}`));
+      lines.push(section("MODELS.JSON SYNC"));
+      const reasoningUpdate = updateModelsJsonReasoning(model, thinking2.supported);
+      lines.push(info(reasoningUpdate.message));
+      lines.push(section("TOOL USAGE TEST"));
+      lines.push(info(`Prompt: "What's the weather in Paris?" (with get_weather tool available)`));
+      lines.push(info("Testing..."));
+      await rateLimitDelay(lines);
+      const tools2 = await testToolUsage(model);
+      lines.push(info(`Time: ${msHuman(tools2.elapsedMs)}`));
+      reportToolScore(lines, tools2);
+      lines.push(section("REACT PARSING TEST"));
+      lines.push(info(`Prompt: "What's the weather in Tokyo?" (ReAct format, no native tools)`));
+      lines.push(info("Testing..."));
+      await rateLimitDelay(lines);
+      const react2 = await testReactParsing(model);
+      lines.push(info(`Time: ${msHuman(react2.elapsedMs)}`));
+      const dialectTag = react2.dialect && react2.dialect !== "react" ? ` [${react2.dialect} dialect]` : "";
+      if (react2.score === "STRONG") {
+        lines.push(ok(`ReAct parsed: ${react2.toolCall} (${react2.score})${dialectTag}`));
+        if (react2.thought) {
+          lines.push(info(`Thought: ${sanitizeForReport(react2.thought)}`));
+        }
+      } else if (react2.score === "MODERATE") {
+        lines.push(ok(`ReAct parsed: ${react2.toolCall} (${react2.score})${dialectTag}`));
+        if (react2.thought) {
+          lines.push(info(`Thought: ${sanitizeForReport(react2.thought)}`));
+        }
+      } else if (react2.score === "WEAK") {
+        lines.push(warn(`ReAct parsed: ${react2.toolCall} (${react2.score}) \u2014 wrong tool or malformed args${dialectTag}`));
+        if (react2.thought) {
+          lines.push(info(`Thought: ${sanitizeForReport(react2.thought)}`));
+        }
+      } else if (react2.score === "FAIL") {
+        lines.push(fail(`ReAct parsing: ${react2.toolCall} (${react2.score})${dialectTag}`));
+        if (react2.response) {
+          lines.push(info(`Response: ${sanitizeForReport(react2.response)}`));
+        }
+      } else {
+        lines.push(fail(`Error: ${react2.toolCall}`));
+      }
+      lines.push(section("TOOL SUPPORT DETECTION"));
+      lines.push(info("Probing model for tool calling capability (native / ReAct / none)"));
+      lines.push(info("Testing..."));
+      await rateLimitDelay(lines);
+      const toolSupport2 = await testToolSupport(model, detectedFamily);
+      lines.push(info(`Time: ${msHuman(toolSupport2.elapsedMs)}`));
+      const supportLabel = (level) => {
+        switch (level) {
+          case "native":
+            return "NATIVE (structured API tool_calls)";
+          case "react":
+            return "REACT (Action:/Action Input: text format)";
+          case "none":
+            return "NONE (no tool support detected)";
+          default:
+            return "UNKNOWN";
+        }
+      };
+      if (toolSupport2.cached) {
+        lines.push(info(`Result: ${supportLabel(toolSupport2.level)} \u2014 from cache`));
+      } else {
+        if (toolSupport2.level === "native") {
+          lines.push(ok(`Tool support: ${supportLabel(toolSupport2.level)}`));
+        } else if (toolSupport2.level === "react") {
+          lines.push(ok(`Tool support: ${supportLabel(toolSupport2.level)}`));
+        } else {
+          lines.push(warn(`Tool support: ${supportLabel(toolSupport2.level)}`));
+        }
+      }
+      lines.push(info(`Evidence: ${toolSupport2.evidence}`));
+      lines.push(info(`Cache: ${TOOL_SUPPORT_CACHE_PATH}`));
+    } else {
+      lines.push(section("SKIPPED TESTS (BASIC FLOW)"));
+      lines.push(info("Basic flow runs only reasoning and instruction following tests."));
+      lines.push(info("Use /model-test -t 02 for extended testing with thinking, tool usage, and support detection."));
     }
-    lines.push(info(`Evidence: ${toolSupport.evidence}`));
-    lines.push(info(`Cache: ${TOOL_SUPPORT_CACHE_PATH}`));
     const totalMs = Date.now() - totalStart;
-    const toolPass = tools.score === "STRONG" || tools.score === "MODERATE";
-    const reactPass = react.score === "STRONG" || react.score === "MODERATE";
-    const ollamaTests = [
-      { name: "Reasoning", pass: reasoning.score === "STRONG" || reasoning.score === "MODERATE", score: reasoning.score },
-      { name: "Thinking", pass: thinking.supported, score: thinking.supported ? "YES" : "NO" },
-      { name: "Tool Usage", pass: toolPass, score: tools.score },
-      { name: "ReAct Parse", pass: reactPass, score: react.score },
-      { name: "Instructions", pass: instructions.pass, score: instructions.score },
-      { name: "Tool Support", pass: toolSupport.level === "native" || toolSupport.level === "react", score: toolSupport.level.toUpperCase() }
-    ];
-    const passed = ollamaTests.filter((t) => t.pass).length;
-    const total = ollamaTests.length;
-    lines.push(...formatTestSummary(ollamaTests, totalMs));
-    lines.push(...formatRecommendation(model, passed, total));
+    if (testType === "02") {
+      const toolPass = tools.score === "STRONG" || tools.score === "MODERATE";
+      const reactPass = react.score === "STRONG" || react.score === "MODERATE";
+      const ollamaTests = [
+        { name: "Reasoning", pass: reasoning.score === "STRONG" || reasoning.score === "MODERATE", score: reasoning.score },
+        { name: "Thinking", pass: thinking.supported, score: thinking.supported ? "YES" : "NO" },
+        { name: "Tool Usage", pass: toolPass, score: tools.score },
+        { name: "ReAct Parse", pass: reactPass, score: react.score },
+        { name: "Instructions", pass: instructions.pass, score: instructions.score },
+        { name: "Tool Support", pass: toolSupport.level === "native" || toolSupport.level === "react", score: toolSupport.level.toUpperCase() }
+      ];
+      const passed2 = ollamaTests.filter((t) => t.pass).length;
+      const total2 = ollamaTests.length;
+      lines.push(...formatTestSummary(ollamaTests, totalMs));
+      lines.push(...formatRecommendation(model, passed2, total2));
+    } else {
+      const basicTests = [
+        { name: "Reasoning", pass: reasoning.score === "STRONG" || reasoning.score === "MODERATE", score: reasoning.score },
+        { name: "Instructions", pass: instructions.pass, score: instructions.score }
+      ];
+      const passed2 = basicTests.filter((t) => t.pass).length;
+      const total2 = basicTests.length;
+      lines.push(...formatTestSummary(basicTests, totalMs));
+      lines.push(...formatRecommendation(model, passed2, total2, void 0, "basic"));
+    }
     try {
+      let historyTools = { score: "SKIP", pass: false, toolCall: "n/a" };
+      let historyReact = { score: "SKIP", pass: false, toolCall: "n/a", dialect: void 0 };
+      let historyThinking = { supported: false };
+      let historyToolSupport = { level: "SKIP", evidence: "basic flow" };
+      if (testType === "02") {
+        historyTools = {
+          score: tools.score,
+          pass: tools.score === "STRONG" || tools.score === "MODERATE",
+          toolCall: tools.toolCall
+        };
+        historyReact = {
+          score: react.score,
+          pass: react.score === "STRONG" || react.score === "MODERATE",
+          toolCall: react.toolCall,
+          dialect: react.dialect
+        };
+        historyThinking = { supported: thinking.supported };
+        historyToolSupport = {
+          level: toolSupport.level,
+          evidence: toolSupport.evidence
+        };
+      }
       const historyEntry = {
         timestamp: (/* @__PURE__ */ new Date()).toISOString(),
         model,
@@ -1929,11 +1986,11 @@ function model_test_default(pi) {
         providerName: providerName || "ollama",
         tests: {
           reasoning: { score: reasoning.score, pass: reasoning.score === "STRONG" || reasoning.score === "MODERATE", answer: reasoning.answer },
-          thinking: { supported: thinking.supported },
-          toolUsage: { score: tools.score, pass: tools.score === "STRONG" || tools.score === "MODERATE", toolCall: tools.toolCall },
-          reactParsing: { score: react.score, pass: react.score === "STRONG" || react.score === "MODERATE", toolCall: react.toolCall, dialect: react.dialect },
+          thinking: historyThinking,
+          toolUsage: historyTools,
+          reactParsing: historyReact,
           instructionFollowing: { score: instructions.score, pass: instructions.pass },
-          toolSupport: { level: toolSupport.level, evidence: toolSupport.evidence }
+          toolSupport: historyToolSupport
         },
         passedCount: passed,
         totalCount: total,
@@ -1948,11 +2005,25 @@ function model_test_default(pi) {
         }
       }
     } catch (err) {
-      debugLog2("model-test", "failed to save test history", err);
+      debugLog("model-test", "failed to save test history", err);
+    }
+    if (verbose) {
+      const verboseTests = [
+        { prompt: "A snail climbs 3ft up a wall each day, slides 2ft back each night. Wall is 10ft. How many days?", response: reasoning.reasoning, score: reasoning.score },
+        { prompt: "Respond with ONLY a JSON object with keys: name, can_count, sum (15+27), language", response: instructions.output, score: instructions.score }
+      ];
+      if (testType === "02") {
+        verboseTests.push(
+          { prompt: "Multiply 37 by 43. Explain your reasoning step by step.", response: thinking.answerContent, score: thinking.supported ? "YES" : "NO" },
+          { prompt: "What's the weather in Paris?", response: tools.response, score: tools.score, toolCall: tools.toolCall },
+          { prompt: "What's the weather in Tokyo? (ReAct format)", response: react.response, score: react.score, toolCall: react.toolCall }
+        );
+      }
+      addVerboseOutput(lines, true, ...verboseTests);
     }
     return lines.join("\n");
   }
-  async function testModelProvider(providerInfo, model, ctx) {
+  async function testModelProvider(providerInfo, model, ctx, verbose = false, testType = "01") {
     const lines = [];
     const totalStart = Date.now();
     lines.push(branding);
@@ -2011,23 +2082,49 @@ function model_test_default(pi) {
     const toolTest = await testToolUsageProvider(providerInfo, model);
     lines.push(info(`Time: ${msHuman(toolTest.elapsedMs)}`));
     reportToolScore(lines, toolTest);
-    lines.push(section("SKIPPED TESTS (OLLAMA-ONLY)"));
-    lines.push(warn("Thinking test \u2014 Ollama-specific think:true option and message.thinking field"));
-    lines.push(warn("ReAct parsing test \u2014 only relevant for Ollama models without native tool calling"));
-    lines.push(warn("Tool support detection \u2014 Ollama-specific tool support cache"));
-    lines.push(warn("Model metadata \u2014 Ollama-specific /api/tags endpoint"));
+    if (testType === "02") {
+      lines.push(section("SKIPPED TESTS (PROVIDER LIMITATION)"));
+      lines.push(warn("Thinking test \u2014 Ollama-specific think:true option and message.thinking field"));
+      lines.push(warn("ReAct parsing test \u2014 only relevant for Ollama models without native tool calling"));
+      lines.push(warn("Tool support detection \u2014 Ollama-specific tool support cache"));
+      lines.push(warn("Model metadata \u2014 Ollama-specific /api/tags endpoint"));
+    } else {
+      lines.push(section("SKIPPED TESTS (BASIC FLOW)"));
+      lines.push(info("Basic flow runs only reasoning and instruction following tests for providers."));
+      lines.push(info("Extended tests are Ollama-specific due to API differences."));
+    }
     const totalMs = Date.now() - totalStart;
-    const providerTests = [
-      { name: "Connectivity", pass: connectivity.pass, score: connectivity.pass ? "OK" : "FAIL" },
-      { name: "Reasoning", pass: reasoning.score === "STRONG" || reasoning.score === "MODERATE", score: reasoning.score },
-      { name: "Instructions", pass: instructions.pass, score: instructions.score },
-      { name: "Tool Usage", pass: toolTest.pass, score: toolTest.score }
-    ];
-    const passed = providerTests.filter((t) => t.pass).length;
-    const total = providerTests.length;
-    lines.push(...formatTestSummary(providerTests, totalMs));
-    lines.push(...formatRecommendation(model, passed, total, providerInfo.name));
+    if (testType === "02") {
+      const providerTests = [
+        { name: "Connectivity", pass: connectivity.pass, score: connectivity.pass ? "OK" : "FAIL" },
+        { name: "Reasoning", pass: reasoning.score === "STRONG" || reasoning.score === "MODERATE", score: reasoning.score },
+        { name: "Instructions", pass: instructions.pass, score: instructions.score },
+        { name: "Tool Usage", pass: toolTest.pass, score: toolTest.score }
+      ];
+      const passed2 = providerTests.filter((t) => t.pass).length;
+      const total2 = providerTests.length;
+      lines.push(...formatTestSummary(providerTests, totalMs));
+      lines.push(...formatRecommendation(model, passed2, total2, providerInfo.name));
+    } else {
+      const basicTests = [
+        { name: "Connectivity", pass: connectivity.pass, score: connectivity.pass ? "OK" : "FAIL" },
+        { name: "Reasoning", pass: reasoning.score === "STRONG" || reasoning.score === "MODERATE", score: reasoning.score },
+        { name: "Instructions", pass: instructions.pass, score: instructions.score }
+      ];
+      const passed2 = basicTests.filter((t) => t.pass).length;
+      const total2 = basicTests.length;
+      lines.push(...formatTestSummary(basicTests, totalMs));
+      lines.push(...formatRecommendation(model, passed2, total2, providerInfo.name, "basic"));
+    }
     try {
+      let historyToolTest = { score: "SKIP", pass: false, toolCall: "n/a" };
+      if (testType === "02") {
+        historyToolTest = {
+          score: toolTest.score,
+          pass: toolTest.pass,
+          toolCall: toolTest.toolCall
+        };
+      }
       const historyEntry = {
         timestamp: (/* @__PURE__ */ new Date()).toISOString(),
         model,
@@ -2036,7 +2133,7 @@ function model_test_default(pi) {
         tests: {
           reasoning: { score: reasoning.score, pass: reasoning.score === "STRONG" || reasoning.score === "MODERATE", answer: reasoning.answer },
           thinking: { supported: false },
-          toolUsage: { score: toolTest.score, pass: toolTest.pass, toolCall: toolTest.toolCall },
+          toolUsage: historyToolTest,
           reactParsing: { score: "SKIP", pass: false, toolCall: "n/a" },
           instructionFollowing: { score: instructions.score, pass: instructions.pass },
           toolSupport: { level: "native", evidence: "provider-native (not probed)" }
@@ -2054,81 +2151,126 @@ function model_test_default(pi) {
         }
       }
     } catch (err) {
-      debugLog2("model-test", "failed to save provider test history", err);
+      debugLog("model-test", "failed to save provider test history", err);
+    }
+    if (verbose) {
+      const verboseTests = [
+        { prompt: "A snail climbs 3ft up a wall each day, slides 2ft back each night. Wall is 10ft. How many days?", response: reasoning.reasoning, score: reasoning.score },
+        { prompt: "Respond with ONLY a JSON object with keys: name, can_count, sum (15+27), language", response: instructions.output, score: instructions.score }
+      ];
+      if (testType === "02") {
+        verboseTests.push(
+          { prompt: "What's the weather in Paris?", response: toolTest.response, score: toolTest.score, toolCall: toolTest.toolCall }
+        );
+      }
+      addVerboseOutput(lines, true, ...verboseTests);
     }
     return lines.join("\n");
   }
-  async function testModel(model, ctx) {
+  async function testModel(model, ctx, verbose = false, testType = "01") {
     const providerInfo = ctx ? detectProvider(ctx) : { kind: "ollama", name: "ollama" };
     if (providerInfo.kind === "ollama") {
-      return testModelOllama(model, providerInfo, ctx);
+      return testModelOllama(model, providerInfo, ctx, verbose, testType);
     } else if (providerInfo.kind === "builtin") {
-      return testModelProvider(providerInfo, model, ctx);
+      return testModelProvider(providerInfo, model, ctx, verbose, testType);
     } else {
-      return testModelOllama(model);
+      return testModelOllama(model, void 0, void 0, verbose, testType);
     }
   }
   pi.registerCommand("model-test", {
-    description: "Test a model for reasoning, thinking, tool usage, ReAct parsing, instruction following, and tool support level. Supports both Ollama and cloud providers. Use: /model-test [model] or /model-test --all",
-    getArgumentCompletions: async (prefix) => {
-      try {
-        const models = await getOllamaModels();
-        return models.map((m) => ({ label: m, description: `Test ${m}` })).filter((m) => m.label.startsWith(prefix));
-      } catch (err) {
-        debugLog2("model-test", "failed to get model completions", err);
-        return [];
-      }
-    },
+    description: "Test the currently selected model for reasoning, thinking, tool usage, ReAct parsing, instruction following, and tool support level. Automatically detects and uses the current provider.",
+    detailedHelp: "\n\n\u{1F50D} Model Testing Extension\n\nTests the currently selected model across multiple dimensions:\n\u2022 Reasoning: Logic puzzles and problem-solving ability\n\u2022 Thinking: Support for extended thinking/reasoning tokens (extended flow only)\n\u2022 Tool Usage: Ability to use available tools effectively (extended flow only)\n\u2022 Instruction Following: How well the model follows complex instructions\n\u2022 Tool Support: Native vs ReAct fallback tool calling capability (extended flow only)\n\n\u{1F4CB} Usage:\n  /model-test              - Basic test flow (reasoning + instruction following)\n  /model-test -t 02        - Extended test flow (all tests including thinking, tools)\n  /model-test -v           - Verbose mode (show prompts/responses)\n  /model-test -v -t 02    - Verbose extended flow\n  /model-test --history    - Show test history\n  /model-test --clear-cache - Clear tool support cache\n\n\u{1F4A1} Tip: The command always tests the currently selected model.\n   Use /model <name> to select a model first.\n",
+    getArgumentCompletions: async () => [],
     handler: async (args, ctx) => {
       if (!ctx.hasUI) {
         ctx.ui.notify("model-test requires TUI mode", "error");
         return;
       }
       const arg = args.trim();
-      if (arg === "--all") {
-        const providerInfo = detectProvider(ctx);
-        if (providerInfo.kind !== "ollama") {
-          ctx.ui.notify(`--all is only supported for Ollama models. Current provider: ${providerInfo.name} (${providerInfo.kind})`, "error");
-          return;
-        }
-        ctx.ui.notify("Testing all models \u2014 this will take a while...", "info");
-        let models;
+      if (arg === "--help" || arg === "-h") {
+        ctx.ui.notify(
+          "\u{1F50D} Model Testing Extension\n\n\u{1F4CB} Usage:\n  /model-test              - Test current model\n  /model-test -v           - Verbose mode (show prompts/responses)\n  /model-test --history    - Show test history\n  /model-test --clear-cache - Clear tool support cache\n\n\u{1F4A1} Tests the currently selected model and provider automatically.",
+          "info"
+        );
+        return;
+      }
+      if (arg === "--history") {
         try {
-          models = await getOllamaModels();
-        } catch (err) {
-          debugLog2("model-test", "failed to list Ollama models for --all", err);
-          ctx.ui.notify("Could not list Ollama models", "error");
-          return;
-        }
-        if (models.length === 0) {
-          ctx.ui.notify("No models found in Ollama", "error");
-          return;
-        }
-        for (const model2 of models) {
-          ctx.ui.notify(`Testing ${model2}...`, "info");
-          try {
-            const report = await testModel(model2, ctx);
-            pi.sendMessage({
-              customType: "model-test-report",
-              content: report,
-              display: { type: "content", content: report },
-              details: { model: model2, timestamp: (/* @__PURE__ */ new Date()).toISOString() }
-            });
-          } catch (e) {
-            ctx.ui.notify(`Failed to test ${model2}: ${e.message}`, "error");
+          const historyFile = readTestHistory();
+          const allEntries = [];
+          for (const model2 of Object.keys(historyFile)) {
+            allEntries.push(...historyFile[model2]);
           }
+          const sorted = allEntries.sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 10);
+          if (sorted.length === 0) {
+            ctx.ui.notify("No test history found", "info");
+            return;
+          }
+          const historyText = sorted.map(
+            (entry, i2) => `${i2 + 1}. ${entry.model} @ ${entry.providerName} (${entry.providerKind})
+   Score: ${entry.passedCount}/${entry.totalCount} passed, ${entry.totalMs}ms`
+          ).join("\n\n");
+          ctx.ui.notify(
+            `\u{1F4CA} Test History (last 10)
+
+${historyText}`,
+            "info"
+          );
+        } catch (err) {
+          ctx.ui.notify("Could not read test history", "error");
         }
-        ctx.ui.notify(`Done testing ${models.length} models`, "info");
         return;
       }
-      const model = arg || getCurrentModel(ctx);
+      if (arg === "--clear-cache") {
+        try {
+          const fs3 = __require("node:fs");
+          if (fs3.existsSync(TOOL_SUPPORT_CACHE_PATH)) {
+            fs3.unlinkSync(TOOL_SUPPORT_CACHE_PATH);
+            ctx.ui.notify("Tool support cache cleared successfully", "info");
+          } else {
+            ctx.ui.notify("No cache file found to clear", "info");
+          }
+        } catch (err) {
+          ctx.ui.notify("Could not clear cache", "error");
+        }
+        return;
+      }
+      const parts = arg.trim().split(/\s+/).filter((p) => p.length > 0);
+      let verbose = false;
+      let testType = "01";
+      const invalidArgs = [];
+      let i = 0;
+      while (i < parts.length) {
+        if (parts[i] === "-v") {
+          verbose = true;
+          i++;
+        } else if (parts[i] === "-t") {
+          if (i + 1 < parts.length && (parts[i + 1] === "01" || parts[i + 1] === "02")) {
+            testType = parts[i + 1];
+            i += 2;
+          } else {
+            invalidArgs.push("-t" + (i + 1 < parts.length ? " " + parts[i + 1] : ""));
+            i++;
+          }
+        } else {
+          invalidArgs.push(parts[i]);
+          i++;
+        }
+      }
+      if (invalidArgs.length > 0) {
+        ctx.ui.notify(`Invalid argument${invalidArgs.length > 1 ? "s" : ""}: ${invalidArgs.join(", ")}. Supported flags: -v, -t 01, -t 02`, "error");
+        return;
+      }
+      const model = getCurrentModel(ctx);
       if (!model) {
-        ctx.ui.notify("No model specified and no model currently selected", "error");
+        ctx.ui.notify("No model currently selected. Please select a model first.", "error");
         return;
       }
-      ctx.ui.notify(`Testing ${model}...`, "info");
+      const providerInfo = detectProvider(ctx);
+      const testTypeName = testType === "02" ? "extended" : "basic";
+      ctx.ui.notify(`Testing ${model} @ ${providerInfo.name} (${providerInfo.kind}) - ${testTypeName} test flow...`, "info");
       try {
-        const report = await testModel(model, ctx);
+        const report = await testModel(model, ctx, verbose, testType);
         pi.sendMessage({
           customType: "model-test-report",
           content: report,
@@ -2136,7 +2278,19 @@ function model_test_default(pi) {
           details: { model, timestamp: (/* @__PURE__ */ new Date()).toISOString() }
         });
       } catch (e) {
-        ctx.ui.notify(`Model test failed: ${e.message}`, "error");
+        let errorMessage = "Model test failed";
+        if (e.name === "ApiError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "ExtensionTimeoutError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "SecurityError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "ConfigError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.message) {
+          errorMessage += `: ${e.message}`;
+        }
+        ctx.ui.notify(errorMessage, "error");
       }
     }
   });
@@ -2146,16 +2300,14 @@ function model_test_default(pi) {
     description: "Test a model for reasoning ability, thinking/reasoning token support, tool usage capability, instruction following, and tool support level. Supports both Ollama and built-in cloud providers (OpenRouter, Anthropic, Google, OpenAI, etc.). Returns a detailed report with scores.",
     promptSnippet: "model_test - test a model's capabilities",
     promptGuidelines: [
-      "When the user asks to test or evaluate a model, call model_test with the model name."
+      "When the user asks to test or evaluate a model, call model_test (tests current model)."
     ],
     parameters: {
       type: "object",
-      properties: {
-        model: { type: "string", description: "Model name to test (e.g. qwen3:0.6b, anthropic/claude-3.5-sonnet). If omitted, tests the current model." }
-      }
+      properties: {}
     },
     execute: async (_toolCallId, _params, _signal, _onUpdate, ctx) => {
-      const model = _params?.model || getCurrentModel(ctx);
+      const model = getCurrentModel(ctx);
       if (!model) {
         return {
           content: [{ type: "text", text: "No model currently selected to test." }],
@@ -2163,14 +2315,26 @@ function model_test_default(pi) {
         };
       }
       try {
-        const report = await testModel(model, ctx);
+        const report = await testModel(model, ctx, false, "01");
         return {
           content: [{ type: "text", text: report }],
           isError: false
         };
       } catch (e) {
+        let errorMessage = "Model test failed";
+        if (e.name === "ApiError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "ExtensionTimeoutError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "SecurityError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "ConfigError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.message) {
+          errorMessage += `: ${e.message}`;
+        }
         return {
-          content: [{ type: "text", text: `Model test failed: ${e.message}` }],
+          content: [{ type: "text", text: errorMessage }],
           isError: true
         };
       }

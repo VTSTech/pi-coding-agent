@@ -5,14 +5,14 @@ import os from "node:os";
 
 // shared/debug.ts
 var DEBUG_ENABLED = process?.env?.PI_EXTENSIONS_DEBUG === "1";
-function debugLog2(module, message, ...args) {
+function debugLog(module, message, ...args) {
   if (!DEBUG_ENABLED) return;
   const timestamp = (/* @__PURE__ */ new Date()).toISOString();
   console.debug(`[pi-ext:${module}] ${timestamp} ${message}`, ...args);
 }
 
 // shared/ollama.ts
-var EXTENSION_VERSION = "1.2.5";
+var EXTENSION_VERSION = "1.2.7";
 var MODELS_JSON_PATH = path.join(os.homedir(), ".pi", "agent", "models.json");
 var _modelsJsonCache = null;
 var _ollamaBaseUrlCache = null;
@@ -32,7 +32,7 @@ function getOllamaBaseUrl() {
       }
     }
   } catch (err) {
-    debugLog2("ollama", "failed to parse models.json for base URL", err);
+    debugLog("ollama", "failed to parse models.json for base URL", err);
   }
   if (process.env.OLLAMA_HOST) {
     const result = `http://${process.env.OLLAMA_HOST.replace(/^https?:\/\//, "")}`;
@@ -54,7 +54,7 @@ function readModelsJson() {
       return data;
     }
   } catch (err) {
-    debugLog2("ollama", "failed to read/parse models.json", err);
+    debugLog("ollama", "failed to read/parse models.json", err);
   }
   const empty = { providers: {} };
   _modelsJsonCache = { data: empty, ts: now };
@@ -141,7 +141,7 @@ async function withRetry(fn, options) {
       lastError = error;
       if (attempt < opts.maxRetries && isRetryableError(error, opts)) {
         const delay = backoffDelay(attempt, opts.baseDelayMs, opts.maxDelayMs);
-        debugLog2("ollama", `Retry ${attempt + 1}/${opts.maxRetries} after ${delay}ms: ${error instanceof Error ? error.message : String(error)}`);
+        debugLog("ollama", `Retry ${attempt + 1}/${opts.maxRetries} after ${delay}ms: ${error instanceof Error ? error.message : String(error)}`);
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }
@@ -180,7 +180,7 @@ async function fetchModelContextLength(baseUrl, modelName) {
       const numCtx = data?.model_info?.["num_ctx"];
       if (typeof numCtx === "number") return numCtx;
     } catch (err) {
-      debugLog2("ollama", `failed to fetch context length for ${modelName}`, err);
+      debugLog("ollama", `failed to fetch context length for ${modelName}`, err);
       return void 0;
     }
     return void 0;
@@ -252,21 +252,16 @@ var CONFIG = {
   MODEL_INFO_TIMEOUT_MS: 3e4,
   // 30 seconds for model info lookup
   // Provider API settings
-  PROVIDER_TIMEOUT_MS: 999999,
-  // Effectively unlimited for cloud provider API calls
-  PROVIDER_TOOL_TIMEOUT_MS: 12e4,
-  // 120 seconds for tool usage tests on providers
+  PROVIDER_TIMEOUT_MS: 3e5,
+  // 5 minutes - consistent with Ollama
+  PROVIDER_TOOL_TIMEOUT_MS: 3e5,
+  // 5 minutes - consistent with Ollama tool tests
   // Context length fetching
   CONTEXT_BATCH_SIZE: 3,
   // Concurrent requests when fetching model context lengths
   // Rate limiting
   TEST_DELAY_MS: 1e4,
   // 10 seconds between tests to avoid rate limiting
-  // Provider-specific timeouts (now standardized)
-  PROVIDER_TIMEOUT_MS: 3e5,
-  // 5 minutes - consistent with Ollama
-  PROVIDER_TOOL_TIMEOUT_MS: 3e5,
-  // 5 minutes - consistent with Ollama tool tests
   // Cache management
   MAX_CACHE_SIZE: 1e3,
   // Maximum number of entries in tool support cache
@@ -489,6 +484,7 @@ async function performSync(overrideUrl) {
 function ollama_sync_default(pi) {
   pi.registerCommand("ollama-sync", {
     description: "Sync models from Ollama into models.json. Use: /ollama-sync [url]",
+    detailedHelp: "\n\n\u{1F504} Ollama Synchronization Extension\n\nSynchronizes available models from an Ollama instance (local or remote)\ninto Pi's models.json configuration file with metadata extraction.\n\n\u{1F4CB} Usage:\n  /ollama-sync                 - Sync with local Ollama\n  /ollama-sync --help         - Show this help\n  /ollama-sync <url>          - Sync with remote Ollama instance\n  /ollama-sync <tunnel-url>   - Sync with tunnel URL\n\n\u{1F527} Features:\n\u2022 Automatic model metadata extraction (parameters, quantization, family)\n\u2022 Context length detection and optimization\n\u2022 Memory usage estimation (GPU/CPU)\n\u2022 Reasoning model auto-detection\n\u2022 Change detection (added/removed models)\n\u2022 Atomic configuration updates\n\n\u{1F4CA} Sync Information:\n\u2022 Model parameters and quantization level\n\u2022 Context length and memory requirements\n\u2022 Model family detection\n\u2022 Reasoning capability flags\n\u2022 Size estimation for GPU/CPU memory\n\n\u{1F4A1} Tips:\n\u2022 Use /reload after sync to apply changes\n\u2022 Remote URLs are auto-saved to models.json\n\u2022 Works with tunnel services like ngrok\n\u2022 Syncs automatically when models are added/removed\n",
     getArgumentCompletions: async () => {
       const url = getOllamaBaseUrl();
       return [
@@ -496,6 +492,13 @@ function ollama_sync_default(pi) {
       ];
     },
     async handler(args, ctx) {
+      if (args.trim() === "--help") {
+        ctx.ui.notify(
+          "\u{1F504} Ollama Synchronization Extension\n\n\u{1F4CB} Usage:\n  /ollama-sync                 - Sync with local Ollama\n  /ollama-sync --help         - Show this help\n  /ollama-sync <url>          - Sync with remote Ollama instance\n  /ollama-sync <tunnel-url>   - Sync with tunnel URL\n\n\u{1F527} Features:\n\u2022 Automatic model metadata extraction (parameters, quantization, family)\n\u2022 Context length detection and optimization\n\u2022 Memory usage estimation (GPU/CPU)\n\u2022 Reasoning model auto-detection\n\u2022 Change detection (added/removed models)\n\u2022 Atomic configuration updates\n\n\u{1F4CA} Sync Information:\n\u2022 Model parameters and quantization level\n\u2022 Context length and memory requirements\n\u2022 Model family detection\n\u2022 Reasoning capability flags\n\u2022 Size estimation for GPU/CPU memory\n\n\u{1F4A1} Tips:\n\u2022 Use /reload after sync to apply changes\n\u2022 Remote URLs are auto-saved to models.json\n\u2022 Works with tunnel services like ngrok\n\u2022 Syncs automatically when models are added/removed\n",
+          "info"
+        );
+        return;
+      }
       const arg = args.trim();
       const overrideUrl = arg || void 0;
       ctx.ui.setStatus("ollama-sync", "Fetching models from Ollama...");
