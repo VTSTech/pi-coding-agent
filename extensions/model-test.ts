@@ -1732,23 +1732,35 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      // Parse flags
-      const verbose = arg.includes("-v");
-      let testType = "01"; // default to basic test flow
-      
-      // Check for test type flags
-      if (arg.includes("-t 02")) {
-        testType = "02";
-      } else if (arg.includes("-t 01")) {
-        testType = "01";
-      }
-      
-      // Check for invalid arguments (anything other than -v, -t 01, -t 02)
+      // Parse flags properly: -t takes a value (01 or 02), -v is standalone
       const parts = arg.trim().split(/\s+/).filter(p => p.length > 0);
-      const invalidArgs = parts.filter(p => p !== "-v" && p !== "-t 01" && p !== "-t 02");
-      
+      let verbose = false;
+      let testType = "01"; // default to basic test flow
+      const invalidArgs: string[] = [];
+      let i = 0;
+
+      while (i < parts.length) {
+        if (parts[i] === "-v") {
+          verbose = true;
+          i++;
+        } else if (parts[i] === "-t") {
+          // -t expects a value: 01 or 02
+          if (i + 1 < parts.length && (parts[i + 1] === "01" || parts[i + 1] === "02")) {
+            testType = parts[i + 1];
+            i += 2; // skip -t and its value
+          } else {
+            // -t without a valid value
+            invalidArgs.push("-t" + (i + 1 < parts.length ? " " + parts[i + 1] : ""));
+            i++;
+          }
+        } else {
+          invalidArgs.push(parts[i]);
+          i++;
+        }
+      }
+
       if (invalidArgs.length > 0) {
-        ctx.ui.notify(`Invalid argument${invalidArgs.length > 1 ? "s" : ""}: ${invalidArgs.join(", ")}. Only -v flag is supported.`, "error");
+        ctx.ui.notify(`Invalid argument${invalidArgs.length > 1 ? "s" : ""}: ${invalidArgs.join(", ")}. Supported flags: -v, -t 01, -t 02`, "error");
         return;
       }
 
