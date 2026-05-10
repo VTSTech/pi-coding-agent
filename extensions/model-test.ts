@@ -1566,14 +1566,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("model-test", {
     description: "Test the currently selected model for reasoning, thinking, tool usage, ReAct parsing, instruction following, and tool support level. Automatically detects and uses the current provider.",
     detailedHelp: "\n\n🔍 Model Testing Extension\n\nTests the currently selected model across multiple dimensions:\n• Reasoning: Logic puzzles and problem-solving ability\n• Thinking: Support for extended thinking/reasoning tokens\n• Tool Usage: Ability to use available tools effectively\n• Instruction Following: How well the model follows complex instructions\n• Tool Support: Native vs ReAct fallback tool calling capability\n\n📋 Usage:\n  /model-test              - Test current model\n  /model-test -v           - Verbose mode (show prompts/responses)\n  /model-test --history    - Show test history\n  /model-test --clear-cache - Clear tool support cache\n\n💡 Tip: The command always tests the currently selected model.\n   Use /model <name> to select a model first.\n",
-    getArgumentCompletions: async (prefix) => {
-      // Only show flag completions
-      const flags = ["-v", "--help", "--history", "--clear-cache"];
-      if (prefix.startsWith("-")) {
-        return flags.filter(f => f.startsWith(prefix)).map(f => ({ label: f, description: "" }));
-      }
-      return [];
-    },
+    getArgumentCompletions: async () => [],
     handler: async (args, ctx) => {
       if (!ctx.hasUI) {
         ctx.ui.notify("model-test requires TUI mode", "error");
