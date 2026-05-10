@@ -56,6 +56,7 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 | `z-ai/glm-4.5-air:free` | OpenRouter | ✅ 1.1s | ❌ ERROR | ✅ STRONG | ✅ STRONG | **3/4** |
 | `zai/glm-4.5-flash` | ZAI | ✅ 1.9s | ❌ ERROR | ✅ STRONG | ✅ STRONG | **3/4** |
 | `liquid/lfm-2.5-1.2b-thinking:free` | OpenRouter | ✅ 633ms | ❌ ERROR | ✅ STRONG | ❌ ERROR | **2/4** |
+| `poolside/laguna-m.1:free` | OpenRouter | ✅ 1.5s | ✅ MODERATE | ✅ STRONG | ✅ STRONG | **4/4** |
 
 > Cloud provider tests use the 4-test suite (connectivity, reasoning, instructions, tool usage). Ollama-specific tests are skipped.
 >
