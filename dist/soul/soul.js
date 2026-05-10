@@ -22,7 +22,7 @@ function debugLog(module, message, ...args) {
 // shared/ollama.ts
 import * as path from "node:path";
 import os from "node:os";
-var EXTENSION_VERSION = "1.2.7";
+var EXTENSION_VERSION = "1.2.5";
 var MODELS_JSON_PATH = path.join(os.homedir(), ".pi", "agent", "models.json");
 
 // extensions/soul.ts
@@ -583,15 +583,7 @@ ${systemPrompt}`
   });
   pi.registerCommand("souls", {
     description: "List available souls",
-    detailedHelp: "\n\n\u{1F3AD} Soul Management\n\nLists all available SoulSpec personas that can be loaded for your session.\n\n\u{1F4CB} Usage:\n  /souls                      - List all available souls\n  /souls --help              - Show this help\n\n\u{1F4CA} Information Displayed:\n\u2022 Soul name and display name\n\u2022 Description and purpose\n\u2022 Disclosure level summary\n\u2022 Location in filesystem\n\n\u{1F4A1} Tips:\n\u2022 Souls are stored in souls/ directories\n\u2022 Look for souls in: .pi/souls, ./souls, ~/.pi/agent/souls\n\u2022 Each soul should have a soul.json manifest\n",
     handler: async (args, ctx) => {
-      if (args.trim() === "--help") {
-        ctx.ui.notify(
-          "\u{1F3AD} Soul Management\n\n\u{1F4CB} Usage:\n  /souls                      - List all available souls\n  /souls --help              - Show this help\n\n\u{1F4CA} Information Displayed:\n\u2022 Soul name and display name\n\u2022 Description and purpose\n\u2022 Disclosure level summary\n\u2022 Location in filesystem\n\n\u{1F4A1} Tips:\n\u2022 Souls are stored in souls/ directories\n\u2022 Look for souls in: .pi/souls, ./souls, ~/.pi/agent/souls\n\u2022 Each soul should have a soul.json manifest\n",
-          "info"
-        );
-        return;
-      }
       debugLog("soul", "Listing souls command");
       const souls = soulLoader.getAllSouls();
       if (souls.length === 0) {
@@ -622,15 +614,7 @@ ${systemPrompt}`
   });
   pi.registerCommand("soul", {
     description: "Use a soul for the current session",
-    detailedHelp: "\n\n\u{1F3AD} SoulSpec Persona System\n\nLoads and manages AI agent personas defined in SoulSpec format with\nprogressive disclosure support and environment-specific customization.\n\n\u{1F4CB} Usage:\n  /soul <soul-name>            - Load a soul with standard disclosure (level 2)\n  /soul <soul-name> --level 1  - Load with minimal disclosure\n  /soul <soul-name> --level 2  - Load with standard disclosure (default)\n  /soul <soul-name> --level 3  - Load with full detailed information\n  /soul <soul-name> --info     - Show soul information without loading\n  /soul --help                - Show this help\n\n\u{1F527} Disclosure Levels:\n\u2022 Level 1: Basic information only (minimal details)\n\u2022 Level 2: Standard disclosure with core capabilities\n\u2022 Level 3: Full detailed information and background\n\n\u{1F4CA} Soul Information:\n\u2022 Display name and description\n\u2022 Personality traits and communication style\n\u2022 Technical expertise and capabilities\n\u2022 Environmental constraints and preferences\n\u2022 Hardware specifications (for embodied agents)\n\n\u{1F4A1} Tips:\n\u2022 Use --info to preview a soul before loading\n\u2022 Adjust disclosure level based on your needs\n\u2022 Souls are automatically discovered from multiple directories\n\u2022 Each soul should have a soul.json manifest file\n",
     handler: async (args, ctx) => {
-      if (args.trim() === "--help") {
-        ctx.ui.notify(
-          "\u{1F3AD} SoulSpec Persona System\n\n\u{1F4CB} Usage:\n  /soul <soul-name>            - Load a soul with standard disclosure (level 2)\n  /soul <soul-name> --level 1  - Load with minimal disclosure\n  /soul <soul-name> --level 2  - Load with standard disclosure (default)\n  /soul <soul-name> --level 3  - Load with full detailed information\n  /soul <soul-name> --info     - Show soul information without loading\n  /soul --help                - Show this help\n\n\u{1F527} Disclosure Levels:\n\u2022 Level 1: Basic information only (minimal details)\n\u2022 Level 2: Standard disclosure with core capabilities\n\u2022 Level 3: Full detailed information and background\n\n\u{1F4CA} Soul Information:\n\u2022 Display name and description\n\u2022 Personality traits and communication style\n\u2022 Technical expertise and capabilities\n\u2022 Environmental constraints and preferences\n\u2022 Hardware specifications (for embodied agents)\n\n\u{1F4A1} Tips:\n\u2022 Use --info to preview a soul before loading\n\u2022 Adjust disclosure level based on your needs\n\u2022 Souls are automatically discovered from multiple directories\n\u2022 Each soul should have a soul.json manifest file\n",
-          "info"
-        );
-        return;
-      }
       debugLog("soul", `Using soul command with: ${args}`);
       if (!args) {
         ctx.ui.notify("Usage: /soul <soul-name>", "error");

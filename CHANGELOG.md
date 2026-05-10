@@ -6,32 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [1.2.7] - 05-10-2026 12:38:58 PM
-
-### Changed
-- **Simplified command syntax**: `/model-test` now always tests the currently selected model, removing complex model-specific argument parsing
-- **Removed unsupported flags**: `-t 01`, `-t 02` removed since extended test flow was not implemented
-- **Cleaner completions**: Argument completions now only show supported flags (`-v`, `--help`, `--history`, `--clear-cache`)
-
-### Fixed
-- **History command bug**: Fixed `./model-test --history` error "could not read test history" by properly handling the TestHistoryFile object format
-- **Argument parsing**: Fixed issues where `-v 02` was incorrectly interpreted as model name instead of verbose flag with test type
-- **Type safety fixes**: Added proper type checking for response fields to prevent TypeScript errors
-
-### Removed
-- `testModelExtended()` function (was referenced but never implemented)
-- `--all` flag (confusing and error-prone)
-- `--list` flag (confusing and error-prone)
-- Model-specific argument parsing (`qwen3:0.6b` etc.)
-
-### Usage
-```bash
-/model-test              # Test current model
-/model-test -v           # Verbose mode (show prompts/responses)
-/model-test --history    # Show test history
-/model-test --clear-cache # Clear tool support cache
-```
-
 ## [1.2.6] - 05-08-2026 1:01:00 PM
 
 ### Added

@@ -15,10 +15,10 @@ SoulSpec extension for Pi Coding Agent - Load and manage AI agent personas with 
 
 ```bash
 # Install as part of the bundle
-pi install git:github.com/VTSTech/pi-coding-agent
+pi install @vtstech/pi-coding-agent-extensions
 
 # Or install individually
-pi install "npm:@vtstech/pi-soul
+npm install @vtstech/pi-soul
 ```
 
 ## Usage

@@ -1,6 +1,6 @@
 {
   "name": "@vtstech/pi-shared",
-  "version": "1.2.7",
+  "version": "1.2.6",
   "description": "Shared utilities for Pi Coding Agent extensions",
   "exports": {
     "./config-io": "./config-io.js",

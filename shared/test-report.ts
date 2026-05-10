@@ -101,21 +101,19 @@ export function formatRecommendation(
   passed: number,
   total: number,
   via?: string,
-  testFlow?: string,
 ): string[] {
   const suffix = via ? ` via ${via}` : "";
-  const flowSuffix = testFlow ? ` (${testFlow} flow)` : "";
   const lines: string[] = [];
   lines.push(section("RECOMMENDATION"));
 
   if (passed === total) {
-    lines.push(ok(`${model} is a STRONG model${suffix}${flowSuffix} — full capability`));
+    lines.push(ok(`${model} is a STRONG model${suffix} — full capability`));
   } else if (passed > 0 && passed >= total - 1) {
-    lines.push(ok(`${model} is a GOOD model${suffix}${flowSuffix} — most capabilities work`));
+    lines.push(ok(`${model} is a GOOD model${suffix} — most capabilities work`));
   } else if (passed > 0 && passed >= total - 2) {
-    lines.push(warn(`${model} is USABLE${suffix}${flowSuffix} — some capabilities are limited`));
+    lines.push(warn(`${model} is USABLE${suffix} — some capabilities are limited`));
   } else {
-    lines.push(fail(`${model} is WEAK${suffix}${flowSuffix} — limited capabilities for agent use`));
+    lines.push(fail(`${model} is WEAK${suffix} — limited capabilities for agent use`));
   }
 
   return lines;
