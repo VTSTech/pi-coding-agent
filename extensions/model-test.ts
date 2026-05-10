@@ -1564,14 +1564,15 @@ export default function (pi: ExtensionAPI) {
   // ── Register /model-test command ─────────────────────────────────────
 
   pi.registerCommand("model-test", {
-    description: "Test a model for reasoning, thinking, tool usage, ReAct parsing, instruction following, and tool support level. Supports both Ollama and cloud providers.",
-    detailedHelp: "\n\n🔍 Model Testing Extension\n\nThis extension tests AI models across multiple dimensions:\n• Reasoning & Thinking: Logic puzzles, math problems, creative thinking\n• Tool Usage: Ability to use available tools effectively\n• Instruction Following: How well the model follows complex instructions\n• Tool Support: Native vs ReAct fallback tool calling capability\n\n📋 Usage Examples:\n  /model-test                    # Test current model\n  /model-test qwen3:0.6b        # Test specific model\n  /model-test --all             # Test all Ollama models\n  /model-test --help            # Show this help\n  /model-test --list           # List available models\n  /model-test --history         # Show test history\n  /model-test --clear-cache     # Clear tool support cache\n\n🔧 Supported Providers:\n• Ollama (local/remote)\n• OpenRouter\n• Anthropic Claude\n• Google Gemini\n• OpenAI GPT\n• Groq\n• DeepSeek\n• Mistral\n• xAI\n• Together\n• Fireworks\n• Cohere\n\n💡 Tips:\n• Use --all to benchmark all your Ollama models\n• Check --history to see past test results\n• Clear cache if you encounter unexpected tool support issues\n• Results show detailed scoring and recommendations\n",
+    description: "Test the currently selected model for reasoning, thinking, tool usage, ReAct parsing, instruction following, and tool support level. Automatically detects and uses the current provider.",
+    detailedHelp: "\n\n🔍 Model Testing Extension\n\nTests the currently selected model across multiple dimensions:\n• Reasoning: Logic puzzles and problem-solving ability\n• Thinking: Support for extended thinking/reasoning tokens\n• Tool Usage: Ability to use available tools effectively\n• Instruction Following: How well the model follows complex instructions\n• Tool Support: Native vs ReAct fallback tool calling capability\n\n📋 Usage:\n  /model-test              - Test current model\n  /model-test -v           - Verbose mode (show prompts/responses)\n  /model-test --history    - Show test history\n  /model-test --clear-cache - Clear tool support cache\n\n💡 Tip: The command always tests the currently selected model.\n   Use /model <name> to select a model first.\n",
     getArgumentCompletions: async (prefix) => {
-      try {
-        const models = await getOllamaModels();
-        return models.map(m => ({ label: m, description: `Test ${m}` }))
-          .filter(m => m.label.startsWith(prefix));
-      } catch (err) { debugLog("model-test", "failed to get model completions", err); return []; }
+      // Only show flag completions
+      const flags = ["-v", "--help", "--history", "--clear-cache"];
+      if (prefix.startsWith("-")) {
+        return flags.filter(f => f.startsWith(prefix)).map(f => ({ label: f, description: "" }));
+      }
+      return [];
     },
     handler: async (args, ctx) => {
       if (!ctx.hasUI) {
@@ -1581,46 +1582,18 @@ export default function (pi: ExtensionAPI) {
 
       const arg = args.trim();
 
-      // Handle help and utility commands
-      if (arg === "--help") {
+      // Handle utility commands
+      if (arg === "--help" || arg === "-h") {
         ctx.ui.notify(
           "🔍 Model Testing Extension\n\n" +
           "📋 Usage:\n" +
-          "  /model-test [model]     - Test current or specific model\n" +
-          "  /model-test --all        - Test all Ollama models\n" +
-          "  /model-test --list       - List available models\n" +
-          "  /model-test --history    - Show test history\n" +
-          "  /model-test --clear-cache - Clear tool support cache\n" +
+          "  /model-test              - Test current model\n" +
           "  /model-test -v           - Verbose mode (show prompts/responses)\n" +
-          "  /model-test -v 01        - Verbose mode with test type 01\n" +
-          "  /model-test -v 02        - Verbose mode with test type 02\n\n" +
-          "🔧 Test Types:\n" +
-          "  -t 01 (default) - Original test flow\n" +
-          "  -t 02           - Extended flow with multiple reasoning puzzles\n\n" +
-          "🔧 Examples:\n" +
-          "  /model-test              # Test current model\n" +
-          "  /model-test gpt-4        # Test specific model\n" +
-          "  /model-test --all        # Benchmark all Ollama models\n" +
-          "  /model-test -v           # Test with verbose output\n\n" +
-          "💡 Use tab completion to see available models",
+          "  /model-test --history    - Show test history\n" +
+          "  /model-test --clear-cache - Clear tool support cache\n\n" +
+          "💡 Tests the currently selected model and provider automatically.",
           "info"
         );
-        return;
-      }
-
-      if (arg === "--list") {
-        try {
-          const models = await getOllamaModels();
-          const providerInfo = detectProvider(ctx);
-          ctx.ui.notify(
-            `📋 Available Models\n\n` +
-            `Provider: ${providerInfo.name} (${providerInfo.kind})\n` +
-            `Models: ${models.length}\n\n` +
-            models.map(m => `• ${m}`).join("\n")
-          , "info");
-        } catch (err) {
-          ctx.ui.notify("Could not list models", "error");
-        }
         return;
       }
 
@@ -1669,68 +1642,29 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      // Parse test type flag (-t 01 or -t 02) and verbose flag (-v)
-      let testType = "01";
-      let verbose = false;
-      const testTypeMatch = arg.match(/^(-t\s*(01|02)|-v\s*(01|02)?)/);
-      const actualArg = testTypeMatch ? arg.replace(/^(-t\s*(01|02)|-v\s*(01|02)?)\s*/, "") : arg;
-      if (testTypeMatch) {
-        // Check if -v was used
-        verbose = arg.startsWith("-v");
-        // Extract test type from the matched group
-        testType = testTypeMatch[2] || testTypeMatch[3] || "01";
-      }
-
-      if (actualArg === "--all") {
-        // --all only works for Ollama providers
-        const providerInfo = detectProvider(ctx);
-        if (providerInfo.kind !== "ollama") {
-          ctx.ui.notify(`--all is only supported for Ollama models. Current provider: ${providerInfo.name} (${providerInfo.kind})`, "error");
-          return;
-        }
-
-        // Test all models
-        ctx.ui.notify("Testing all models — this will take a while...", "info");
-        let models: string[];
-        try {
-          models = await getOllamaModels();
-        } catch (err) {
-          debugLog("model-test", "failed to list Ollama models for --all", err);
-          ctx.ui.notify("Could not list Ollama models", "error");
-          return;
-        }
-
-        if (models.length === 0) {
-          ctx.ui.notify("No models found in Ollama", "error");
-          return;
-        }
-
-        for (const model of models) {
-          ctx.ui.notify(`Testing ${model}...`, "info");
-          try {
-            const report = await testModel(model, ctx, verbose);
-            pi.sendMessage({
-              customType: "model-test-report",
-              content: report,
-              display: { type: "content", content: report },
-              details: { model, timestamp: new Date().toISOString() },
-            });
-          } catch (e: any) {
-            ctx.ui.notify(`Failed to test ${model}: ${e.message}`, "error");
-          }
-        }
-        ctx.ui.notify(`Done testing ${models.length} models`, "info");
+      // Parse flags
+      const verbose = arg.includes("-v");
+      
+      // Check for invalid arguments (anything other than -v)
+      const parts = arg.trim().split(/\s+/).filter(p => p.length > 0);
+      const invalidArgs = parts.filter(p => p !== "-v");
+      
+      if (invalidArgs.length > 0) {
+        ctx.ui.notify(`Invalid argument${invalidArgs.length > 1 ? "s" : ""}: ${invalidArgs.join(", ")}. Only -v flag is supported.`, "error");
         return;
       }
 
-      // Test specific model
-      const model = arg || getCurrentModel(ctx);
+      // Get the current model
+      const model = getCurrentModel(ctx);
       if (!model) {
-        ctx.ui.notify("No model specified and no model currently selected", "error");
+        ctx.ui.notify("No model currently selected. Please select a model first.", "error");
         return;
       }
 
-      ctx.ui.notify(`Testing ${model}...`, "info");
+      // Get current provider info
+      const providerInfo = detectProvider(ctx);
+      ctx.ui.notify(`Testing ${model} @ ${providerInfo.name} (${providerInfo.kind})...`, "info");
+      
       try {
         const report = await testModel(model, ctx, verbose);
         pi.sendMessage({
@@ -1766,16 +1700,14 @@ export default function (pi: ExtensionAPI) {
     description: "Test a model for reasoning ability, thinking/reasoning token support, tool usage capability, instruction following, and tool support level. Supports both Ollama and built-in cloud providers (OpenRouter, Anthropic, Google, OpenAI, etc.). Returns a detailed report with scores.",
     promptSnippet: "model_test - test a model's capabilities",
     promptGuidelines: [
-      "When the user asks to test or evaluate a model, call model_test with the model name.",
+      "When the user asks to test or evaluate a model, call model_test (tests current model).",
     ],
     parameters: {
       type: "object",
-      properties: {
-        model: { type: "string", description: "Model name to test (e.g. qwen3:0.6b, anthropic/claude-3.5-sonnet). If omitted, tests the current model." },
-      },
+      properties: {},
     } as any,
     execute: async (_toolCallId, _params, _signal, _onUpdate, ctx) => {
-      const model = ((_params as any)?.model as string) || getCurrentModel(ctx);
+      const model = getCurrentModel(ctx);
       if (!model) {
         return {
           content: [{ type: "text", text: "No model currently selected to test." }],
