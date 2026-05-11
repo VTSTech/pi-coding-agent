@@ -263,7 +263,7 @@ export default function (pi: ExtensionAPI) {
     processNext();
   }
 
-  function updateThrottleStatus(): void {
+  function updateThrottleStatus(ctx?: { ui?: { setStatus: (id: string, text: string) => void } }): void {
     if (!throttleStatusId) {
       throttleStatusId = "throttle";
     }
@@ -296,7 +296,6 @@ export default function (pi: ExtensionAPI) {
     if (ctx && ctx.ui && ctx.ui.setStatus) {
       ctx.ui.setStatus("status-throttle", statusText);
     }
-  }
   }
 
   // ── Tool Registration ────────────────────────────────────────────────────
@@ -480,7 +479,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     const provider = ctx.model?.provider || "unknown";
     debugLog(`Throttle: Initialized for provider: ${provider}`);
-    updateThrottleStatus();
+    updateThrottleStatus(ctx);
   });
 
   pi.on("session_shutdown", async (_event, _ctx) => {
@@ -490,6 +489,7 @@ export default function (pi: ExtensionAPI) {
       // The status will be automatically cleared by Pi's status extension
     }
   });
+}
 
 // ============================================================================
 // Helper Functions
