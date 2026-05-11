@@ -490,7 +490,6 @@ export default function (pi: ExtensionAPI) {
       // The status will be automatically cleared by Pi's status extension
     }
   });
-}
 
 // ============================================================================
 // Helper Functions
