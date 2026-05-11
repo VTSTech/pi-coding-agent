@@ -46,7 +46,7 @@ const RATE_LIMITS: ProviderLimits = {
     burstRequests: 5,         // Allow small bursts
   },
   // Zhipu AI (ZAI) limits (as of 2024)
-  "zhipu": {
+  "zai": {
     requestsPerMinute: 100,   // Standard tier: ~100 RPM
     tokensPerMinute: 50000,   // Standard tier: ~50K TPM
     requestsPerHour: 6000,   // 100 RPM * 60
