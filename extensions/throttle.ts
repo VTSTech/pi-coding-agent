@@ -426,7 +426,7 @@ export default function (pi: ExtensionAPI) {
           stats.totalThrottled = 0;
           stats.currentQueueSize = 0;
           
-          updateThrottleStatus();
+          updateThrottleStatus(ctx);
           ctx.ui.notify("🚀 Throttle counters and queues reset", "info");
           break;
 
@@ -486,7 +486,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_shutdown", async (_event, _ctx) => {
     // Clean up status
     if (throttleStatusId) {
-      pi.setStatus(throttleStatusId, "");
+      ctx.ui.setStatus(throttleStatusId, "");
     }
   });
 
