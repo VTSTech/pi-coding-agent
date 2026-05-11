@@ -291,7 +291,12 @@ export default function (pi: ExtensionAPI) {
     }
 
     const statusText = statusParts.length > 0 ? `TH:${statusParts.join(",")}` : "TH:OK";
-    pi.setStatus(throttleStatusId, statusText);
+    
+    // Use ctx.ui.setStatus if context is available, otherwise skip
+    if (ctx && ctx.ui && ctx.ui.setStatus) {
+      ctx.ui.setStatus(throttleStatusId, statusText);
+    }
+  }
   }
 
   // ── Tool Registration ────────────────────────────────────────────────────
