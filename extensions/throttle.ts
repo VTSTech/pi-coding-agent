@@ -46,7 +46,7 @@ const RATE_LIMITS: ProviderLimits = {
     burstRequests: 5,         // Allow small bursts
   },
   // Zhipu AI (ZAI) limits (as of 2024)
-  "zai": {
+  "zhipu": {
     requestsPerMinute: 100,   // Standard tier: ~100 RPM
     tokensPerMinute: 50000,   // Standard tier: ~50K TPM
     requestsPerHour: 6000,   // 100 RPM * 60
@@ -125,6 +125,17 @@ export default function (pi: ExtensionAPI) {
     // Try exact provider match first
     if (RATE_LIMITS[provider]) {
       return RATE_LIMITS[provider];
+    }
+    
+    // Special mappings for provider aliases
+    const aliasMap: Record<string, string> = {
+      "zai": "zhipu",  // ZAI provider should use Zhipu AI limits
+    };
+    
+    // Check for aliases first
+    const alias = aliasMap[provider];
+    if (alias && RATE_LIMITS[alias]) {
+      return RATE_LIMITS[alias];
     }
     
     // Try partial matches (e.g., "openrouter" matches "openrouter/some-model")
@@ -325,18 +336,13 @@ export default function (pi: ExtensionAPI) {
     debugLog(`Throttle: Using provider ${provider} with limits:`, limit);
   });
 
-  pi.on("tool_call", async (event, ctx) => {
-    // Only throttle API-related tools, not local tools like bash, read, write
-    const nonThrottleableTools = ["bash", "read", "write", "edit", "list", "cd"];
-    if (event.toolName && nonThrottleableTools.includes(event.toolName)) {
-      return;
-    }
-
+  // Intercept API calls to the provider (this is where actual API calls happen)
+  pi.on("before_provider_request", async (event, ctx) => {
     const provider = ctx.model?.provider || "unknown";
     const state = getProviderState(provider);
     
-    // Estimate tokens for this request (conservative estimate)
-    const estimatedTokens = estimateRequestTokens(event);
+    // Estimate tokens for this API request
+    const estimatedTokens = estimateApiRequestTokens(event.payload);
     
     if (!canMakeRequest(state, provider, estimatedTokens)) {
       stats.totalThrottled++;
@@ -344,6 +350,29 @@ export default function (pi: ExtensionAPI) {
       
       // Queue the request
       await queueRequest(provider, estimatedTokens);
+      
+      // Note: We can't actually block the provider request here,
+      // so we'll just queue it and let the next request go through
+    }
+  });
+
+  // Track actual token usage after API calls
+  pi.on("after_provider_response", async (event, ctx) => {
+    const provider = ctx.model?.provider || "unknown";
+    const state = getProviderState(provider);
+    
+    // Update actual token usage if available in response
+    if (event.headers?.["x-rpm-used"] || event.headers?.["x-tpm-used"]) {
+      const rpmUsed = parseInt(event.headers["x-rpm-used"] || "0");
+      const tpmUsed = parseInt(event.headers["x-tpm-used"] || "0");
+      
+      if (rpmUsed > 0) state.requestCount += rpmUsed;
+      if (tpmUsed > 0) state.tokenCount += tpmUsed;
+      
+      stats.totalRequests += rpmUsed;
+      stats.totalTokens += tpmUsed;
+      
+      updateThrottleStatus();
     }
   });
 
@@ -477,4 +506,34 @@ function estimateRequestTokens(event: any): number {
   } else {
     return baseTokens + 100; // Default for other tools
   }
+}
+
+function estimateApiRequestTokens(payload: any): number {
+  // Estimate tokens for API requests to the provider
+  // This is a rough estimate based on the payload content
+  const baseTokens = 200; // Base overhead for API request
+  
+  if (!payload || typeof payload !== "object") {
+    return baseTokens;
+  }
+  
+  // Estimate based on messages in the payload
+  if (payload.messages && Array.isArray(payload.messages)) {
+    const messageTokens = payload.messages.reduce((total: number, message: any) => {
+      if (message.content) {
+        // Rough estimate: 1.3 tokens per character for English text
+        const contentLength = typeof message.content === "string" 
+          ? message.content.length 
+          : JSON.stringify(message.content).length;
+        return total + Math.ceil(contentLength * 1.3);
+      }
+      return total;
+    }, 0);
+    
+    return baseTokens + messageTokens;
+  }
+  
+  // Fallback for other payload structures
+  const payloadSize = JSON.stringify(payload).length;
+  return baseTokens + Math.ceil(payloadSize * 1.3);
 }
