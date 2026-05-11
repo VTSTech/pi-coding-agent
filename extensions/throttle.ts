@@ -174,19 +174,24 @@ export default function (pi: ExtensionAPI) {
     const limit = getRateLimit(provider);
     resetCountersIfNeeded(state, provider);
 
-    // Check request limits
-    if (state.requestCount >= limit.requestsPerMinute) {
+    // Only throttle when we're at 90% or more of the limit
+    // This prevents rate limiting errors while being permissive
+    const requestThreshold = Math.floor(limit.requestsPerMinute * 0.9);
+    const tokenThreshold = Math.floor(limit.tokensPerMinute * 0.9);
+
+    // Check request limits - only throttle at 90%+
+    if (state.requestCount >= requestThreshold) {
       return false;
     }
-    if (limit.requestsPerHour && state.requestCount >= limit.requestsPerHour) {
+    if (limit.requestsPerHour && state.requestCount >= Math.floor(limit.requestsPerHour * 0.9)) {
       return false;
     }
 
-    // Check token limits
-    if (state.tokenCount + tokens > limit.tokensPerMinute) {
+    // Check token limits - only throttle at 90%+
+    if (state.tokenCount + tokens > tokenThreshold) {
       return false;
     }
-    if (limit.tokensPerHour && state.tokenCount + tokens > limit.tokensPerHour) {
+    if (limit.tokensPerHour && state.tokenCount + tokens > Math.floor(limit.tokensPerHour * 0.9)) {
       return false;
     }
 
