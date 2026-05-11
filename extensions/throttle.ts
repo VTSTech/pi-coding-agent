@@ -292,9 +292,9 @@ export default function (pi: ExtensionAPI) {
 
     const statusText = statusParts.length > 0 ? `TH:${statusParts.join(",")}` : "TH:OK";
     
-    // Use ctx.ui.setStatus if context is available, otherwise skip
+    // Use ctx.ui.setStatus with unique ID to avoid conflicts with status.ts
     if (ctx && ctx.ui && ctx.ui.setStatus) {
-      ctx.ui.setStatus(throttleStatusId, statusText);
+      ctx.ui.setStatus("status-throttle", statusText);
     }
   }
   }
@@ -351,7 +351,7 @@ export default function (pi: ExtensionAPI) {
     
     if (!canMakeRequest(state, provider, estimatedTokens)) {
       stats.totalThrottled++;
-      updateThrottleStatus();
+      updateThrottleStatus(ctx);
       
       // Queue the request
       await queueRequest(provider, estimatedTokens);
@@ -377,7 +377,7 @@ export default function (pi: ExtensionAPI) {
       stats.totalRequests += rpmUsed;
       stats.totalTokens += tpmUsed;
       
-      updateThrottleStatus();
+      updateThrottleStatus(ctx);
     }
   });
 
@@ -489,6 +489,7 @@ export default function (pi: ExtensionAPI) {
       pi.setStatus(throttleStatusId, "");
     }
   });
+}
 
 // ============================================================================
 // Helper Functions
