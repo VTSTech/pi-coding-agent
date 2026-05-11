@@ -54,7 +54,7 @@ function debugLog(module, message, ...args) {
 }
 
 // shared/ollama.ts
-var EXTENSION_VERSION = "1.2.7";
+var EXTENSION_VERSION = "1.2.5";
 var MODELS_JSON_PATH = path.join(os.homedir(), ".pi", "agent", "models.json");
 var _modelsJsonCache = null;
 var _ollamaBaseUrlCache = null;
@@ -1122,31 +1122,9 @@ function diag_default(pi) {
   }
   pi.registerCommand("diag", {
     description: "Run a full system diagnostic (Ollama, models, extensions, themes, resources, security)",
-    detailedHelp: "\n\n\u{1F50D} System Diagnostic Extension\n\nRuns a comprehensive diagnostic check of the Pi environment including:\n\u2022 System resources (CPU, RAM, disk space)\n\u2022 Ollama connectivity and status\n\u2022 Models.json configuration validation\n\u2022 Extensions and themes loading\n\u2022 Security posture and settings\n\u2022 Current session state\n\u2022 Network connectivity\n\u2022 Tool availability and functionality\n\n\u{1F4CB} Usage:\n  /diag                       - Run full diagnostic\n  /diag --help                - Show this help\n  /diag --quick               - Quick health check only\n  /diag --security            - Security-focused diagnostic\n  /diag --performance        - Performance-focused diagnostic\n\n\u{1F4CA} Diagnostic Sections:\n\u2022 System Resources: CPU, RAM, disk usage\n\u2022 Ollama Status: Connection and model availability\n\u2022 Configuration: Models.json validation\n\u2022 Extensions: Loaded extensions and status\n\u2022 Security: Security mode and audit log\n\u2022 Network: Internet connectivity and API endpoints\n\u2022 Tools: Available tools and functionality\n\n\u{1F4A1} Tips:\n\u2022 Use --quick for fast status checks\n\u2022 Use --security to focus on security issues\n\u2022 Run regularly to monitor system health\n",
-    handler: async (args, ctx) => {
-      if (args.trim() === "--help") {
-        ctx.ui.notify(
-          "\u{1F50D} System Diagnostic Extension\n\n\u{1F4CB} Usage:\n  /diag                       - Run full diagnostic\n  /diag --help                - Show this help\n  /diag --quick               - Quick health check only\n  /diag --security            - Security-focused diagnostic\n  /diag --performance        - Performance-focused diagnostic\n\n\u{1F4CA} Diagnostic Sections:\n\u2022 System Resources: CPU, RAM, disk usage\n\u2022 Ollama Status: Connection and model availability\n\u2022 Configuration: Models.json validation\n\u2022 Extensions: Loaded extensions and status\n\u2022 Security: Security mode and audit log\n\u2022 Network: Internet connectivity and API endpoints\n\u2022 Tools: Available tools and functionality\n\n\u{1F4A1} Tips:\n\u2022 Use --quick for fast status checks\n\u2022 Use --security to focus on security issues\n\u2022 Run regularly to monitor system health\n",
-          "info"
-        );
-        return;
-      }
+    handler: async (_args, ctx) => {
       if (!ctx.hasUI) {
         ctx.ui.notify("Diagnostic requires TUI mode", "error");
-        return;
-      }
-      if (args.trim() === "--quick") {
-        ctx.ui.notify("Running quick diagnostic...", "info");
-        try {
-          const report = await runQuickDiagnostics(ctx);
-          pi.sendMessage({
-            customType: "diagnostic-report",
-            content: report,
-            display: { type: "content", content: report }
-          });
-        } catch (e) {
-          ctx.ui.notify(`Quick diagnostic failed: ${e.message}`, "error");
-        }
         return;
       }
       ctx.ui.notify("Running diagnostic...", "info");

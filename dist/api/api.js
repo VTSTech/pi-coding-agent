@@ -27,7 +27,7 @@ function debugLog(module, message, ...args) {
 }
 
 // shared/ollama.ts
-var EXTENSION_VERSION = "1.2.7";
+var EXTENSION_VERSION = "1.2.5";
 var MODELS_JSON_PATH = path.join(os.homedir(), ".pi", "agent", "models.json");
 var _modelsJsonCache = null;
 var _ollamaBaseUrlCache = null;
@@ -244,15 +244,7 @@ function api_default(pi) {
   ].join("\n");
   pi.registerCommand("api", {
     description: "View and switch API modes, base URLs, thinking, and compat flags",
-    detailedHelp: "\n\n\u{1F310} API Configuration Extension\n\nManages API provider settings, modes, URLs, thinking parameters, and\ncompatibility flags for different AI model providers.\n\n\u{1F4CB} Usage:\n  /api                         - Show current provider configuration\n  /api --help                  - Show this help\n  /api mode <mode>            - Switch API mode\n  /api url <url>              - Switch base URL\n  /api think <on|off|auto>    - Toggle thinking mode\n  /api compat <key> [value]   - View/set compatibility flags\n  /api provider [name]        - Show, set, or list providers\n  /api reload                 - Reload models.json\n  /api modes                  - List all supported API modes\n\n\u{1F527} Supported API Modes:\n\u2022 anthropic-messages        - Anthropic Claude API\n\u2022 openai-completions        - OpenAI Chat Completions\n\u2022 openai-responses          - OpenAI Responses API\n\u2022 azure-openai-responses    - Azure OpenAI Responses\n\u2022 mistral-conversations     - Mistral SDK Conversations\n\u2022 google-generative-ai      - Google Generative AI\n\u2022 google-gemini-cli         - Google Cloud Code Assist\n\u2022 google-vertex             - Google Vertex AI\n\u2022 bedrock-converse-stream   - Amazon Bedrock Converse\n\n\u{1F4A1} Tips:\n\u2022 Use /api modes to see all available API modes\n\u2022 Use /api provider to switch between providers\n\u2022 Use /api reload to apply changes immediately\n\u2022 Thinking mode enables reasoning/reasoning_tokens\n",
     handler: async (args, ctx) => {
-      if (args.trim() === "--help") {
-        ctx.ui.notify(
-          "\u{1F310} API Configuration Extension\n\n\u{1F4CB} Usage:\n  /api                         - Show current provider configuration\n  /api --help                  - Show this help\n  /api mode <mode>            - Switch API mode\n  /api url <url>              - Switch base URL\n  /api think <on|off|auto>    - Toggle thinking mode\n  /api compat <key> [value]   - View/set compatibility flags\n  /api provider [name]        - Show, set, or list providers\n  /api reload                 - Reload models.json\n  /api modes                  - List all supported API modes\n\n\u{1F527} Supported API Modes:\n\u2022 anthropic-messages        - Anthropic Claude API\n\u2022 openai-completions        - OpenAI Chat Completions\n\u2022 openai-responses          - OpenAI Responses API\n\u2022 azure-openai-responses    - Azure OpenAI Responses\n\u2022 mistral-conversations     - Mistral SDK Conversations\n\u2022 google-generative-ai      - Google Generative AI\n\u2022 google-gemini-cli         - Google Cloud Code Assist\n\u2022 google-vertex             - Google Vertex AI\n\u2022 bedrock-converse-stream   - Amazon Bedrock Converse\n\n\u{1F4A1} Tips:\n\u2022 Use /api modes to see all available API modes\n\u2022 Use /api provider to switch between providers\n\u2022 Use /api reload to apply changes immediately\n\u2022 Thinking mode enables reasoning/reasoning_tokens\n",
-          "info"
-        );
-        return;
-      }
       const parts = args.trim().split(/\s+/);
       const sub = parts[0]?.toLowerCase() || "";
       const rest = parts.slice(1).join(" ");

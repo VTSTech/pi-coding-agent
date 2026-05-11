@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Pi Version](https://img.shields.io/badge/Pi-v0.66%2B-green.svg)](https://github.com/badlogic/pi-mono)
 [![Pi Package](https://img.shields.io/badge/Install-pi%20install%20git-blue.svg)](#installation)
-[![Version](https://img.shields.io/badge/Version-v1.2.7-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-v1.2.6-orange.svg)](CHANGELOG.md)
 
 <p>
   <a href="https://github.com/VTSTech"><strong>VTSTech</strong></a> •
@@ -46,7 +46,7 @@ pi update
 
 Pin to a specific tag:
 ```bash
-pi install git:github.com/VTSTech/pi-coding-agent@v1.2.7
+pi install git:github.com/VTSTech/pi-coding-agent@v1.2.6
 ```
 
 ### Individual Packages (npm)
@@ -459,33 +459,6 @@ CPU/RAM/Swap are only shown when using a local Ollama provider (not for cloud/re
 - **Pi version** — `pi:0.66.1` fetched once at `session_start` (dim label + green value, always last slot)
 
 All slots are cleared on session shutdown. Metrics that the framework already provides (model name, session tokens, context usage, thinking level) are intentionally omitted to avoid duplication.
-
-### 🚀 Throttle (`throttle.ts`)
-
-**Prevents 429 rate limit errors by respecting provider rate limits with smart request queuing.**
-
-```bash
-/throttle status      # Show current throttle status
-/throttle reset        # Reset all counters and queues
-/throttle providers   # List configured providers and limits
-/throttle stats       # Show detailed statistics
-```
-
-**Features:**
-- **Hardcoded rate limits** for OpenRouter (15 RPM, 2K TPM) and Zhipu AI (100 RPM, 50K TPM)
-- **Smart request queuing** with FIFO ordering to prevent 429 errors
-- **Token-aware throttling** that tracks actual token usage per provider
-- **Real-time status display** in footer (Q:queue, A:active, T:throttled)
-- **Automatic provider detection** from `models.json`
-- **Conservative fallback** limits for unknown providers (10 RPM, 1K TPM)
-
-**Status indicators:**
-- `Q:N` - Queue size (N requests waiting)
-- `A:N` - Active requests (N currently being processed)
-- `T:N` - Total throttled (N requests queued since start)
-- `TH:OK` - No throttling active
-
-The extension intercepts API tool calls before execution and queues them if rate limits would be exceeded. Non-API tools (bash, read, write, etc.) are not throttled. Works seamlessly with all providers and other extensions.
 
 ---
 

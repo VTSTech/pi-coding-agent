@@ -4,11 +4,9 @@ Ollama sync extension for the [Pi Coding Agent](https://github.com/badlogic/pi-m
 
 Auto-populate `models.json` with all available Ollama models — works with local and remote instances.
 
-```bash
-# Install as part of the bundle
-pi install git:github.com/VTSTech/pi-coding-agent
+## Install
 
-# Or install individually
+```bash
 pi install "npm:@vtstech/pi-ollama-sync"
 ```
 
