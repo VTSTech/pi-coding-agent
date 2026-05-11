@@ -9,9 +9,25 @@ class ExtensionError extends Error {
   }
 }
 class ConfigError extends ExtensionError {
-  constructor(message) {
+  constructor(message, configPath, suggestion) {
     super(message, "CONFIG_ERROR");
+    __publicField(this, "configPath", configPath);
+    __publicField(this, "suggestion", suggestion);
     this.name = "ConfigError";
+  }
+  /**
+   * Create a user-friendly error message with suggestions.
+   */
+  toUserMessage() {
+    let msg = this.message;
+    if (this.configPath) {
+      msg += ` (Config: ${this.configPath})`;
+    }
+    if (this.suggestion) {
+      msg += `
+\u{1F4A1} Suggestion: ${this.suggestion}`;
+    }
+    return msg;
   }
 }
 class ApiError extends ExtensionError {

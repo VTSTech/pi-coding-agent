@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.2.7] - 05-10-2026 10:33:36 PM
+
+### Added
+
+- **Throttle Extension**: New `pi-throttle` extension to prevent 429 rate limit errors by respecting provider rate limits
+  - Hardcoded rate limits for OpenRouter (15 RPM, 2K TPM) and Zhipu AI (100 RPM, 50K TPM)
+  - Smart request queuing with FIFO ordering to prevent API errors
+  - Token-aware throttling that tracks actual token usage per provider
+  - Real-time status display in footer (Q:queue, A:active, T:throttled)
+  - Automatic provider detection from `models.json`
+  - Conservative fallback limits for unknown providers (10 RPM, 1K TPM)
+  - Commands: `/throttle status`, `/throttle reset`, `/throttle providers`, `/throttle stats`
+  - Non-API tools (bash, read, write, etc.) are not throttled
+  - Integrates seamlessly with all providers and other extensions
+  - Includes `throttle_status` tool for programmatic access
+
+### Updated
+
+- **Package Structure**: Added throttle extension to individual packages (`pi-throttle`)
+- **Build System**: Updated build script to include throttle extension in ALL_EXTENSIONS array
+- **Documentation**: Added throttle extension to README.md with comprehensive usage guide
+- **Version Management**: Properly bumped version to 1.2.7 using bump-version script
+
+### Fixed
+
+- **Version Consistency**: Ensured all package.json files, VERSION file, and documentation are synchronized to 1.2.7
+- **Build Process**: Fixed build script to include throttle extension in all build targets
+
 ## [1.2.6] - 05-08-2026 1:01:00 PM
 
 ### Added

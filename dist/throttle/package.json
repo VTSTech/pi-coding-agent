@@ -1,13 +1,17 @@
 {
-  "name": "@vtstech/pi-security",
+  "name": "@vtstech/pi-throttle",
   "version": "1.2.7",
-  "description": "Security extension for Pi Coding Agent",
-  "main": "security.js",
+  "description": "Rate limit throttling for Pi Coding Agent to prevent 429 errors",
+  "main": "throttle.js",
   "keywords": [
     "pi-package",
     "pi",
     "pi-coding-agent",
-    "pi-extensions"
+    "pi-extensions",
+    "throttle",
+    "rate-limit",
+    "openrouter",
+    "zhipu"
   ],
   "license": "MIT",
   "access": "public",
@@ -23,7 +27,7 @@
   },
   "pi": {
     "extensions": [
-      "./security.js"
+      "./throttle.js"
     ]
   }
 }

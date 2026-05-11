@@ -266,7 +266,7 @@ build_extension() {
 }
 
 # ── Build all extensions ────────────────────────────────────────────────
-ALL_EXTENSIONS=("api" "diag" "model-test" "ollama-sync" "openrouter-sync" "react-fallback" "security" "status" "soul")
+ALL_EXTENSIONS=("api" "diag" "model-test" "ollama-sync" "openrouter-sync" "react-fallback" "security" "status" "soul" "throttle")
 
 build_all_extensions() {
   local failures=0
@@ -301,7 +301,7 @@ main() {
       echo ""
       build_all_extensions
       ;;
-    api|diag|model-test|ollama-sync|openrouter-sync|react-fallback|security|soul|status)
+    api|diag|model-test|ollama-sync|openrouter-sync|react-fallback|security|soul|status|throttle)
       build_shared
       echo ""
       build_extension "$target"
@@ -322,6 +322,7 @@ Targets:
   security         Build only @vtstech/pi-security
   soul             Build only @vtstech/pi-soul
   status           Build only @vtstech/pi-status
+  throttle         Build only @vtstech/pi-throttle
 EOF
       exit 1
       ;;

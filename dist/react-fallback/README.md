@@ -4,9 +4,11 @@ ReAct fallback extension for the [Pi Coding Agent](https://github.com/badlogic/p
 
 Text-based tool calling bridge for models without native function calling support.
 
-## Install
-
 ```bash
+# Install as part of the bundle
+pi install git:github.com/VTSTech/pi-coding-agent
+
+# Or install individually
 pi install "npm:@vtstech/pi-react-fallback"
 ```
 

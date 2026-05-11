@@ -1,3 +1,10 @@
+var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
+  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
+}) : x)(function(x) {
+  if (typeof require !== "undefined") return require.apply(this, arguments);
+  throw Error('Dynamic require of "' + x + '" is not supported');
+});
+
 // shared/format.ts
 function section(title) {
   return `
@@ -46,14 +53,14 @@ import os from "node:os";
 
 // shared/debug.ts
 var DEBUG_ENABLED = process?.env?.PI_EXTENSIONS_DEBUG === "1";
-function debugLog2(module, message, ...args) {
+function debugLog(module, message, ...args) {
   if (!DEBUG_ENABLED) return;
   const timestamp = (/* @__PURE__ */ new Date()).toISOString();
   console.debug(`[pi-ext:${module}] ${timestamp} ${message}`, ...args);
 }
 
 // shared/ollama.ts
-var EXTENSION_VERSION = "1.2.5";
+var EXTENSION_VERSION = "1.2.7";
 var MODELS_JSON_PATH = path.join(os.homedir(), ".pi", "agent", "models.json");
 var _modelsJsonCache = null;
 var _ollamaBaseUrlCache = null;
@@ -73,7 +80,7 @@ function getOllamaBaseUrl() {
       }
     }
   } catch (err) {
-    debugLog2("ollama", "failed to parse models.json for base URL", err);
+    debugLog("ollama", "failed to parse models.json for base URL", err);
   }
   if (process.env.OLLAMA_HOST) {
     const result = `http://${process.env.OLLAMA_HOST.replace(/^https?:\/\//, "")}`;
@@ -95,7 +102,7 @@ function readModelsJson() {
       return data;
     }
   } catch (err) {
-    debugLog2("ollama", "failed to read/parse models.json", err);
+    debugLog("ollama", "failed to read/parse models.json", err);
   }
   const empty = { providers: {} };
   _modelsJsonCache = { data: empty, ts: now };
@@ -182,7 +189,7 @@ async function withRetry(fn, options) {
       lastError = error;
       if (attempt < opts.maxRetries && isRetryableError(error, opts)) {
         const delay = backoffDelay(attempt, opts.baseDelayMs, opts.maxDelayMs);
-        debugLog2("ollama", `Retry ${attempt + 1}/${opts.maxRetries} after ${delay}ms: ${error instanceof Error ? error.message : String(error)}`);
+        debugLog("ollama", `Retry ${attempt + 1}/${opts.maxRetries} after ${delay}ms: ${error instanceof Error ? error.message : String(error)}`);
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }
@@ -211,7 +218,7 @@ async function fetchModelContextLength(baseUrl, modelName) {
       const numCtx = data?.model_info?.["num_ctx"];
       if (typeof numCtx === "number") return numCtx;
     } catch (err) {
-      debugLog2("ollama", `failed to fetch context length for ${modelName}`, err);
+      debugLog("ollama", `failed to fetch context length for ${modelName}`, err);
       return void 0;
     }
     return void 0;
@@ -560,21 +567,16 @@ var CONFIG = {
   MODEL_INFO_TIMEOUT_MS: 3e4,
   // 30 seconds for model info lookup
   // Provider API settings
-  PROVIDER_TIMEOUT_MS: 999999,
-  // Effectively unlimited for cloud provider API calls
-  PROVIDER_TOOL_TIMEOUT_MS: 12e4,
-  // 120 seconds for tool usage tests on providers
+  PROVIDER_TIMEOUT_MS: 3e5,
+  // 5 minutes - consistent with Ollama
+  PROVIDER_TOOL_TIMEOUT_MS: 3e5,
+  // 5 minutes - consistent with Ollama tool tests
   // Context length fetching
   CONTEXT_BATCH_SIZE: 3,
   // Concurrent requests when fetching model context lengths
   // Rate limiting
   TEST_DELAY_MS: 1e4,
   // 10 seconds between tests to avoid rate limiting
-  // Provider-specific timeouts (now standardized)
-  PROVIDER_TIMEOUT_MS: 3e5,
-  // 5 minutes - consistent with Ollama
-  PROVIDER_TOOL_TIMEOUT_MS: 3e5,
-  // 5 minutes - consistent with Ollama tool tests
   // Cache management
   MAX_CACHE_SIZE: 1e3,
   // Maximum number of entries in tool support cache
@@ -1275,7 +1277,7 @@ function model_test_default(pi) {
             if (parsed.message?.thinking) thinkingContent += parsed.message.thinking;
             if (parsed.done) done = true;
           } catch (err) {
-            debugLog2("model-test", "skipped malformed JSON chunk in streaming response", err);
+            debugLog("model-test", "skipped malformed JSON chunk in streaming response", err);
           }
         }
       }
@@ -1651,7 +1653,7 @@ function model_test_default(pi) {
           const args = typeof fn.arguments === "string" ? JSON.parse(fn.arguments) : fn.arguments || {};
           argsStr = JSON.stringify(args);
         } catch (err) {
-          debugLog2("model-test", "failed to parse tool call arguments", err);
+          debugLog("model-test", "failed to parse tool call arguments", err);
           argsStr = String(fn.arguments);
         }
         const level2 = "native";
@@ -1715,7 +1717,7 @@ function model_test_default(pi) {
       const data = await res.json();
       return (data.models || []).map((m) => m.name).filter(Boolean);
     } catch (err) {
-      debugLog2("model-test", "failed to list Ollama models", err);
+      debugLog("model-test", "failed to list Ollama models", err);
       return [];
     }
   }
@@ -1803,7 +1805,7 @@ function model_test_default(pi) {
         }
       }
     } catch (err) {
-      debugLog2("model-test", "failed to fetch model metadata from /api/show", err);
+      debugLog("model-test", "failed to fetch model metadata from /api/show", err);
     }
     const detectedFamily = detectModelFamily(model);
     lines.push(info(`Size: ${modelSize}  |  Params: ${modelParams}  |  Quant: ${modelQuant}`));
@@ -1948,7 +1950,7 @@ function model_test_default(pi) {
         }
       }
     } catch (err) {
-      debugLog2("model-test", "failed to save test history", err);
+      debugLog("model-test", "failed to save test history", err);
     }
     return lines.join("\n");
   }
@@ -2054,7 +2056,7 @@ function model_test_default(pi) {
         }
       }
     } catch (err) {
-      debugLog2("model-test", "failed to save provider test history", err);
+      debugLog("model-test", "failed to save provider test history", err);
     }
     return lines.join("\n");
   }
@@ -2069,13 +2071,14 @@ function model_test_default(pi) {
     }
   }
   pi.registerCommand("model-test", {
-    description: "Test a model for reasoning, thinking, tool usage, ReAct parsing, instruction following, and tool support level. Supports both Ollama and cloud providers. Use: /model-test [model] or /model-test --all",
+    description: "Test a model for reasoning, thinking, tool usage, ReAct parsing, instruction following, and tool support level. Supports both Ollama and cloud providers.",
+    detailedHelp: "\n\n\u{1F50D} Model Testing Extension\n\nThis extension tests AI models across multiple dimensions:\n\u2022 Reasoning & Thinking: Logic puzzles, math problems, creative thinking\n\u2022 Tool Usage: Ability to use available tools effectively\n\u2022 Instruction Following: How well the model follows complex instructions\n\u2022 Tool Support: Native vs ReAct fallback tool calling capability\n\n\u{1F4CB} Usage Examples:\n  /model-test                    # Test current model\n  /model-test qwen3:0.6b        # Test specific model\n  /model-test --all             # Test all Ollama models\n  /model-test --help            # Show this help\n  /model-test --list           # List available models\n  /model-test --history         # Show test history\n  /model-test --clear-cache     # Clear tool support cache\n\n\u{1F527} Supported Providers:\n\u2022 Ollama (local/remote)\n\u2022 OpenRouter\n\u2022 Anthropic Claude\n\u2022 Google Gemini\n\u2022 OpenAI GPT\n\u2022 Groq\n\u2022 DeepSeek\n\u2022 Mistral\n\u2022 xAI\n\u2022 Together\n\u2022 Fireworks\n\u2022 Cohere\n\n\u{1F4A1} Tips:\n\u2022 Use --all to benchmark all your Ollama models\n\u2022 Check --history to see past test results\n\u2022 Clear cache if you encounter unexpected tool support issues\n\u2022 Results show detailed scoring and recommendations\n",
     getArgumentCompletions: async (prefix) => {
       try {
         const models = await getOllamaModels();
         return models.map((m) => ({ label: m, description: `Test ${m}` })).filter((m) => m.label.startsWith(prefix));
       } catch (err) {
-        debugLog2("model-test", "failed to get model completions", err);
+        debugLog("model-test", "failed to get model completions", err);
         return [];
       }
     },
@@ -2085,6 +2088,69 @@ function model_test_default(pi) {
         return;
       }
       const arg = args.trim();
+      if (arg === "--help") {
+        ctx.ui.notify(
+          "\u{1F50D} Model Testing Extension\n\n\u{1F4CB} Usage:\n  /model-test [model]     - Test current or specific model\n  /model-test --all        - Test all Ollama models\n  /model-test --list       - List available models\n  /model-test --history    - Show test history\n  /model-test --clear-cache - Clear tool support cache\n\n\u{1F527} Examples:\n  /model-test              # Test current model\n  /model-test gpt-4        # Test specific model\n  /model-test --all        # Benchmark all Ollama models\n\n\u{1F4A1} Use tab completion to see available models",
+          "info"
+        );
+        return;
+      }
+      if (arg === "--list") {
+        try {
+          const models = await getOllamaModels();
+          const providerInfo = detectProvider(ctx);
+          ctx.ui.notify(
+            `\u{1F4CB} Available Models
+
+Provider: ${providerInfo.name} (${providerInfo.kind})
+Models: ${models.length}
+
+` + models.map((m) => `\u2022 ${m}`).join("\n"),
+            "info"
+          );
+        } catch (err) {
+          ctx.ui.notify("Could not list models", "error");
+        }
+        return;
+      }
+      if (arg === "--history") {
+        try {
+          const history = readTestHistory();
+          if (history.length === 0) {
+            ctx.ui.notify("No test history found", "info");
+            return;
+          }
+          const recent = history.slice(-10);
+          const historyText = recent.map(
+            (entry, i) => `${i + 1}. ${entry.model} - ${entry.timestamp}
+   Score: ${entry.score}
+   Duration: ${entry.durationMs}ms`
+          ).join("\n\n");
+          ctx.ui.notify(
+            `\u{1F4CA} Test History (last 10)
+
+${historyText}`,
+            "info"
+          );
+        } catch (err) {
+          ctx.ui.notify("Could not read test history", "error");
+        }
+        return;
+      }
+      if (arg === "--clear-cache") {
+        try {
+          const fs3 = __require("node:fs");
+          if (fs3.existsSync(TOOL_SUPPORT_CACHE_PATH)) {
+            fs3.unlinkSync(TOOL_SUPPORT_CACHE_PATH);
+            ctx.ui.notify("Tool support cache cleared successfully", "info");
+          } else {
+            ctx.ui.notify("No cache file found to clear", "info");
+          }
+        } catch (err) {
+          ctx.ui.notify("Could not clear cache", "error");
+        }
+        return;
+      }
       if (arg === "--all") {
         const providerInfo = detectProvider(ctx);
         if (providerInfo.kind !== "ollama") {
@@ -2096,7 +2162,7 @@ function model_test_default(pi) {
         try {
           models = await getOllamaModels();
         } catch (err) {
-          debugLog2("model-test", "failed to list Ollama models for --all", err);
+          debugLog("model-test", "failed to list Ollama models for --all", err);
           ctx.ui.notify("Could not list Ollama models", "error");
           return;
         }
@@ -2136,7 +2202,19 @@ function model_test_default(pi) {
           details: { model, timestamp: (/* @__PURE__ */ new Date()).toISOString() }
         });
       } catch (e) {
-        ctx.ui.notify(`Model test failed: ${e.message}`, "error");
+        let errorMessage = "Model test failed";
+        if (e.name === "ApiError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "ExtensionTimeoutError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "SecurityError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "ConfigError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.message) {
+          errorMessage += `: ${e.message}`;
+        }
+        ctx.ui.notify(errorMessage, "error");
       }
     }
   });
@@ -2169,8 +2247,20 @@ function model_test_default(pi) {
           isError: false
         };
       } catch (e) {
+        let errorMessage = "Model test failed";
+        if (e.name === "ApiError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "ExtensionTimeoutError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "SecurityError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "ConfigError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.message) {
+          errorMessage += `: ${e.message}`;
+        }
         return {
-          content: [{ type: "text", text: `Model test failed: ${e.message}` }],
+          content: [{ type: "text", text: errorMessage }],
           isError: true
         };
       }
