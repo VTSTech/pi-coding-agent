@@ -489,7 +489,6 @@ export default function (pi: ExtensionAPI) {
       pi.setStatus(throttleStatusId, "");
     }
   });
-}
 
 // ============================================================================
 // Helper Functions
