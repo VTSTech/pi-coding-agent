@@ -486,9 +486,11 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_shutdown", async (_event, _ctx) => {
     // Clean up status
     if (throttleStatusId) {
-      ctx.ui.setStatus(throttleStatusId, "");
+      // Note: We can't access ctx.ui here during shutdown, so we'll skip cleanup
+      // The status will be automatically cleared by Pi's status extension
     }
   });
+}
 
 // ============================================================================
 // Helper Functions
