@@ -77,7 +77,7 @@ function loadMemory(pi: ExtensionAPI): MemoryStore {
           environment: detectEnvironment(),
           createdAt: store.lastCompacted || Date.now(),
           lastUpdated: Date.now(),
-          version: "1.1.0",
+          version: "1.2.7",
           memoryGateEnabled: true,
         };
       } else if (!store.metadata.memoryGateEnabled) {
@@ -98,7 +98,7 @@ function loadMemory(pi: ExtensionAPI): MemoryStore {
       environment: detectEnvironment(),
       createdAt: Date.now(),
       lastUpdated: Date.now(),
-      version: "1.3.0",
+      version: "1.2.7",
       memoryGateEnabled: true, // Default: prompt user before creating memories
     },
     lastCompacted: Date.now(),
