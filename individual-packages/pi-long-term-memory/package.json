@@ -1,6 +1,6 @@
 {
   "name": "@vtstech/pi-long-term-memory",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "description": "Long-term memory extension for Pi - persistent memory across sessions",
   "main": "ltm.js",
   "keywords": [

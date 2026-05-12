@@ -4,9 +4,12 @@
  * A persistent memory system that maintains important details between sessions.
  * Automatically injects relevant memory at session start and manages a ~4k token window.
  *
+ * CRITICAL: This extension hooks into `pre_session_start` and `session_start` events
+ * to ensure memory is checked and available BEFORE the AI generates its first response.
+ *
  * Features:
  * - Persistent memory storage across sessions
- * - Automatic injection at session start
+ * - Automatic injection at session start (BEFORE first AI response)
  * - Memory management commands (/memory)
  * - Automatic summarization to stay within token limits
  * - Tag-based organization
@@ -439,6 +442,25 @@ export default function (pi: ExtensionAPI) {
   // Track if memory has been injected to avoid duplicates
   let memoryInjected = false;
 
+  // CRITICAL: Pre-session hook to ensure memory is loaded BEFORE any AI response
+  // This runs before the AI generates its first response
+  pi.on("pre_session_start", async (_event, ctx) => {
+    // Ensure metadata is complete
+    const needsMetadata = !memoryStore.metadata.primaryUser || !memoryStore.metadata.environment;
+    if (needsMetadata) {
+      try {
+        const updatedMetadata = await promptForMetadata(ctx, memoryStore.metadata);
+        memoryStore.metadata = updatedMetadata;
+      } catch (e) {
+        // User cancelled or error - continue with defaults
+        debugLog("ltm", "Metadata prompt cancelled or failed");
+      }
+    }
+    
+    // Save the updated metadata
+    saveMemory(pi, memoryStore);
+  });
+
   // Hook into session_start to check and display memory BEFORE any response
   pi.on("session_start", async (_event, ctx) => {
     // Update last accessed times
@@ -448,6 +470,13 @@ export default function (pi: ExtensionAPI) {
     }
 
     saveMemory(pi, memoryStore);
+
+    // CRITICAL: Always display who we're interacting with and the environment
+    const metaText = formatMetadataForContext(memoryStore.metadata);
+    ctx.ui?.notify?.(
+      `Memory context loaded:\n${metaText.substring(0, 300)}...`,
+      "info"
+    );
 
     // IMPORTANT: Check memory at session start (new sessions are almost certainly
     // NOT the first session - user likely has context from previous work)
@@ -479,18 +508,6 @@ export default function (pi: ExtensionAPI) {
     // Update last accessed times and save
     for (const mem of memoryStore.memories) {
       mem.lastAccessed = now;
-    }
-
-    // Prompt for metadata if missing
-    const needsMetadata = !memoryStore.metadata.primaryUser || !memoryStore.metadata.environment;
-    if (needsMetadata) {
-      try {
-        const updatedMetadata = await promptForMetadata(ctx, memoryStore.metadata);
-        memoryStore.metadata = updatedMetadata;
-      } catch (e) {
-        // User cancelled or error - continue without prompting
-        debugLog("ltm", "Metadata prompt cancelled or failed");
-      }
     }
 
     saveMemory(pi, memoryStore);
@@ -537,7 +554,8 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  // Note: session_start handler moved earlier to check memory before first response
+  // Note: Memory injection happens in pre_session_start (for metadata) and session_start (for notification)
+  // The actual memory content is injected via before_provider_request hook
 
   // Register a tool for AI-driven memory requests
   pi.registerTool({

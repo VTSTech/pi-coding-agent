@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.2.8] - 05-12-2026
+
+### Fixed
+
+- **Memory injection timing issue in LTM extension** (`extensions/ltm.ts`)
+  - Added `pre_session_start` hook to ensure metadata is loaded before AI response
+  - Improved session start handler to always display metadata context
+  - Added clear documentation about the timing issue and recommended fix
+  - Memory content is now injected via `before_provider_request` hook with better visibility
+
+### Architecture
+
+- **Documented memory injection timing issue** (`brief.md`, `audit.md`)
+  - Added section 7 to brief.md explaining the issue and proposed fix
+  - Added ARCH-02 finding to audit.md with recommendations
+  - Updated priority matrix to include ARCH-02
+
+### Build
+
+- **Updated VERSION to 1.2.8**
+
 ## [1.2.7] - 05-12-2026
 
 ### Added
