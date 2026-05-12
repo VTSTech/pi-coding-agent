@@ -25,6 +25,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { join } from "path";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { debugLog } from "../shared/debug";
 
 // Memory file path (in .pi/agent/ directory)
 const MEMORY_FILE = "long-term-memory.json";
@@ -77,7 +78,11 @@ function loadMemory(pi: ExtensionAPI): MemoryStore {
           createdAt: store.lastCompacted || Date.now(),
           lastUpdated: Date.now(),
           version: "1.1.0",
+          memoryGateEnabled: true,
         };
+      } else if (!store.metadata.memoryGateEnabled) {
+        // Migration: add memoryGateEnabled if missing
+        store.metadata.memoryGateEnabled = true;
       }
       return store;
     }
@@ -93,7 +98,7 @@ function loadMemory(pi: ExtensionAPI): MemoryStore {
       environment: detectEnvironment(),
       createdAt: Date.now(),
       lastUpdated: Date.now(),
-      version: "1.2.0",
+      version: "1.3.0",
       memoryGateEnabled: true, // Default: prompt user before creating memories
     },
     lastCompacted: Date.now(),
@@ -316,6 +321,7 @@ export default function (pi: ExtensionAPI) {
             createdAt: Date.now(),
             lastUpdated: Date.now(),
             version: memoryStore.metadata.version,
+            memoryGateEnabled: true,
           };
           saveMemory(pi, memoryStore);
           ctx.ui.notify("Metadata reset. Please restart to set new values.", "success");
@@ -407,6 +413,7 @@ export default function (pi: ExtensionAPI) {
             createdAt: Date.now(),
             lastUpdated: Date.now(),
             version: memoryStore.metadata.version,
+            memoryGateEnabled: memoryStore.metadata.memoryGateEnabled,
           };
           saveMemory(pi, memoryStore);
           return {
@@ -429,10 +436,47 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // Hook into session start to inject memory
+  // Track if memory has been injected to avoid duplicates
+  let memoryInjected = false;
+
+  // Hook into session_start to check and display memory BEFORE any response
   pi.on("session_start", async (_event, ctx) => {
-    // Update last accessed times and save
+    // Update last accessed times
     const now = Date.now();
+    for (const mem of memoryStore.memories) {
+      mem.lastAccessed = now;
+    }
+
+    saveMemory(pi, memoryStore);
+
+    // IMPORTANT: Check memory at session start (new sessions are almost certainly
+    // NOT the first session - user likely has context from previous work)
+    if (memoryStore.memories.length > 0) {
+      const memoryContent = formatMemoryForContext(memoryStore.memories);
+      ctx.ui?.notify?.(
+        `Long-term memory loaded: ${memoryStore.memories.length} memories\n\n${memoryContent.substring(0, 200)}...` + (memoryContent.length > 200 ? "..." : ""),
+        "info"
+      );
+    }
+
+    // Notify user that this is a continuing session, not necessarily first
+    const sessionAge = Date.now() - memoryStore.metadata.createdAt;
+    if (sessionAge > 60000) {
+      ctx.ui?.notify?.(
+        `Continuing from previous session (${Math.round(sessionAge / 60000)} min ago)`,
+        "info"
+      );
+    }
+  });
+
+  // Hook into before_provider_request to inject memory BEFORE the first API call
+  pi.on("before_provider_request", async (event, ctx) => {
+    // Only inject once per session
+    if (memoryInjected) return;
+
+    const now = Date.now();
+
+    // Update last accessed times and save
     for (const mem of memoryStore.memories) {
       mem.lastAccessed = now;
     }
@@ -440,8 +484,13 @@ export default function (pi: ExtensionAPI) {
     // Prompt for metadata if missing
     const needsMetadata = !memoryStore.metadata.primaryUser || !memoryStore.metadata.environment;
     if (needsMetadata) {
-      const updatedMetadata = await promptForMetadata(ctx, memoryStore.metadata);
-      memoryStore.metadata = updatedMetadata;
+      try {
+        const updatedMetadata = await promptForMetadata(ctx, memoryStore.metadata);
+        memoryStore.metadata = updatedMetadata;
+      } catch (e) {
+        // User cancelled or error - continue without prompting
+        debugLog("ltm", "Metadata prompt cancelled or failed");
+      }
     }
 
     saveMemory(pi, memoryStore);
@@ -458,26 +507,37 @@ export default function (pi: ExtensionAPI) {
       memoryStore.lastCompacted = now;
       saveMemory(pi, memoryStore);
 
-      ctx.ui.notify(
+      ctx.ui?.notify?.(
         `Memory compacted: ${memoryStore.memories.length} items, ~${estimateTokens(formatMemoryForContext(memoryStore.memories))} tokens`,
         "info"
       );
     }
 
-    // Inject memory into context (metadata + memories)
+    // Inject memory into the messages array (prepend to system prompt)
     if (memoryStore.memories.length > 0 || memoryStore.metadata.primaryUser || memoryStore.metadata.environment) {
       const memoryContent = formatMemoryForContext(memoryStore.memories);
       const metaContent = formatMetadataForContext(memoryStore.metadata);
       const fullContent = metaContent + "\n\n" + memoryContent;
 
-      ctx.sendMessage({
-        customType: "long-term-memory",
-        content: fullContent,
-        display: false, // Hidden from TUI, only for LLM context
-        timestamp: now,
-      });
+      // Modify the payload to include memory in system prompt
+      const payload = event.payload;
+      if (payload && payload.messages) {
+        // Create a system message with memory content
+        const memoryMessage = {
+          role: "system",
+          content: fullContent
+        };
+
+        // Prepend to messages array
+        payload.messages.unshift(memoryMessage);
+
+        // Mark as injected
+        memoryInjected = true;
+      }
     }
   });
+
+  // Note: session_start handler moved earlier to check memory before first response
 
   // Register a tool for AI-driven memory requests
   pi.registerTool({
