@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "./dist",
+    "ignoreDeprecations": "6.0"
+  },
+  "include": ["extensions/ltm.ts"],
+  "exclude": ["node_modules", "npm-packages", "dist"]
+}

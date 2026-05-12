@@ -23,7 +23,11 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test tests/*.test.ts",
+    "build": "npm run build:ltm",
+    "build:ltm": "cd individual-packages/pi-long-term-memory && npx esbuild ltm.ts --bundle --outfile=../../dist/extensions/ltm.js --format=cjs --platform=node",
+    "publish": "npm run build && npm publish",
+    "publish:long-term-memory": "cd individual-packages/pi-long-term-memory && npm publish"
   },
   "pi": {
     "extensions": [
@@ -35,6 +39,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.6.2",
+    "esbuild": "^0.28.0",
     "typescript": "^6.0.3"
   }
 }
