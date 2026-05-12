@@ -1,14 +1,9 @@
 {
-  "name": "@vtstech/pi-security",
+  "name": "@vtstech/pi-long-term-memory",
   "version": "1.2.7",
-  "description": "Security extension for Pi Coding Agent",
-  "main": "security.js",
-  "keywords": [
-    "pi-package",
-    "pi",
-    "pi-coding-agent",
-    "pi-extensions"
-  ],
+  "description": "Long-term memory extension for Pi - persistent memory across sessions",
+  "main": "ltm.js",
+  "keywords": ["pi-package", "pi", "pi-coding-agent", "pi-extensions", "memory"],
   "license": "MIT",
   "access": "public",
   "type": "module",
@@ -22,8 +17,6 @@
     "@earendil-works/pi-coding-agent": ">=0.66"
   },
   "pi": {
-    "extensions": [
-      "./security.js"
-    ]
+    "extensions": ["./ltm.js"]
   }
 }

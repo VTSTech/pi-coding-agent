@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.2.7] - 05-12-2026
+
+### Added
+
+- **Long Term Memory Extension** (`extensions/ltm.ts`)
+  - Persistent memory storage across sessions in `.pi/agent/long-term-memory.json`
+  - Automatic injection at session start with MM-DD-YYYY HH:MM:SS timestamps
+  - AI-driven memory creation via `create_memory` tool with user confirmation gate
+  - Auto-detected Primary User (from USER/USERNAME/LOGNAME) and Environment (from NODE_ENV)
+  - ~4k token window with automatic summarization
+  - Commands: `/memory add/list/clear/clear-meta/meta/gate/help`
+  - Tag-based organization for memories
+  - Memory importance scoring (1-10) for prioritization
+
+### Build
+
+- **Added long-term-memory to build system** (`scripts/build-tgz.sh`)
+  - Added "ltm" to ALL_EXTENSIONS array for automatic building
+  - Extension will be bundled with shared code inlined
+
 ## [1.2.6] - 05-08-2026 1:01:00 PM
 
 ### Added

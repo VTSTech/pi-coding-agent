@@ -1,7 +1,7 @@
 {
   "name": "@vtstech/pi-coding-agent-extensions",
-  "version": "1.2.5",
-  "description": "Pi Coding Agent extensions: security, ReAct fallback, model benchmark, Ollama sync, diagnostics, system monitor, and Matrix theme",
+  "version": "1.2.7",
+  "description": "Pi Coding Agent extensions: security, ReAct fallback, model benchmark, Ollama sync, diagnostics, system monitor, long-term memory, and Matrix theme",
   "keywords": [
     "pi-package",
     "pi",
@@ -11,7 +11,8 @@
     "model-test",
     "status-bar",
     "security",
-    "react-fallback"
+    "react-fallback",
+    "long-term-memory"
   ],
   "license": "MIT",
   "author": "VTSTech",

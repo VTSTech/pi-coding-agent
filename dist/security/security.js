@@ -640,7 +640,7 @@ function info(msg) {
 // shared/ollama.ts
 import * as path3 from "node:path";
 import os3 from "node:os";
-var EXTENSION_VERSION = "1.2.5";
+var EXTENSION_VERSION = "1.2.7";
 var MODELS_JSON_PATH = path3.join(os3.homedir(), ".pi", "agent", "models.json");
 
 // extensions/security.ts
@@ -658,11 +658,19 @@ function security_default(pi) {
     `  Website: www.vts-tech.org`
   ].join("\n");
   pi.registerCommand("security", {
-    description: "Manage security mode \u2014 usage: /security mode [basic|max]",
+    description: "Manage security mode and view security information",
+    detailedHelp: "\n\n\u{1F512} Security Extension\n\nManages security enforcement mode and provides security information.\n\n\u{1F4CB} Usage:\n  /security mode              - Show current security mode\n  /security mode basic         - Enable basic security (critical commands only)\n  /security mode max          - Enable maximum security (all commands)\n  /security mode off          - Disable security (not recommended)\n  /security audit             - Show detailed security audit report\n  /security --help            - Show this help\n\n\u{1F527} Security Modes:\n\u2022 basic: Blocks 41 critical commands, allows localhost\n\u2022 max: Blocks 66 total commands, full SSRF protection\n\u2022 off: No security checks (development only)\n\n\u{1F4CA} Features:\n\u2022 Command blocklist validation\n\u2022 Path validation (sensitive directory protection)\n\u2022 SSRF protection (URL filtering)\n\u2022 Shell injection detection\n\u2022 Audit logging with JSON format\n\n\u{1F4A1} Tips:\n\u2022 Use basic mode for development\n\u2022 Use max mode for production\n\u2022 Check audit log for security events\n\u2022 View stats to monitor security violations\n",
     handler: async (args, ctx) => {
       try {
         const parts = args.trim().split(/\s+/);
         const sub = parts[0]?.toLowerCase() || "";
+        if (args.trim() === "--help") {
+          ctx.ui.notify(
+            "\u{1F512} Security Extension\n\n\u{1F4CB} Usage:\n  /security mode              - Show current security mode\n  /security mode basic         - Enable basic security\n  /security mode max          - Enable maximum security\n  /security mode off          - Disable security\n  /security audit             - Show detailed audit report\n\n\u{1F527} Security Modes:\n\u2022 basic: Blocks 41 critical commands, allows localhost\n\u2022 max: Blocks 66 total commands, full SSRF protection\n\u2022 off: No security checks (development only)\n\n\u{1F4CA} Features:\n\u2022 Command blocklist validation\n\u2022 Path validation (sensitive directory protection)\n\u2022 SSRF protection (URL filtering)\n\u2022 Shell injection detection\n\u2022 Audit logging with JSON format\n",
+            "info"
+          );
+          return;
+        }
         if (sub === "mode") {
           const value = parts[1]?.toLowerCase();
           const currentMode = getSecurityMode();
@@ -934,7 +942,15 @@ function security_default(pi) {
   }
   pi.registerCommand("security-audit", {
     description: "Show security audit report \u2014 blocked operations, stats, and recent log",
-    handler: async (_args, ctx) => {
+    detailedHelp: "\n\n\u{1F50D} Security Audit Command\n\nDisplays a comprehensive security audit report including:\n\u2022 Session security statistics\n\u2022 Blocked operations with reasons\n\u2022 Recent audit log entries\n\u2022 Security mode information\n\u2022 Active security checks\n\n\u{1F4CB} Usage:\n  /security-audit              - Show full audit report\n  /security-audit --help      - Show this help\n\n\u{1F4CA} Report Sections:\n\u2022 Security Mode: Current enforcement level\n\u2022 Blocklist Summary: Commands and URLs blocked\n\u2022 Session Statistics: Operations allowed/blocked\n\u2022 Blocked by Rule: Breakdown of security violations\n\u2022 Recent Audit Log: Last 20 security events\n\u2022 Summary: Overall security status\n\n\u{1F4A1} Note: Audit logs are stored in ~/.pi/agent/audit.log\n",
+    handler: async (args, ctx) => {
+      if (args.trim() === "--help") {
+        ctx.ui.notify(
+          "\u{1F50D} Security Audit Command\n\n\u{1F4CB} Usage:\n  /security-audit              - Show full audit report\n  /security-audit --help      - Show this help\n\n\u{1F4CA} Report Sections:\n\u2022 Security Mode: Current enforcement level\n\u2022 Blocklist Summary: Commands and URLs blocked\n\u2022 Session Statistics: Operations allowed/blocked\n\u2022 Blocked by Rule: Breakdown of security violations\n\u2022 Recent Audit Log: Last 20 security events\n\u2022 Summary: Overall security status\n\n\u{1F4A1} Note: Audit logs are stored in ~/.pi/agent/audit.log\n",
+          "info"
+        );
+        return;
+      }
       if (!ctx.hasUI) {
         ctx.ui.notify("Security audit requires TUI mode", "error");
         return;

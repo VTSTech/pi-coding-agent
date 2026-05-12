@@ -266,7 +266,7 @@ build_extension() {
 }
 
 # ── Build all extensions ────────────────────────────────────────────────
-ALL_EXTENSIONS=("api" "diag" "model-test" "ollama-sync" "openrouter-sync" "react-fallback" "security" "status" "soul")
+ALL_EXTENSIONS=("api" "diag" "ltm" "model-test" "ollama-sync" "openrouter-sync" "react-fallback" "security" "status" "soul")
 
 build_all_extensions() {
   local failures=0

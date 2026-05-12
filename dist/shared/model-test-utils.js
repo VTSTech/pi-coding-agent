@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { debugLog } from "./debug";
 const CONFIG = {
   // General API settings - standardized across all providers
   DEFAULT_TIMEOUT_MS: 3e5,
@@ -29,21 +30,16 @@ const CONFIG = {
   MODEL_INFO_TIMEOUT_MS: 3e4,
   // 30 seconds for model info lookup
   // Provider API settings
-  PROVIDER_TIMEOUT_MS: 999999,
-  // Effectively unlimited for cloud provider API calls
-  PROVIDER_TOOL_TIMEOUT_MS: 12e4,
-  // 120 seconds for tool usage tests on providers
+  PROVIDER_TIMEOUT_MS: 3e5,
+  // 5 minutes - consistent with Ollama
+  PROVIDER_TOOL_TIMEOUT_MS: 3e5,
+  // 5 minutes - consistent with Ollama tool tests
   // Context length fetching
   CONTEXT_BATCH_SIZE: 3,
   // Concurrent requests when fetching model context lengths
   // Rate limiting
   TEST_DELAY_MS: 1e4,
   // 10 seconds between tests to avoid rate limiting
-  // Provider-specific timeouts (now standardized)
-  PROVIDER_TIMEOUT_MS: 3e5,
-  // 5 minutes - consistent with Ollama
-  PROVIDER_TOOL_TIMEOUT_MS: 3e5,
-  // 5 minutes - consistent with Ollama tool tests
   // Cache management
   MAX_CACHE_SIZE: 1e3,
   // Maximum number of entries in tool support cache

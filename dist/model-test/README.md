@@ -4,9 +4,11 @@ Model benchmark extension for the [Pi Coding Agent](https://github.com/badlogic/
 
 Test any model for reasoning, tool usage, and instruction following — works with Ollama and cloud providers.
 
-## Install
-
 ```bash
+# Install as part of the bundle
+pi install git:github.com/VTSTech/pi-coding-agent
+
+# Or install individually
 pi install "npm:@vtstech/pi-model-test"
 ```
 

@@ -4,10 +4,12 @@ OpenRouter model sync extension for Pi Coding Agent.
 
 Add models from OpenRouter URLs or bare model IDs directly into Pi's `models.json` configuration.
 
-## Installation
-
 ```bash
-pi install @vtstech/pi-openrouter-sync
+# Install as part of the bundle
+pi install git:github.com/VTSTech/pi-coding-agent
+
+# Or install individually
+pi install "npm:@vtstech/pi-openrouter-sync
 ```
 
 ## Commands

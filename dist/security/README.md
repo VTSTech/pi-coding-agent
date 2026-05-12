@@ -4,9 +4,11 @@ Security extension for the [Pi Coding Agent](https://github.com/badlogic/pi-mono
 
 Command, path, and network security layer for Pi's tool execution with a configurable security mode. Automatically loaded.
 
-## Install
-
 ```bash
+# Install as part of the bundle
+pi install git:github.com/VTSTech/pi-coding-agent
+
+# Or install individually
 pi install "npm:@vtstech/pi-security"
 ```
 

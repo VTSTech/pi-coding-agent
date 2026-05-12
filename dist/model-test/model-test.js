@@ -1,3 +1,10 @@
+var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
+  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
+}) : x)(function(x) {
+  if (typeof require !== "undefined") return require.apply(this, arguments);
+  throw Error('Dynamic require of "' + x + '" is not supported');
+});
+
 // shared/format.ts
 function section(title) {
   return `
@@ -46,14 +53,14 @@ import os from "node:os";
 
 // shared/debug.ts
 var DEBUG_ENABLED = process?.env?.PI_EXTENSIONS_DEBUG === "1";
-function debugLog2(module, message, ...args) {
+function debugLog(module, message, ...args) {
   if (!DEBUG_ENABLED) return;
   const timestamp = (/* @__PURE__ */ new Date()).toISOString();
   console.debug(`[pi-ext:${module}] ${timestamp} ${message}`, ...args);
 }
 
 // shared/ollama.ts
-var EXTENSION_VERSION = "1.2.5";
+var EXTENSION_VERSION = "1.2.7";
 var MODELS_JSON_PATH = path.join(os.homedir(), ".pi", "agent", "models.json");
 var _modelsJsonCache = null;
 var _ollamaBaseUrlCache = null;
@@ -73,7 +80,7 @@ function getOllamaBaseUrl() {
       }
     }
   } catch (err) {
-    debugLog2("ollama", "failed to parse models.json for base URL", err);
+    debugLog("ollama", "failed to parse models.json for base URL", err);
   }
   if (process.env.OLLAMA_HOST) {
     const result = `http://${process.env.OLLAMA_HOST.replace(/^https?:\/\//, "")}`;
@@ -95,7 +102,7 @@ function readModelsJson() {
       return data;
     }
   } catch (err) {
-    debugLog2("ollama", "failed to read/parse models.json", err);
+    debugLog("ollama", "failed to read/parse models.json", err);
   }
   const empty = { providers: {} };
   _modelsJsonCache = { data: empty, ts: now };
@@ -182,7 +189,7 @@ async function withRetry(fn, options) {
       lastError = error;
       if (attempt < opts.maxRetries && isRetryableError(error, opts)) {
         const delay = backoffDelay(attempt, opts.baseDelayMs, opts.maxDelayMs);
-        debugLog2("ollama", `Retry ${attempt + 1}/${opts.maxRetries} after ${delay}ms: ${error instanceof Error ? error.message : String(error)}`);
+        debugLog("ollama", `Retry ${attempt + 1}/${opts.maxRetries} after ${delay}ms: ${error instanceof Error ? error.message : String(error)}`);
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }
@@ -211,7 +218,7 @@ async function fetchModelContextLength(baseUrl, modelName) {
       const numCtx = data?.model_info?.["num_ctx"];
       if (typeof numCtx === "number") return numCtx;
     } catch (err) {
-      debugLog2("ollama", `failed to fetch context length for ${modelName}`, err);
+      debugLog("ollama", `failed to fetch context length for ${modelName}`, err);
       return void 0;
     }
     return void 0;
@@ -560,21 +567,16 @@ var CONFIG = {
   MODEL_INFO_TIMEOUT_MS: 3e4,
   // 30 seconds for model info lookup
   // Provider API settings
-  PROVIDER_TIMEOUT_MS: 999999,
-  // Effectively unlimited for cloud provider API calls
-  PROVIDER_TOOL_TIMEOUT_MS: 12e4,
-  // 120 seconds for tool usage tests on providers
+  PROVIDER_TIMEOUT_MS: 3e5,
+  // 5 minutes - consistent with Ollama
+  PROVIDER_TOOL_TIMEOUT_MS: 3e5,
+  // 5 minutes - consistent with Ollama tool tests
   // Context length fetching
   CONTEXT_BATCH_SIZE: 3,
   // Concurrent requests when fetching model context lengths
   // Rate limiting
   TEST_DELAY_MS: 1e4,
   // 10 seconds between tests to avoid rate limiting
-  // Provider-specific timeouts (now standardized)
-  PROVIDER_TIMEOUT_MS: 3e5,
-  // 5 minutes - consistent with Ollama
-  PROVIDER_TOOL_TIMEOUT_MS: 3e5,
-  // 5 minutes - consistent with Ollama tool tests
   // Cache management
   MAX_CACHE_SIZE: 1e3,
   // Maximum number of entries in tool support cache
@@ -1118,6 +1120,90 @@ function model_test_default(pi) {
       }
     }
   }
+  const REASONING_TESTS = [
+    { name: "snail_wall", prompt: "A snail climbs 3 feet up a wall each day, but slides back 2 feet each night. The wall is 10 feet tall. How many days does it take the snail to reach the top? Think step by step. ANSWER: <number>", expectedAnswer: "8", category: "logic" },
+    { name: "math_sequence", prompt: "What is the next number in this sequence: 2, 6, 18, 54, ? Think step by step. ANSWER: <number>", expectedAnswer: "162", category: "math" },
+    { name: "spatial_directions", prompt: "If you face north and turn 90 degrees clockwise, then face west and turn 180 degrees counter-clockwise, which direction are you facing? ANSWER: <direction>", expectedAnswer: "south", category: "spatial" },
+    { name: "commonsense", prompt: "A rooster laid an egg on top of the world's highest building. Which side is the egg on? ANSWER: <side>", expectedAnswer: "the other side", category: "commonsense" },
+    { name: "code_simplify", prompt: "Simplify this code to one line: let x = 0; for(let i=1; i<=5; i++) x += i; ANSWER: <code>", expectedAnswer: "15", category: "code" }
+  ];
+  function scoreReasoningExtended(msg, expectedAnswer) {
+    const allNumbers = msg.match(/\b(\d+)\b/g) || [];
+    const answer = allNumbers.length > 0 ? allNumbers[allNumbers.length - 1] : "?";
+    const isCorrect = answer.toLowerCase().includes(expectedAnswer.toLowerCase());
+    const reasoningPatterns = ["because", "therefore", "since", "step", "subtract", "minus", "each day", "each night", "slides", "climbs", "night", "reaches", "finally", "last day", "sequence", "pattern", "multiply", "clockwise", "counter", "facing", "egg", "rooster"];
+    const hasReasoning = reasoningPatterns.some((w) => msg.toLowerCase().includes(w)) || /^\s*\d+\.\s/m.test(msg);
+    if (isCorrect && hasReasoning) return { score: "STRONG", pass: true };
+    if (isCorrect) return { score: "MODERATE", pass: true };
+    if (hasReasoning) return { score: "WEAK", pass: false };
+    return { score: "FAIL", pass: false };
+  }
+  function averageScore(scores) {
+    const weights = { STRONG: 3, MODERATE: 2, WEAK: 1, FAIL: 0, ERROR: 0 };
+    const avg = scores.reduce((sum, s) => sum + (weights[s] || 0), 0) / scores.length;
+    if (avg >= 2.5) return "STRONG";
+    if (avg >= 1.5) return "MODERATE";
+    if (avg >= 0.5) return "WEAK";
+    return "FAIL";
+  }
+  const MULTISTEP_INSTRUCTION = `You must respond with ONLY a valid JSON object. No markdown, no explanation.
+The JSON object must have exactly these keys:
+{
+  "name": "<your model name>",
+  "can_count": true,
+  "sum": 42,
+  "language": "English",
+  "colors": ["red", "blue", "green"],
+  "timestamp": "<current time in ISO format>"
+}
+Return only the JSON.`;
+  const CALC_TOOL_DEFINITION = {
+    type: "function",
+    function: { name: "calculate", description: "Perform a mathematical calculation", parameters: { type: "object", properties: { expression: { type: "string" } }, required: ["expression"] } }
+  };
+  async function testReasoningExtended(chatFn, model) {
+    const results = [];
+    for (const test of REASONING_TESTS) {
+      try {
+        const result = await chatFn(model, [{ role: "user", content: test.prompt }]);
+        const msg = result.content.trim();
+        const nums = msg.match(/\b(\d+)\b/g) || [];
+        const answer = nums.length > 0 ? nums[nums.length - 1] : "?";
+        results.push({ score: scoreReasoningExtended(msg, test.expectedAnswer).score, answer });
+      } catch {
+        results.push({ score: "ERROR", answer: "?" });
+      }
+    }
+    return { score: averageScore(results.map((r) => r.score)), scores: results.map((r) => r.score), answers: results.map((r) => r.answer) };
+  }
+  async function testInstructionFollowingExtended(chatFn, model) {
+    const start = Date.now();
+    try {
+      const result = await chatFn(model, [{ role: "user", content: MULTISTEP_INSTRUCTION }]);
+      const parsed = JSON.parse(result.content.trim());
+      const schemaValid = !!(parsed.name && parsed.can_count === true && parsed.sum === 42 && parsed.language && parsed.colors?.length === 3 && parsed.timestamp);
+      if (schemaValid) return { pass: true, score: "STRONG", output: JSON.stringify(parsed), schemaValid, elapsedMs: Date.now() - start };
+      if (parsed.name && parsed.sum === 42) return { pass: true, score: "MODERATE", output: JSON.stringify(parsed), schemaValid: false, elapsedMs: Date.now() - start };
+      return { pass: false, score: "WEAK", output: JSON.stringify(parsed), schemaValid: false, elapsedMs: Date.now() - start };
+    } catch (e) {
+      return { pass: false, score: "FAIL", output: e.message, schemaValid: false, elapsedMs: Date.now() - start };
+    }
+  }
+  async function testToolUsageExtended(chatFn, model) {
+    try {
+      const result = await chatFn(model, [{ role: "system", content: "Use tools when needed." }, { role: "user", content: "What's weather in Tokyo and calculate 15*24?" }], { tools: [WEATHER_TOOL_DEFINITION, CALC_TOOL_DEFINITION] });
+      const toolCalls = result.toolCalls || [];
+      const hasWeather = toolCalls.some((t) => t.function?.name === "get_weather");
+      const hasCalc = toolCalls.some((t) => t.function?.name === "calculate");
+      let score = "FAIL";
+      if (hasWeather && hasCalc && toolCalls.length >= 2) score = "STRONG";
+      else if (hasWeather || hasCalc) score = "MODERATE";
+      else if (toolCalls.length > 0) score = "WEAK";
+      return { pass: toolCalls.length > 0, score, toolCalls: toolCalls.map((t) => t.function?.name || "?"), response: result.content, elapsedMs: result.elapsedMs };
+    } catch (e) {
+      return { pass: false, score: "ERROR", toolCalls: [], response: e.message, elapsedMs: 0 };
+    }
+  }
   function makeOllamaChatFn(useStreaming = true) {
     return async (model, messages, _options) => {
       const chatFn = useStreaming ? ollamaChatStream : ollamaChat;
@@ -1275,7 +1361,7 @@ function model_test_default(pi) {
             if (parsed.message?.thinking) thinkingContent += parsed.message.thinking;
             if (parsed.done) done = true;
           } catch (err) {
-            debugLog2("model-test", "skipped malformed JSON chunk in streaming response", err);
+            debugLog("model-test", "skipped malformed JSON chunk in streaming response", err);
           }
         }
       }
@@ -1651,7 +1737,7 @@ function model_test_default(pi) {
           const args = typeof fn.arguments === "string" ? JSON.parse(fn.arguments) : fn.arguments || {};
           argsStr = JSON.stringify(args);
         } catch (err) {
-          debugLog2("model-test", "failed to parse tool call arguments", err);
+          debugLog("model-test", "failed to parse tool call arguments", err);
           argsStr = String(fn.arguments);
         }
         const level2 = "native";
@@ -1715,7 +1801,7 @@ function model_test_default(pi) {
       const data = await res.json();
       return (data.models || []).map((m) => m.name).filter(Boolean);
     } catch (err) {
-      debugLog2("model-test", "failed to list Ollama models", err);
+      debugLog("model-test", "failed to list Ollama models", err);
       return [];
     }
   }
@@ -1803,7 +1889,7 @@ function model_test_default(pi) {
         }
       }
     } catch (err) {
-      debugLog2("model-test", "failed to fetch model metadata from /api/show", err);
+      debugLog("model-test", "failed to fetch model metadata from /api/show", err);
     }
     const detectedFamily = detectModelFamily(model);
     lines.push(info(`Size: ${modelSize}  |  Params: ${modelParams}  |  Quant: ${modelQuant}`));
@@ -1948,7 +2034,7 @@ function model_test_default(pi) {
         }
       }
     } catch (err) {
-      debugLog2("model-test", "failed to save test history", err);
+      debugLog("model-test", "failed to save test history", err);
     }
     return lines.join("\n");
   }
@@ -2054,8 +2140,41 @@ function model_test_default(pi) {
         }
       }
     } catch (err) {
-      debugLog2("model-test", "failed to save provider test history", err);
+      debugLog("model-test", "failed to save provider test history", err);
     }
+    return lines.join("\n");
+  }
+  async function testModelExtended(model, ctx) {
+    const lines = [];
+    const totalStart = Date.now();
+    const providerInfo = ctx ? detectProvider(ctx) : { kind: "ollama", name: "ollama" };
+    lines.push(branding);
+    lines.push(section(`MODEL: ${model}`));
+    lines.push(info(`Provider: ${providerInfo.name} (${providerInfo.kind})`));
+    const chatFn = providerInfo.kind === "builtin" ? makeProviderChatFn(providerInfo) : makeOllamaChatFn();
+    lines.push(section("REASONING TEST (EXTENDED)"));
+    lines.push(info(`Testing ${REASONING_TESTS.length} reasoning puzzles...`));
+    await rateLimitDelay(lines);
+    const reasoning = await testReasoningExtended(chatFn, model);
+    lines.push(info(`Scores: ${reasoning.scores.join(", ")}`));
+    lines.push(ok(`Average score: ${reasoning.score}`));
+    lines.push(section("INSTRUCTION FOLLOWING TEST (EXTENDED)"));
+    lines.push(info("Testing multi-step JSON schema compliance..."));
+    await rateLimitDelay(lines);
+    const instructions = await testInstructionFollowingExtended(chatFn, model);
+    lines.push(info(`Time: ${msHuman(instructions.elapsedMs)}`));
+    reportInstructionScore(lines, instructions);
+    lines.push(section("TOOL USAGE TEST (EXTENDED)"));
+    lines.push(info("Testing chained tool calls..."));
+    await rateLimitDelay(lines);
+    const tools = await testToolUsageExtended(chatFn, model);
+    lines.push(info(`Time: ${msHuman(tools.elapsedMs)}`));
+    if (tools.score === "STRONG" || tools.score === "MODERATE") lines.push(ok(`Tool calls: ${tools.toolCalls.join(", ")} (${tools.score})`));
+    else lines.push(fail(`Tool calls: ${tools.toolCalls.length > 0 ? tools.toolCalls.join(", ") : "none"} (${tools.score})`));
+    const totalMs = Date.now() - totalStart;
+    const passed = [reasoning.score === "STRONG" || reasoning.score === "MODERATE", instructions.pass, tools.pass].filter(Boolean).length;
+    lines.push(...formatTestSummary([{ name: "Reasoning", pass: reasoning.score === "STRONG" || reasoning.score === "MODERATE", score: reasoning.score }, { name: "Instructions", pass: instructions.pass, score: instructions.score }, { name: "Tool Usage", pass: tools.pass, score: tools.score }], totalMs));
+    lines.push(...formatRecommendation(model, passed, 3));
     return lines.join("\n");
   }
   async function testModel(model, ctx) {
@@ -2069,13 +2188,14 @@ function model_test_default(pi) {
     }
   }
   pi.registerCommand("model-test", {
-    description: "Test a model for reasoning, thinking, tool usage, ReAct parsing, instruction following, and tool support level. Supports both Ollama and cloud providers. Use: /model-test [model] or /model-test --all",
+    description: "Test a model for reasoning, thinking, tool usage, ReAct parsing, instruction following, and tool support level. Supports both Ollama and cloud providers.",
+    detailedHelp: "\n\n\u{1F50D} Model Testing Extension\n\nThis extension tests AI models across multiple dimensions:\n\u2022 Reasoning & Thinking: Logic puzzles, math problems, creative thinking\n\u2022 Tool Usage: Ability to use available tools effectively\n\u2022 Instruction Following: How well the model follows complex instructions\n\u2022 Tool Support: Native vs ReAct fallback tool calling capability\n\n\u{1F4CB} Usage Examples:\n  /model-test                    # Test current model\n  /model-test qwen3:0.6b        # Test specific model\n  /model-test --all             # Test all Ollama models\n  /model-test --help            # Show this help\n  /model-test --list           # List available models\n  /model-test --history         # Show test history\n  /model-test --clear-cache     # Clear tool support cache\n\n\u{1F527} Supported Providers:\n\u2022 Ollama (local/remote)\n\u2022 OpenRouter\n\u2022 Anthropic Claude\n\u2022 Google Gemini\n\u2022 OpenAI GPT\n\u2022 Groq\n\u2022 DeepSeek\n\u2022 Mistral\n\u2022 xAI\n\u2022 Together\n\u2022 Fireworks\n\u2022 Cohere\n\n\u{1F4A1} Tips:\n\u2022 Use --all to benchmark all your Ollama models\n\u2022 Check --history to see past test results\n\u2022 Clear cache if you encounter unexpected tool support issues\n\u2022 Results show detailed scoring and recommendations\n",
     getArgumentCompletions: async (prefix) => {
       try {
         const models = await getOllamaModels();
         return models.map((m) => ({ label: m, description: `Test ${m}` })).filter((m) => m.label.startsWith(prefix));
       } catch (err) {
-        debugLog2("model-test", "failed to get model completions", err);
+        debugLog("model-test", "failed to get model completions", err);
         return [];
       }
     },
@@ -2085,7 +2205,76 @@ function model_test_default(pi) {
         return;
       }
       const arg = args.trim();
-      if (arg === "--all") {
+      if (arg === "--help") {
+        ctx.ui.notify(
+          "\u{1F50D} Model Testing Extension\n\n\u{1F4CB} Usage:\n  /model-test [model]     - Test current or specific model\n  /model-test -t 02       - Test with extended flow (multiple puzzles)\n  /model-test --all        - Test all Ollama models\n  /model-test --list       - List available models\n  /model-test --history    - Show test history\n  /model-test --clear-cache - Clear tool support cache\n\n\u{1F527} Test Types:\n  -t 01 (default) - Original test flow\n  -t 02           - Extended flow with multiple reasoning puzzles\n\n\u{1F527} Examples:\n  /model-test              # Test current model\n  /model-test gpt-4        # Test specific model\n  /model-test -t 02        # Test current model with extended flow\n  /model-test -t 02 qwen3:0.6b  # Test specific model with extended flow\n  /model-test --all        # Benchmark all Ollama models\n\n\u{1F4A1} Use tab completion to see available models",
+          "info"
+        );
+        return;
+      }
+      if (arg === "--list") {
+        try {
+          const models = await getOllamaModels();
+          const providerInfo = detectProvider(ctx);
+          ctx.ui.notify(
+            `\u{1F4CB} Available Models
+
+Provider: ${providerInfo.name} (${providerInfo.kind})
+Models: ${models.length}
+
+` + models.map((m) => `\u2022 ${m}`).join("\n"),
+            "info"
+          );
+        } catch (err) {
+          ctx.ui.notify("Could not list models", "error");
+        }
+        return;
+      }
+      if (arg === "--history") {
+        try {
+          const history = readTestHistory();
+          if (history.length === 0) {
+            ctx.ui.notify("No test history found", "info");
+            return;
+          }
+          const recent = history.slice(-10);
+          const historyText = recent.map(
+            (entry, i) => `${i + 1}. ${entry.model} - ${entry.timestamp}
+   Score: ${entry.score}
+   Duration: ${entry.durationMs}ms`
+          ).join("\n\n");
+          ctx.ui.notify(
+            `\u{1F4CA} Test History (last 10)
+
+${historyText}`,
+            "info"
+          );
+        } catch (err) {
+          ctx.ui.notify("Could not read test history", "error");
+        }
+        return;
+      }
+      if (arg === "--clear-cache") {
+        try {
+          const fs3 = __require("node:fs");
+          if (fs3.existsSync(TOOL_SUPPORT_CACHE_PATH)) {
+            fs3.unlinkSync(TOOL_SUPPORT_CACHE_PATH);
+            ctx.ui.notify("Tool support cache cleared successfully", "info");
+          } else {
+            ctx.ui.notify("No cache file found to clear", "info");
+          }
+        } catch (err) {
+          ctx.ui.notify("Could not clear cache", "error");
+        }
+        return;
+      }
+      let testType = "01";
+      const testTypeMatch = arg.match(/^-t\s*(01|02)$/);
+      const actualArg = testTypeMatch ? arg.replace(/^-t\s*(01|02)\s*/, "") : arg;
+      if (testTypeMatch) {
+        testType = testTypeMatch[1];
+      }
+      if (actualArg === "--all") {
         const providerInfo = detectProvider(ctx);
         if (providerInfo.kind !== "ollama") {
           ctx.ui.notify(`--all is only supported for Ollama models. Current provider: ${providerInfo.name} (${providerInfo.kind})`, "error");
@@ -2096,7 +2285,7 @@ function model_test_default(pi) {
         try {
           models = await getOllamaModels();
         } catch (err) {
-          debugLog2("model-test", "failed to list Ollama models for --all", err);
+          debugLog("model-test", "failed to list Ollama models for --all", err);
           ctx.ui.notify("Could not list Ollama models", "error");
           return;
         }
@@ -2107,7 +2296,7 @@ function model_test_default(pi) {
         for (const model2 of models) {
           ctx.ui.notify(`Testing ${model2}...`, "info");
           try {
-            const report = await testModel(model2, ctx);
+            const report = testType === "02" ? await testModelExtended(model2, ctx) : await testModel(model2, ctx);
             pi.sendMessage({
               customType: "model-test-report",
               content: report,
@@ -2121,14 +2310,14 @@ function model_test_default(pi) {
         ctx.ui.notify(`Done testing ${models.length} models`, "info");
         return;
       }
-      const model = arg || getCurrentModel(ctx);
+      const model = actualArg || getCurrentModel(ctx);
       if (!model) {
         ctx.ui.notify("No model specified and no model currently selected", "error");
         return;
       }
       ctx.ui.notify(`Testing ${model}...`, "info");
       try {
-        const report = await testModel(model, ctx);
+        const report = testType === "02" ? await testModelExtended(model, ctx) : await testModel(model, ctx);
         pi.sendMessage({
           customType: "model-test-report",
           content: report,
@@ -2136,7 +2325,19 @@ function model_test_default(pi) {
           details: { model, timestamp: (/* @__PURE__ */ new Date()).toISOString() }
         });
       } catch (e) {
-        ctx.ui.notify(`Model test failed: ${e.message}`, "error");
+        let errorMessage = "Model test failed";
+        if (e.name === "ApiError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "ExtensionTimeoutError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "SecurityError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "ConfigError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.message) {
+          errorMessage += `: ${e.message}`;
+        }
+        ctx.ui.notify(errorMessage, "error");
       }
     }
   });
@@ -2151,11 +2352,14 @@ function model_test_default(pi) {
     parameters: {
       type: "object",
       properties: {
-        model: { type: "string", description: "Model name to test (e.g. qwen3:0.6b, anthropic/claude-3.5-sonnet). If omitted, tests the current model." }
+        model: { type: "string", description: "Model name to test (e.g. qwen3:0.6b, anthropic/claude-3.5-sonnet). If omitted, tests the current model." },
+        test_type: { type: "string", description: "Test flow type: '01' (default) for original test, '02' for extended flow with multiple reasoning puzzles." }
       }
     },
     execute: async (_toolCallId, _params, _signal, _onUpdate, ctx) => {
-      const model = _params?.model || getCurrentModel(ctx);
+      const params = _params;
+      const model = params?.model || getCurrentModel(ctx);
+      const testType = params?.test_type || "01";
       if (!model) {
         return {
           content: [{ type: "text", text: "No model currently selected to test." }],
@@ -2163,14 +2367,26 @@ function model_test_default(pi) {
         };
       }
       try {
-        const report = await testModel(model, ctx);
+        const report = testType === "02" ? await testModelExtended(model, ctx) : await testModel(model, ctx);
         return {
           content: [{ type: "text", text: report }],
           isError: false
         };
       } catch (e) {
+        let errorMessage = "Model test failed";
+        if (e.name === "ApiError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "ExtensionTimeoutError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "SecurityError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.name === "ConfigError") {
+          errorMessage = e.toUserMessage();
+        } else if (e.message) {
+          errorMessage += `: ${e.message}`;
+        }
         return {
-          content: [{ type: "text", text: `Model test failed: ${e.message}` }],
+          content: [{ type: "text", text: errorMessage }],
           isError: true
         };
       }

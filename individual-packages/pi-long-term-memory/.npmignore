@@ -1,0 +1,9 @@
+TESTS.md
+*.test.ts
+*.test.js
+tests/
+scripts/
+.env
+.gitignore
+.gitattributes
+.LICENSE
