@@ -64,6 +64,7 @@ pi install npm:@vtstech/pi-api
 pi install npm:@vtstech/pi-ollama-sync
 pi install npm:@vtstech/pi-openrouter-sync
 pi install npm:@vtstech/pi-react-fallback
+pi install npm:@vtstech/pi-long-term-memory
 
 # Update installed packages
 pi update
