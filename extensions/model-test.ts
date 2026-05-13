@@ -1699,9 +1699,25 @@ Return only the JSON.`;
     lines.push(info(`Response: ${sanitizeForReport(tools.response)}`));
 
     const totalMs = Date.now() - totalStart;
-    const passed = [reasoning.score === "STRONG" || reasoning.score === "MODERATE", instructions.pass, tools.pass].filter(Boolean).length;
-    lines.push(...formatTestSummary([{ name: "Reasoning", pass: reasoning.score === "STRONG" || reasoning.score === "MODERATE", score: reasoning.score }, { name: "Instructions", pass: instructions.pass, score: instructions.score }, { name: "Tool Usage", pass: tools.pass, score: tools.score }], totalMs));
-    lines.push(...formatRecommendation(model, passed, 3));
+    
+    // Calculate individual test scores
+    const reasoningPassed = reasoning.results.filter(r => r.pass).length;
+    const reasoningTotal = reasoning.results.length;
+    const instructionPassed = instructions.pass ? 1 : 0;
+    const toolPassed = tools.pass ? 1 : 0;
+    const totalPassed = reasoningPassed + instructionPassed + toolPassed;
+    const totalTests = reasoningTotal + 1 + 1;
+    
+    lines.push(...formatTestSummary([
+      { name: "Reasoning", pass: reasoning.score === "STRONG" || reasoning.score === "MODERATE", score: reasoning.score },
+      { name: "Instructions", pass: instructions.pass, score: instructions.score },
+      { name: "Tool Usage", pass: tools.pass, score: tools.score },
+    ], totalMs));
+    
+    // Show detailed breakdown
+    lines.push("");
+    lines.push(info(`Detailed: Reasoning ${reasoningPassed}/${reasoningTotal} tests passed, Instructions ${instructionPassed}/1, Tool Usage ${toolPassed}/1`));
+    lines.push(...formatRecommendation(model, totalPassed, totalTests));
     return lines.join("\n");
   }
 
