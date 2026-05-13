@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import os from "node:os";
 import { debugLog } from "./debug";
-const EXTENSION_VERSION = "1.2.9";
+const EXTENSION_VERSION = "1.3.1";
 const MODELS_JSON_PATH = path.join(os.homedir(), ".pi", "agent", "models.json");
 let _modelsJsonCache = null;
 let _ollamaBaseUrlCache = null;

@@ -244,6 +244,9 @@ build_extension() {
     --platform=node \
     --external:@mariozechner/* \
     --external:typebox \
+    --external:path \
+    --external:fs \
+    --external:os \
     --outfile="$TARGET/${ext_name}.js"
 
   local js_size

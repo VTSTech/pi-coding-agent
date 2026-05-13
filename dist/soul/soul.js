@@ -1,15 +1,22 @@
 var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
-var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
-  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
-}) : x)(function(x) {
-  if (typeof require !== "undefined") return require.apply(this, arguments);
-  throw Error('Dynamic require of "' + x + '" is not supported');
-});
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
 // extensions/soul.ts
 import { Type } from "typebox";
+
+// shared/debug.ts
+var DEBUG_ENABLED = process?.env?.PI_EXTENSIONS_DEBUG === "1";
+function debugLog(module, message, ...args) {
+  if (!DEBUG_ENABLED) return;
+  const timestamp = (/* @__PURE__ */ new Date()).toISOString();
+  console.debug(`[pi-ext:${module}] ${timestamp} ${message}`, ...args);
+}
+
+// extensions/soul.ts
+import * as path from "path";
+import * as fs from "fs";
+import * as os from "os";
 var Environment = /* @__PURE__ */ ((Environment2) => {
   Environment2["VIRTUAL"] = "virtual";
   Environment2["EMBODIED"] = "embodied";
@@ -36,8 +43,6 @@ var Mobility = /* @__PURE__ */ ((Mobility2) => {
   return Mobility2;
 })(Mobility || {});
 function expandHome(p) {
-  const os = __require("os");
-  const path = __require("path");
   if (p === "~") return os.homedir();
   if (p.startsWith("~/") || p.startsWith("~\\")) {
     return path.join(os.homedir(), p.slice(2));
@@ -59,17 +64,17 @@ var SoulSpecLoader = class {
       // Current directory souls
     ];
   }
-  resolveSoulPath(path) {
+  resolveSoulPath(soulPath) {
     const locations = [
-      path,
+      soulPath,
       // Absolute or relative path
-      ...this.soulsDirs.map((dir) => `${dir}/${path}`)
+      ...this.soulsDirs.map((dir) => `${dir}/${soulPath}`)
       // All configured souls directories
     ];
     for (const location of locations) {
       try {
         const expanded = expandHome(location);
-        if (__require("fs").existsSync(expanded)) {
+        if (fs.existsSync(expanded)) {
           return expanded;
         }
       } catch {
@@ -87,12 +92,12 @@ var SoulSpecLoader = class {
     if (this.cache.has(cacheKey)) {
       return this.cache.get(cacheKey);
     }
-    const soulDir = __require("fs").statSync(resolvedPath).isFile() ? __require("path").dirname(resolvedPath) : resolvedPath;
-    const manifestPath = __require("path").join(soulDir, "soul.json");
-    if (!__require("fs").existsSync(manifestPath)) {
+    const soulDir = fs.statSync(resolvedPath).isFile() ? path.dirname(resolvedPath) : resolvedPath;
+    const manifestPath = path.join(soulDir, "soul.json");
+    if (!fs.existsSync(manifestPath)) {
       throw new Error(`No soul.json found at: ${manifestPath}`);
     }
-    const manifestData = JSON.parse(__require("fs").readFileSync(manifestPath, "utf-8"));
+    const manifestData = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
     const manifest = this.parseManifest(manifestData, soulDir);
     if (level >= 2) {
       await this.loadLevel2(manifest, soulDir);
@@ -104,7 +109,7 @@ var SoulSpecLoader = class {
     return manifest;
   }
   parseManifest(data, soulDir) {
-    debug(`Parsing soul manifest: ${data.name}`);
+    debugLog("soul", `Parsing soul manifest: ${data.name}`);
     const author = {
       name: data.author?.name || "Unknown",
       github: data.author?.github,
@@ -214,59 +219,59 @@ var SoulSpecLoader = class {
     };
   }
   async loadLevel2(manifest, soulDir) {
-    const soulPath = __require("path").join(soulDir, manifest.files.soul);
-    if (__require("fs").existsSync(soulPath)) {
-      manifest.soul_content = __require("fs").readFileSync(soulPath, "utf-8");
+    const soulPath = path.join(soulDir, manifest.files.soul);
+    if (fs.existsSync(soulPath)) {
+      manifest.soul_content = fs.readFileSync(soulPath, "utf-8");
     }
     if (manifest.files.identity) {
-      const identityPath = __require("path").join(soulDir, manifest.files.identity);
-      if (__require("fs").existsSync(identityPath)) {
-        manifest.identity_content = __require("fs").readFileSync(identityPath, "utf-8");
+      const identityPath = path.join(soulDir, manifest.files.identity);
+      if (fs.existsSync(identityPath)) {
+        manifest.identity_content = fs.readFileSync(identityPath, "utf-8");
       }
     }
   }
   async loadLevel3(manifest, soulDir) {
     if (manifest.files.agents) {
-      const agentsPath = __require("path").join(soulDir, manifest.files.agents);
-      if (__require("fs").existsSync(agentsPath)) {
-        manifest.agents_content = __require("fs").readFileSync(agentsPath, "utf-8");
+      const agentsPath = path.join(soulDir, manifest.files.agents);
+      if (fs.existsSync(agentsPath)) {
+        manifest.agents_content = fs.readFileSync(agentsPath, "utf-8");
       }
     }
     if (manifest.files.style) {
-      const stylePath = __require("path").join(soulDir, manifest.files.style);
-      if (__require("fs").existsSync(stylePath)) {
-        manifest.style_content = __require("fs").readFileSync(stylePath, "utf-8");
+      const stylePath = path.join(soulDir, manifest.files.style);
+      if (fs.existsSync(stylePath)) {
+        manifest.style_content = fs.readFileSync(stylePath, "utf-8");
       }
     }
     if (manifest.files.heartbeat) {
-      const heartbeatPath = __require("path").join(soulDir, manifest.files.heartbeat);
-      if (__require("fs").existsSync(heartbeatPath)) {
-        manifest.heartbeat_content = __require("fs").readFileSync(heartbeatPath, "utf-8");
+      const heartbeatPath = path.join(soulDir, manifest.files.heartbeat);
+      if (fs.existsSync(heartbeatPath)) {
+        manifest.heartbeat_content = fs.readFileSync(heartbeatPath, "utf-8");
       }
     }
     if (manifest.files.user_template) {
-      const templatePath = __require("path").join(soulDir, manifest.files.user_template);
-      if (__require("fs").existsSync(templatePath)) {
-        manifest.user_template_content = __require("fs").readFileSync(templatePath, "utf-8");
+      const templatePath = path.join(soulDir, manifest.files.user_template);
+      if (fs.existsSync(templatePath)) {
+        manifest.user_template_content = fs.readFileSync(templatePath, "utf-8");
       }
     }
     if (manifest.examples) {
       if (manifest.examples.good) {
-        const goodPath = __require("path").join(soulDir, manifest.examples.good);
-        if (__require("fs").existsSync(goodPath)) {
-          manifest.examples_good_content = __require("fs").readFileSync(goodPath, "utf-8");
+        const goodPath = path.join(soulDir, manifest.examples.good);
+        if (fs.existsSync(goodPath)) {
+          manifest.examples_good_content = fs.readFileSync(goodPath, "utf-8");
         }
       }
       if (manifest.examples.bad) {
-        const badPath = __require("path").join(soulDir, manifest.examples.bad);
-        if (__require("fs").existsSync(badPath)) {
-          manifest.examples_bad_content = __require("fs").readFileSync(badPath, "utf-8");
+        const badPath = path.join(soulDir, manifest.examples.bad);
+        if (fs.existsSync(badPath)) {
+          manifest.examples_bad_content = fs.readFileSync(badPath, "utf-8");
         }
       }
     }
     if (manifest.files.avatar) {
-      const avatarPath = __require("path").join(soulDir, manifest.files.avatar);
-      if (__require("fs").existsSync(avatarPath)) {
+      const avatarPath = path.join(soulDir, manifest.files.avatar);
+      if (fs.existsSync(avatarPath)) {
         manifest.avatar_path = avatarPath;
       }
     }
@@ -377,14 +382,14 @@ Safety: ${ps.contact_policy} contact policy`);
     const souls = [];
     const seenSouls = /* @__PURE__ */ new Set();
     for (const soulsDir of this.soulsDirs) {
-      const resolvedDir = __require("path").resolve(expandHome(soulsDir));
+      const resolvedDir = path.resolve(expandHome(soulsDir));
       try {
-        if (__require("fs").existsSync(resolvedDir)) {
-          const entries = __require("fs").readdirSync(resolvedDir, { withFileTypes: true });
+        if (fs.existsSync(resolvedDir)) {
+          const entries = fs.readdirSync(resolvedDir, { withFileTypes: true });
           for (const entry of entries) {
             if (entry.isDirectory() && !seenSouls.has(entry.name)) {
-              const soulJsonPath = __require("path").join(resolvedDir, entry.name, "soul.json");
-              if (__require("fs").existsSync(soulJsonPath)) {
+              const soulJsonPath = path.join(resolvedDir, entry.name, "soul.json");
+              if (fs.existsSync(soulJsonPath)) {
                 souls.push(entry.name);
                 seenSouls.add(entry.name);
               }
@@ -392,7 +397,7 @@ Safety: ${ps.contact_policy} contact policy`);
           }
         }
       } catch (error) {
-        debug(`Error reading souls directory ${resolvedDir}: ${error}`);
+        debugLog("soul", `Error reading souls directory ${resolvedDir}: ${error}`);
       }
     }
     return souls;
@@ -400,7 +405,7 @@ Safety: ${ps.contact_policy} contact policy`);
 };
 var soulLoader;
 function soul_default(pi) {
-  debug("SoulSpec extension loading...");
+  debugLog("soul", "SoulSpec extension loading...");
   soulLoader = new SoulSpecLoader();
   pi.registerTool({
     name: "load_soul",
@@ -416,7 +421,7 @@ function soul_default(pi) {
       }))
     }),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
-      debug(`Loading soul: ${params.soul_name}, level: ${params.level || 2}`);
+      debugLog("soul", `Loading soul: ${params.soul_name}, level: ${params.level || 2}`);
       try {
         const soul = await soulLoader.load(params.soul_name, params.level || 2);
         const systemPrompt = soulLoader.buildSystemPrompt(soul, params.level || 2);
@@ -435,7 +440,7 @@ ${systemPrompt}`
           }
         };
       } catch (error) {
-        debug(`Error loading soul: ${error}`);
+        debugLog("soul", `Error loading soul: ${error}`);
         return {
           content: [{ type: "text", text: `Error loading soul: ${error}` }],
           isError: true
@@ -491,7 +496,7 @@ ${systemPrompt}`
       })
     }),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
-      debug(`Getting soul info for: ${params.soul_name}`);
+      debugLog("soul", `Getting soul info for: ${params.soul_name}`);
       try {
         const soul = await soulLoader.load(params.soul_name, 1);
         let info = `# ${soul.display_name}
@@ -549,7 +554,7 @@ ${systemPrompt}`
           details: { soul }
         };
       } catch (error) {
-        debug(`Error loading soul info: ${error}`);
+        debugLog("soul", `Error loading soul info: ${error}`);
         return {
           content: [{ type: "text", text: `Error loading soul info: ${error}` }],
           isError: true
@@ -558,11 +563,11 @@ ${systemPrompt}`
     }
   });
   pi.on("session_start", async (event, ctx) => {
-    debug("SoulSpec extension session started");
+    debugLog("soul", "SoulSpec extension session started");
     ctx.ui.notify("SoulSpec extension loaded", "info");
   });
   pi.on("resources_discover", async (event, ctx) => {
-    debug("SoulSpec extension discovering resources");
+    debugLog("soul", "SoulSpec extension discovering resources");
     return {
       skillPaths: [],
       // Souls are not skills
@@ -574,7 +579,7 @@ ${systemPrompt}`
   pi.registerCommand("souls", {
     description: "List available souls",
     handler: async (args, ctx) => {
-      debug("Listing souls command");
+      debugLog("soul", "Listing souls command");
       const souls = soulLoader.getAllSouls();
       if (souls.length === 0) {
         ctx.ui.notify("No souls found. Create a souls/ directory with soul.json files.", "info");
@@ -605,7 +610,7 @@ ${systemPrompt}`
   pi.registerCommand("soul", {
     description: "Use a soul for the current session",
     handler: async (args, ctx) => {
-      debug(`Using soul command with: ${args}`);
+      debugLog("soul", `Using soul command with: ${args}`);
       if (!args) {
         ctx.ui.notify("Usage: /soul <soul-name>", "error");
         return;
@@ -623,12 +628,12 @@ ${systemPrompt}`
         });
         ctx.ui.notify(`Using soul: ${soul.display_name}`, "success");
       } catch (error) {
-        debug(`Error using soul: ${error}`);
+        debugLog("soul", `Error using soul: ${error}`);
         ctx.ui.notify(`Error loading soul: ${error}`, "error");
       }
     }
   });
-  debug("SoulSpec extension loaded successfully");
+  debugLog("soul", "SoulSpec extension loaded successfully");
 }
 export {
   ContactPolicy,

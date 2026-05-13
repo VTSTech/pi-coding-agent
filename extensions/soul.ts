@@ -2,6 +2,9 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { debugLog } from "../shared/debug";
+import * as path from "path";
+import * as fs from "fs";
+import * as os from "os";
 
 // SoulSpec types ported to TypeScript
 export enum Environment {
@@ -157,8 +160,6 @@ export interface SoulManifest {
  * rather than being silently rewritten.
  */
 export function expandHome(p: string): string {
-  const os = require('os');
-  const path = require('path');
   if (p === "~") return os.homedir();
   if (p.startsWith("~/") || p.startsWith("~\\")) {
     return path.join(os.homedir(), p.slice(2));
@@ -181,17 +182,17 @@ export class SoulSpecLoader {
     ];
   }
 
-  private resolveSoulPath(path: string): string | null {
+  private resolveSoulPath(soulPath: string): string | null {
     // Try multiple locations for soul packages
     const locations = [
-      path, // Absolute or relative path
-      ...this.soulsDirs.map(dir => `${dir}/${path}`), // All configured souls directories
+      soulPath, // Absolute or relative path
+      ...this.soulsDirs.map(dir => `${dir}/${soulPath}`), // All configured souls directories
     ];
 
     for (const location of locations) {
       try {
         const expanded = expandHome(location);
-        if (require('fs').existsSync(expanded)) {
+        if (fs.existsSync(expanded)) {
           return expanded;
         }
       } catch {
@@ -213,17 +214,17 @@ export class SoulSpecLoader {
       return this.cache.get(cacheKey)!;
     }
 
-    const soulDir = require('fs').statSync(resolvedPath).isFile() 
-      ? require('path').dirname(resolvedPath)
+    const soulDir = fs.statSync(resolvedPath).isFile() 
+      ? path.dirname(resolvedPath)
       : resolvedPath;
 
-    const manifestPath = require('path').join(soulDir, 'soul.json');
-    if (!require('fs').existsSync(manifestPath)) {
+    const manifestPath = path.join(soulDir, 'soul.json');
+    if (!fs.existsSync(manifestPath)) {
       throw new Error(`No soul.json found at: ${manifestPath}`);
     }
 
     // Parse manifest
-    const manifestData = JSON.parse(require('fs').readFileSync(manifestPath, 'utf-8'));
+    const manifestData = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
     const manifest = this.parseManifest(manifestData, soulDir);
 
     // Load content based on level
@@ -239,7 +240,7 @@ export class SoulSpecLoader {
   }
 
   private parseManifest(data: any, soulDir: string): SoulManifest {
-    debug(`Parsing soul manifest: ${data.name}`);
+    debugLog("soul", `Parsing soul manifest: ${data.name}`);
 
     // Parse author
     const author: Author = {
@@ -372,16 +373,16 @@ export class SoulSpecLoader {
 
   private async loadLevel2(manifest: SoulManifest, soulDir: string): Promise<void> {
     // Load SOUL.md
-    const soulPath = require('path').join(soulDir, manifest.files.soul);
-    if (require('fs').existsSync(soulPath)) {
-      manifest.soul_content = require('fs').readFileSync(soulPath, 'utf-8');
+    const soulPath = path.join(soulDir, manifest.files.soul);
+    if (fs.existsSync(soulPath)) {
+      manifest.soul_content = fs.readFileSync(soulPath, 'utf-8');
     }
 
     // Load IDENTITY.md
     if (manifest.files.identity) {
-      const identityPath = require('path').join(soulDir, manifest.files.identity);
-      if (require('fs').existsSync(identityPath)) {
-        manifest.identity_content = require('fs').readFileSync(identityPath, 'utf-8');
+      const identityPath = path.join(soulDir, manifest.files.identity);
+      if (fs.existsSync(identityPath)) {
+        manifest.identity_content = fs.readFileSync(identityPath, 'utf-8');
       }
     }
   }
@@ -389,56 +390,56 @@ export class SoulSpecLoader {
   private async loadLevel3(manifest: SoulManifest, soulDir: string): Promise<void> {
     // Load AGENTS.md
     if (manifest.files.agents) {
-      const agentsPath = require('path').join(soulDir, manifest.files.agents);
-      if (require('fs').existsSync(agentsPath)) {
-        manifest.agents_content = require('fs').readFileSync(agentsPath, 'utf-8');
+      const agentsPath = path.join(soulDir, manifest.files.agents);
+      if (fs.existsSync(agentsPath)) {
+        manifest.agents_content = fs.readFileSync(agentsPath, 'utf-8');
       }
     }
 
     // Load STYLE.md
     if (manifest.files.style) {
-      const stylePath = require('path').join(soulDir, manifest.files.style);
-      if (require('fs').existsSync(stylePath)) {
-        manifest.style_content = require('fs').readFileSync(stylePath, 'utf-8');
+      const stylePath = path.join(soulDir, manifest.files.style);
+      if (fs.existsSync(stylePath)) {
+        manifest.style_content = fs.readFileSync(stylePath, 'utf-8');
       }
     }
 
     // Load HEARTBEAT.md
     if (manifest.files.heartbeat) {
-      const heartbeatPath = require('path').join(soulDir, manifest.files.heartbeat);
-      if (require('fs').existsSync(heartbeatPath)) {
-        manifest.heartbeat_content = require('fs').readFileSync(heartbeatPath, 'utf-8');
+      const heartbeatPath = path.join(soulDir, manifest.files.heartbeat);
+      if (fs.existsSync(heartbeatPath)) {
+        manifest.heartbeat_content = fs.readFileSync(heartbeatPath, 'utf-8');
       }
     }
 
     // Load USER_TEMPLATE.md
     if (manifest.files.user_template) {
-      const templatePath = require('path').join(soulDir, manifest.files.user_template);
-      if (require('fs').existsSync(templatePath)) {
-        manifest.user_template_content = require('fs').readFileSync(templatePath, 'utf-8');
+      const templatePath = path.join(soulDir, manifest.files.user_template);
+      if (fs.existsSync(templatePath)) {
+        manifest.user_template_content = fs.readFileSync(templatePath, 'utf-8');
       }
     }
 
     // Load calibration examples
     if (manifest.examples) {
       if (manifest.examples.good) {
-        const goodPath = require('path').join(soulDir, manifest.examples.good);
-        if (require('fs').existsSync(goodPath)) {
-          manifest.examples_good_content = require('fs').readFileSync(goodPath, 'utf-8');
+        const goodPath = path.join(soulDir, manifest.examples.good);
+        if (fs.existsSync(goodPath)) {
+          manifest.examples_good_content = fs.readFileSync(goodPath, 'utf-8');
         }
       }
       if (manifest.examples.bad) {
-        const badPath = require('path').join(soulDir, manifest.examples.bad);
-        if (require('fs').existsSync(badPath)) {
-          manifest.examples_bad_content = require('fs').readFileSync(badPath, 'utf-8');
+        const badPath = path.join(soulDir, manifest.examples.bad);
+        if (fs.existsSync(badPath)) {
+          manifest.examples_bad_content = fs.readFileSync(badPath, 'utf-8');
         }
       }
     }
 
     // Resolve avatar path
     if (manifest.files.avatar) {
-      const avatarPath = require('path').join(soulDir, manifest.files.avatar);
-      if (require('fs').existsSync(avatarPath)) {
+      const avatarPath = path.join(soulDir, manifest.files.avatar);
+      if (fs.existsSync(avatarPath)) {
         manifest.avatar_path = avatarPath;
       }
     }
@@ -533,15 +534,15 @@ export class SoulSpecLoader {
     for (const soulsDir of this.soulsDirs) {
       // Expand `~` before resolving against cwd — `path.resolve` does not
       // handle tildes and would otherwise produce `<cwd>/~/.pi/agent/souls`.
-      const resolvedDir = require('path').resolve(expandHome(soulsDir));
+      const resolvedDir = path.resolve(expandHome(soulsDir));
       
       try {
-        if (require('fs').existsSync(resolvedDir)) {
-          const entries = require('fs').readdirSync(resolvedDir, { withFileTypes: true });
+        if (fs.existsSync(resolvedDir)) {
+          const entries = fs.readdirSync(resolvedDir, { withFileTypes: true });
           for (const entry of entries) {
             if (entry.isDirectory() && !seenSouls.has(entry.name)) {
-              const soulJsonPath = require('path').join(resolvedDir, entry.name, 'soul.json');
-              if (require('fs').existsSync(soulJsonPath)) {
+              const soulJsonPath = path.join(resolvedDir, entry.name, 'soul.json');
+              if (fs.existsSync(soulJsonPath)) {
                 souls.push(entry.name);
                 seenSouls.add(entry.name);
               }
@@ -549,7 +550,7 @@ export class SoulSpecLoader {
           }
         }
       } catch (error) {
-        debug(`Error reading souls directory ${resolvedDir}: ${error}`);
+        debugLog("soul", `Error reading souls directory ${resolvedDir}: ${error}`);
       }
     }
 
@@ -561,7 +562,7 @@ export class SoulSpecLoader {
 let soulLoader: SoulSpecLoader;
 
 export default function (pi: ExtensionAPI) {
-  debug("SoulSpec extension loading...");
+  debugLog("soul", "SoulSpec extension loading...");
 
   // Initialize loader
   soulLoader = new SoulSpecLoader();
@@ -581,7 +582,7 @@ export default function (pi: ExtensionAPI) {
       })),
     }),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
-      debug(`Loading soul: ${params.soul_name}, level: ${params.level || 2}`);
+      debugLog("soul", `Loading soul: ${params.soul_name}, level: ${params.level || 2}`);
       
       try {
         const soul = await soulLoader.load(params.soul_name, params.level || 2);
@@ -599,7 +600,7 @@ export default function (pi: ExtensionAPI) {
           }
         };
       } catch (error) {
-        debug(`Error loading soul: ${error}`);
+        debugLog("soul", `Error loading soul: ${error}`);
         return {
           content: [{ type: "text", text: `Error loading soul: ${error}` }],
           isError: true
@@ -656,7 +657,7 @@ export default function (pi: ExtensionAPI) {
       }),
     }),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
-      debug(`Getting soul info for: ${params.soul_name}`);
+      debugLog("soul", `Getting soul info for: ${params.soul_name}`);
       
       try {
         const soul = await soulLoader.load(params.soul_name, 1); // Level 1 for metadata
@@ -698,7 +699,7 @@ export default function (pi: ExtensionAPI) {
           details: { soul }
         };
       } catch (error) {
-        debug(`Error loading soul info: ${error}`);
+        debugLog("soul", `Error loading soul info: ${error}`);
         return {
           content: [{ type: "text", text: `Error loading soul info: ${error}` }],
           isError: true
@@ -709,12 +710,12 @@ export default function (pi: ExtensionAPI) {
 
   // Event handlers
   pi.on("session_start", async (event, ctx) => {
-    debug("SoulSpec extension session started");
+    debugLog("soul", "SoulSpec extension session started");
     ctx.ui.notify("SoulSpec extension loaded", "info");
   });
 
   pi.on("resources_discover", async (event, ctx) => {
-    debug("SoulSpec extension discovering resources");
+    debugLog("soul", "SoulSpec extension discovering resources");
     return {
       skillPaths: [], // Souls are not skills
       promptPaths: [".pi/souls", "./souls", "~/.pi/agent/souls", "~/.openclaw/souls/clawsouls"], // Add souls directories to prompt discovery
@@ -726,7 +727,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("souls", {
     description: "List available souls",
     handler: async (args, ctx) => {
-      debug("Listing souls command");
+      debugLog("soul", "Listing souls command");
       
       const souls = soulLoader.getAllSouls();
       
@@ -758,7 +759,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("soul", {
     description: "Use a soul for the current session",
     handler: async (args, ctx) => {
-      debug(`Using soul command with: ${args}`);
+      debugLog("soul", `Using soul command with: ${args}`);
       
       if (!args) {
         ctx.ui.notify("Usage: /soul <soul-name>", "error");
@@ -781,11 +782,11 @@ export default function (pi: ExtensionAPI) {
         
         ctx.ui.notify(`Using soul: ${soul.display_name}`, "success");
       } catch (error) {
-        debug(`Error using soul: ${error}`);
+        debugLog("soul", `Error using soul: ${error}`);
         ctx.ui.notify(`Error loading soul: ${error}`, "error");
       }
     },
   });
 
-  debug("SoulSpec extension loaded successfully");
+  debugLog("soul", "SoulSpec extension loaded successfully");
 }
