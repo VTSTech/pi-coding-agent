@@ -198,45 +198,39 @@ Also registers a `self_diagnostic` tool so the AI agent can run diagnostics on c
 
 The extension auto-detects whether the active model is on **Ollama** or a **cloud provider** (OpenRouter, Anthropic, Google, OpenAI, Groq, DeepSeek, Mistral, xAI, Together, Fireworks, Cohere) and runs the appropriate test suite.
 
-#### Ollama Test Suite (6 tests)
+#### Ollama Test Suite (3 tests)
 
 | Test | Method | Scoring |
 |------|--------|---------|
-| **Reasoning** | Snail wall puzzle — "climbs 3ft/day, slides 2ft/night, 10ft wall" — answer (8) never appears in the prompt, preventing false positives. Answer extracted as the last number in the response. | STRONG / MODERATE / WEAK / FAIL |
-| **Thinking** | Extended thinking/reasoning token support (`<think` tags or native API) — "Multiply 37 × 43" prompt | SUPPORTED / NOT SUPPORTED |
-| **Tool Usage** | Tool call generation — detects both native Ollama `tool_calls` API and JSON tool calls embedded in text responses | STRONG / MODERATE / WEAK / FAIL |
-| **ReAct Parse** | Text-based tool calling without native API — tests `Action:` / `Action Input:` pattern parsing | STRONG / MODERATE / WEAK / FAIL |
-| **Instruction Following** | Strict JSON output format compliance — 4 specific keys with typed values, automatic repair of truncated output | STRONG / MODERATE / WEAK / FAIL |
-| **Tool Support** | Probes model for tool calling capability level (native API, ReAct text, or none) — cached for future runs | NATIVE / REACT / NONE |
+| **Reasoning** | 20 puzzle tests (logic, math, spatial, commonsense, etc.) | STRONG / MODERATE / WEAK / FAIL / ERROR |
+| **Instructions** | Multi-step JSON schema compliance with automatic repair | STRONG / MODERATE / WEAK / FAIL |
+| **Tool Usage** | Chained tool call generation | STRONG / MODERATE / WEAK / FAIL / ERROR |
 
-#### Cloud Provider Test Suite (4 tests)
+#### Cloud Provider Test Suite (3 tests)
 
 | Test | Method | Scoring |
 |------|--------|---------|
-| **Connectivity** | Verifies API reachability and authentication — sends a ping request, expects a response within 30s | OK / FAIL |
-| **Reasoning** | Same snail wall puzzle, sent via OpenAI-compatible chat completions API | STRONG / MODERATE / WEAK / FAIL |
-| **Instruction Following** | Strict JSON output format compliance — 4 specific keys with typed values | STRONG / MODERATE / WEAK / FAIL |
-| **Tool Usage** | Tool call generation using OpenAI function calling format | STRONG / MODERATE / WEAK / FAIL |
+| **Reasoning** | 20 puzzle tests via OpenAI-compatible chat completions API | STRONG / MODERATE / WEAK / FAIL / ERROR |
+| **Instructions** | Multi-step JSON schema compliance | STRONG / MODERATE / WEAK / FAIL |
+| **Tool Usage** | Tool call generation using OpenAI function calling format | STRONG / MODERATE / WEAK / FAIL / ERROR |
 
-Ollama-specific tests (thinking, ReAct parsing, tool support cache, model metadata) are skipped for cloud providers.
+Ollama-specific tests (thinking, ReAct parsing, tool support cache) are skipped for cloud providers.
 
 Features:
-- **Automatic provider detection** — classifies the active model as `ollama`, `builtin`, or `unknown` using a three-tier lookup (models.json → built-in registry → fallback)
-- **Built-in provider registry** — 11 known cloud providers with API modes, base URLs, and env var keys
-- Calls Ollama `/api/chat` or cloud provider APIs directly — no Pi agent round-trip
+- **Automatic provider detection** — classifies the active model as `ollama`, `builtin`, or `unknown`
+- **Extended reasoning test** — 20 diverse puzzles with detailed breakdown
+- **Multi-step instructions** — JSON schema with multiple fields and types
+- **Chained tool calls** — tests multi-tool invocation capability
+- **Built-in provider registry** — 11 known cloud providers with API modes and base URLs
 - **Automatic remote Ollama URL** — reads from `models.json`, no manual config
-- **Timeout resilience** — 180s default with `--connect-timeout`, auto-retry on empty responses and connection failures (handles flaky tunnels)
-- **Rate limit delay** — configurable delay (default 30s) between tests to avoid upstream rate limiting on free-tier providers
-- **Thinking model fallback** — if a model returns empty without `think:true`, automatically retries with thinking enabled (supports qwen3 and similar models)
-- **Displays API mode** — shows the active API mode (e.g., `openai-completions`, `openai-responses`) from `models.json`
-- **Native context length** — displays the model's true max context from Ollama `/api/show`, not the configured `num-ctx`
-- Retrieves model metadata (size, params, quantization, family) from `/api/tags`
-- **Auto-updates `models.json`** reasoning field based on thinking test results
-- **Tool support cache** — persistent cache at `~/.pi/agent/cache/tool_support.json` avoids re-probing on every run
-- **Text-based tool call detection** — models that output tool call JSON as text (instead of using the native API) are still correctly identified and scored
-- **JSON repair** — automatically fixes truncated JSON output (missing closing braces) from `num_predict` limits
-- **Thinking token fallback** — models that put reasoning in thinking tokens (e.g., qwen3) are detected even when `content` is empty
-- **Complete response display** — full model responses are shown with markdown code fences stripped for clean rendering
+- **Timeout resilience** — 180s default with `--connect-timeout`, auto-retry on failures
+- **Rate limit delay** — configurable delay between tests
+- **Thinking model fallback** — retries with `think:true` for models like qwen3
+- **Displays API mode** — shows the active API mode from `models.json`
+- **Native context length** — displays true max context from Ollama `/api/show`
+- **Tool support cache** — persistent cache avoids re-probing on every run
+- **Text-based tool call detection** — handles models that output JSON as text
+- **JSON repair** — automatically fixes truncated output
 - Tab-completion for model names in the `/model-test` command
 - Final recommendation: STRONG / GOOD / USABLE / WEAK
 
