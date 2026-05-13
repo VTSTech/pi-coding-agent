@@ -27,13 +27,13 @@ pi install "npm:@vtstech/pi-long-term-memory"
 /memory clear          - Clear memories (preserves metadata)
 /memory clear-meta     - Reset metadata
 /memory meta           - Show metadata
-/memory gate           - Toggle memory creation gate
+/memory-gate           - Toggle memory creation gate
 /memory help           - Show help
 ```
 
 ## AI-Driven Memory
 
-The AI can request memory creation:
+The AI can request memory creation via the `create_memory` tool:
 
 ```json
 {
@@ -44,7 +44,21 @@ The AI can request memory creation:
 }
 ```
 
-With the memory gate enabled, you'll be prompted to confirm before creation.
+With the memory gate enabled (default), you'll be prompted to confirm before creation.
+
+## Memory Injection
+
+Memory is automatically injected at session start, BEFORE the AI generates its first response. The extension hooks into:
+- `pre_session_start` - Ensures metadata is complete
+- `session_start` - Displays memory context to user
+- `before_provider_request` - Prepends memory to the API request
+
+## Token Management
+
+Memory operates within a ~4k token window with automatic summarization:
+- Memories are sorted by importance and last accessed
+- When approaching token limits, older/less important memories are compacted
+- System preserves all memories across sessions
 
 ## Metadata
 
