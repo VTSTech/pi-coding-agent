@@ -82,6 +82,7 @@ pi update
 | `@vtstech/pi-ollama-sync` | Ollama ↔ models.json sync |
 | `@vtstech/pi-openrouter-sync` | OpenRouter → models.json sync |
 | `@vtstech/pi-react-fallback` | ReAct fallback for non-native tool models |
+| `@vtstech/pi-long-term-memory` | Persistent memory across sessions |
 
 ### Manual Install
 
@@ -403,6 +404,34 @@ Automatically loaded — no commands needed. When a model lacks native tool call
 - Bridges text-based tool calls into Pi's native tool execution pipeline
 - Disabled by default; toggle via `/react-mode` with persistent config across restarts
 
+### 💾 Long-Term Memory (`long-term-memory.ts`)
+
+**Persistent memory across sessions with automatic injection and AI-driven creation.**
+
+```bash
+/memory add <text>     - Add memory (with optional tags)
+/memory list           - List all memories
+/memory clear          - Clear memories (preserves metadata)
+/memory meta           - Show metadata
+/memory-gate           - Toggle memory creation gate
+/memory help           - Show help
+```
+
+**Features:**
+- **Persistent Storage**: Memories survive across sessions and restarts
+- **Auto-Injection**: Memory automatically injected at session start, BEFORE the AI generates its first response
+- **AI-Driven Creation**: AI can request memories via `create_memory` tool
+- **Memory Gate**: Confirm before creating memories (enabled by default)
+- **Tag Organization**: Organize memories with tags
+- **Token Management**: ~4k token window with auto-summarization
+
+**Memory Injection Hooks:**
+- `pre_session_start` — Ensures metadata is complete
+- `session_start` — Displays memory context to user
+- `before_provider_request` — Prepends memory to the API request
+
+**Storage:** `.pi/agent/long-term-memory.json`
+
 ### 🔄 Ollama Sync (`ollama-sync.ts`)
 
 **Auto-populate models.json with all available Ollama models — works with local and remote instances.**
@@ -508,6 +537,10 @@ pi -c
 
 # 6. Benchmark your models
 /model-test --all
+
+# 7. (Optional) Use long-term memory for persistent sessions
+/memory list                              # View saved memories
+/memory add "Remember to use TypeScript"  # Add a memory
 ```
 
 ### Remote Ollama Setup
