@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Pi Version](https://img.shields.io/badge/Pi-v0.66%2B-green.svg)](https://github.com/badlogic/pi-mono)
 [![Pi Package](https://img.shields.io/badge/Install-pi%20install%20git-blue.svg)](#installation)
-[![Version](https://img.shields.io/badge/Version-v1.2.9-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-v1.3.0-orange.svg)](CHANGELOG.md)
 
 <p>
   <a href="https://github.com/VTSTech"><strong>VTSTech</strong></a> •
@@ -46,7 +46,7 @@ pi update
 
 Pin to a specific tag:
 ```bash
-pi install git:github.com/VTSTech/pi-coding-agent@v1.2.9
+pi install git:github.com/VTSTech/pi-coding-agent@v1.3.0
 ```
 
 ### Individual Packages (npm)
@@ -242,78 +242,68 @@ Features:
 
 Sample output (cloud provider):
 ```
- [model-test-report]
-
-   ⚡ Pi Model Benchmark v1.2.0
-   Written by VTSTech
-   GitHub: https://github.com/VTSTech
-   Website: www.vts-tech.org
-
- ── MODEL: openai/gpt-oss-120b:free ─────────────────────────
-   ℹ️  Provider: openrouter (built-in)
-   ℹ️  API: openai-completions
-   ℹ️  Base URL: https://openrouter.ai/api/v1
-   ℹ️  API Key: ****d9ef
-
- ── CONNECTIVITY TEST ───────────────────────────────────────
-   ℹ️  Sending minimal request to verify API reachability and key validity...
-   ℹ️  Time: 1.9s
-   ✅ API reachable and authenticated
-
- ── REASONING TEST ──────────────────────────────────────────
-   ℹ️  Prompt: A snail climbs 3ft up a wall each day, slides 2ft back
-             each night. Wall is 10ft. How many days?
-   ℹ️  Testing...
-   ℹ️  Waiting 30.0s to avoid rate limiting...
-   ℹ️  Time: 693ms
-   ✅ Answer: 8 — Correct with clear reasoning (STRONG)
-   ℹ️  Response: The snail gains a net of (3 - 2 = 1) foot each
-             full day-night cycle.
-
- - After 7 full days (and nights) it has risen (7 × 1 = 7) feet.
- - At the start of the 8th day it is 7 feet up. It climbs 3 feet
-   during that day, reaching (7 + 3 = 10) feet, the top of the
-   wall. Once it reaches the top it does not slide back.
-
- Thus, the snail reaches the top on the 8th day.
-
- ANSWER: 8
-
- ── INSTRUCTION FOLLOWING TEST ──────────────────────────────
-   ℹ️  Prompt: Respond with ONLY a JSON object with keys: name,
-             can_count, sum (15+27), language
-   ℹ️  Testing...
-   ℹ️  Waiting 30.0s to avoid rate limiting...
-   ℹ️  Time: 525ms
-   ✅ JSON output valid with correct values (STRONG)
-   ℹ️  Output: {"name":"ChatGPT","can_count":true,
-             "sum":42,"language":"English"}
-
- ── TOOL USAGE TEST ─────────────────────────────────────────
-   ℹ️  Prompt: "What's the weather in Paris?" (with get_weather
-             tool available)
-   ℹ️  Testing...
-   ℹ️  Waiting 30.0s to avoid rate limiting...
-   ℹ️  Time: 518ms
-   ✅ Tool call: get_weather({"location":"Paris",
-             "unit":"celsius"}) (STRONG)
-
- ── SKIPPED TESTS (OLLAMA-ONLY) ─────────────────────────────
-   ⚠️  Thinking test — Ollama-specific think:true option
-   ⚠️  ReAct parsing test — only relevant for Ollama models
-   ⚠️  Tool support detection — Ollama-specific tool support cache
-   ⚠️  Model metadata — Ollama-specific /api/tags endpoint
-
- ── SUMMARY ─────────────────────────────────────────────────
-   ✅ Connectivity: OK
-   ✅ Reasoning: STRONG
-   ✅ Instructions: STRONG
-   ✅ Tool Usage: STRONG
-   ℹ️  Total time: 1.7m
-   ℹ️  Score: 4/4 tests passed
-
- ── RECOMMENDATION ──────────────────────────────────────────
-   ✅ openai/gpt-oss-120b:free is a STRONG model via openrouter
+[model-test-report]                                                                                                 
+                                                                                                                     
+   ⚡ Pi Model Benchmark v1.3.1                                                                                      
+   Written by VTSTech                                                                                                
+   GitHub: https://github.com/VTSTech                                                                                
+   Website: www.vts-tech.org (http://www.vts-tech.org)                                                               
+                                                                                                                     
+ ── MODEL: poolside/laguna-xs.2:free ────────────────────────                                                        
+   ℹ️  Provider: openrouter (builtin)                                                                                
+                                                                                                                     
+ ── REASONING TEST (EXTENDED) ───────────────────────────────                                                        
+   ℹ️  Testing 20 reasoning puzzles...                                                                               
+   ℹ️  Waiting 10.0s to avoid rate limiting...                                                                       
+   ✅ ✅ snail_wall (logic): STRONG - expected "8", got "8" [(expected: 8, got: 8)]                                  
+   ✅ ✅ math_sequence (math): STRONG - expected "162", got "162" [(expected: 162, got: 162)]                        
+   ✅ ✅ spatial_directions (spatial): STRONG - expected "south", got "180" [(expected: south)]                      
+   ⚠️  ❌ commonsense (commonsense): WEAK - expected "the other side", got "?" [(expected: the other side)]          
+   ❌ ❌ code_simplify (code): FAIL - expected "15", got "2" [(expected: 15, got: 2)]                                
+   ✅ ✅ bat_and_ball (counterint): STRONG - expected "5", got "5" [(expected: 5, got: 5)]                           
+   ✅ ✅ scale_weight (counterint): STRONG - expected "400", got "400" [(expected: 400, got: 400)]                   
+   ✅ ✅ syllogism (logic): STRONG - expected "warm-blooded", got "?" [(expected: warm-blooded)]                     
+   ✅ ✅ if_then_chain (logic): STRONG - expected "grass grows", got "1" [(expected: grass grows)]                   
+   ✅ ✅ cause_effect (causal): STRONG - expected "grows", got "?" [(expected: grows)]                               
+   ✅ ✅ relative_quantities (comparative): STRONG - expected "15", got "15" [(expected: 15, got: 15)]               
+   ⚠️  ❌ analogy_1 (analogy): WEAK - expected "room", got "?" [(expected: room)]                                    
+   ✅ ✅ analogy_2 (analogy): STRONG - expected "boot", got "?" [(expected: boot)]                                   
+   ✅ ✅ physics_1 (commonsense): STRONG - expected "bowling ball", got "80" [(expected: bowling ball)]              
+   ⚠️  ❌ physics_2 (commonsense): WEAK - expected "hot", got "?" [(expected: hot)]                                  
+   ✅ ✅ objects_1 (commonsense): STRONG - expected "scissors", got "?" [(expected: scissors)]                       
+   ✅ ✅ social_1 (commonsense): STRONG - expected "polite", got "?" [(expected: polite)]                            
+   ✅ ✅ animals_1 (commonsense): STRONG - expected "water", got "?" [(expected: water)]                             
+   ✅ ✅ gk_1 (commonsense): STRONG - expected "mars", got "?" [(expected: mars)]                                    
+   ✅ ✅ gk_2 (commonsense): STRONG - expected "366", got "366" [(expected: 366, got: 366)]                          
+   ✅ Average score: STRONG                                                                                          
+                                                                                                                     
+ ── INSTRUCTION FOLLOWING TEST (EXTENDED) ───────────────────                                                        
+   ℹ️  Testing multi-step JSON schema compliance...                                                                  
+   ℹ️  Waiting 10.0s to avoid rate limiting...                                                                       
+   ℹ️  Time: 1.4s                                                                                                    
+   ✅ JSON output valid with correct values (STRONG)                                                                 
+   ℹ️  Output: {"name":"Poolside                                                                                     
+ Assistant","can_count":true,"sum":42,"language":"English","colors":["red","blue","green"],"timestamp":"2025-01-09T1 
+ 2:00:00Z"}                                                                                                          
+                                                                                                                     
+ ── TOOL USAGE TEST (EXTENDED) ──────────────────────────────                                                        
+   ℹ️  Testing chained tool calls...                                                                                 
+   ℹ️  Waiting 10.0s to avoid rate limiting...                                                                       
+   ℹ️  Time: 349ms                                                                                                   
+   ✅ Tool calls: get_weather (MODERATE)                                                                             
+   ℹ️  Response: I'll get the weather for Tokyo and calculate that multiplication for you.                           
+                                                                                                                     
+ ── SUMMARY ─────────────────────────────────────────────────                                                        
+   ✅ Reasoning: STRONG                                                                                              
+   ✅ Instructions: STRONG                                                                                           
+   ✅ Tool Usage: MODERATE                                                                                           
+   ℹ️  Total time: 1.3m                                                                                              
+   ℹ️  Score: 3/3 tests passed                                                                                       
+                                                                                                                     
+   ℹ️  Detailed: Reasoning 16/20 tests passed, Instructions 1/1, Tool Usage 1/1                                      
+                                                                                                                     
+ ── RECOMMENDATION ──────────────────────────────────────────                                                        
+   ❌ poolside/laguna-xs.2:free is WEAK — limited capabilities for agent use 
 ```
 
 ### 🔀 API Mode Switcher (`api.ts`)

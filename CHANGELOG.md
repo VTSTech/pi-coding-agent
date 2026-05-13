@@ -5,6 +5,32 @@ All notable changes to the Pi Coding Agent Extensions (`@vtstech/pi-coding-agent
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 05-13-2026 6:41:26 PM
+
+### Added
+
+- **Phase 2 model-test reasoning tests** (`extensions/model-test.ts`)
+  - Added 11 new reasoning tests covering:
+    - Counter-intuitive reasoning: `bat_and_ball`, `scale_weight`
+    - Logical deduction: `syllogism`, `if_then_chain`
+    - Causal reasoning: `cause_effect`
+    - Comparative reasoning: `relative_quantities`
+    - Analogical reasoning: `analogy_1`, `analogy_2`
+    - Common sense (physics): `physics_1`, `physics_2`
+    - Common sense (objects): `objects_1`
+    - Common sense (social): `social_1`
+    - Common sense (animals): `animals_1`
+    - General knowledge: `gk_1`, `gk_2`
+  - Total: 16 reasoning tests with granular scoring
+
+- **Enhanced test scoring and verbosity** (`extensions/model-test.ts`)
+  - `scoreReasoningExtended()` now handles both numeric and text answers
+  - Individual test results shown with ✅/❌ markers
+  - Expected vs got values displayed per test
+  - Category breakdown per test
+  - Removed `--list` and `--history` commands (simplified CLI)
+  - Updated summary to show granular scores (e.g., "Reasoning 16/20 tests passed")
+
 ## [1.2.9] - 05-13-2026 9:04:10 AM
 
 ### Fixed
