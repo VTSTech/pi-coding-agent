@@ -1,9 +1,9 @@
 # Codebase Audit: pca-ext (Pi Coding Agent Extensions)
 
-**Generated:** 2026-05-12  
+**Generated:** 2026-05-13  
 **Auditor:** Codebase Audit Skill  
-**Project:** @vtstech/pi-coding-agent-extensions v1.2.7  
-**Lines of Code:** ~15,000 (extensions + shared)  
+**Project:** @vtstech/pi-coding-agent-extensions v1.3.2  
+**Lines of Code:** ~11,302 (extensions + shared)  
 **Files Analyzed:** 35+
 
 ---
@@ -20,9 +20,9 @@ pca-ext is a well-structured Pi package containing 10 extensions, shared utiliti
 
 | Severity | Count | Categories |
 |----------|-------|------------|
-| HIGH | 2 | Security, Robustness |
-| MEDIUM | 4 | Maintainability, Performance |
-| LOW | 3 | Testing, Architecture |
+| **HIGH** | 2 | Security, Robustness |
+| **MEDIUM** | 4 | Maintainability, Performance |
+| **LOW** | 3 | Testing, Architecture |
 | **TOTAL** | **9** | |
 
 ---
@@ -131,7 +131,7 @@ The `EXTENSION_VERSION` constant is defined in `shared/ollama.ts` and must be ke
 
 **Code Reference:**
 ```typescript
-export const EXTENSION_VERSION = "1.2.7";
+export const EXTENSION_VERSION = "1.3.1";
 // IMPORTANT: Do NOT update this constant manually.
 // Use ./scripts/bump-version.sh <new-version> to update ALL locations
 ```
@@ -149,10 +149,10 @@ Risk of version mismatch if manual updates occur.
 
 **Severity:** MEDIUM  
 **Category:** Maintainability  
-**File(s):** `extensions/security.ts` (350+ lines), `extensions/model-test.ts` (800+ lines)
+**File(s):** `extensions/security.ts` (~800 lines), `extensions/model-test.ts` (~800 lines)
 
 **Description:**  
-Some extension files are quite large (security.ts is ~800 lines including comments). While well-organized, this could impact readability and maintenance.
+Some extension files are quite large. While well-organized, this could impact readability and maintenance.
 
 **Impact:**  
 Moderate impact on developer onboarding and code navigation.
@@ -261,9 +261,9 @@ Clean abstraction for Ollama and cloud providers with:
 
 - Atomic file writes
 - TTL caching
-- Rate limiting
-- Graceful degradation
-- Comprehensive error handling
+- Promise-based mutex for concurrent writes
+- Retry logic with exponential backoff
+- Rate limiting and batching
 
 ---
 
