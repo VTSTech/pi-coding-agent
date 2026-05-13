@@ -179,7 +179,7 @@ export default function (pi: ExtensionAPI) {
     name: string;
     prompt: string;
     expectedAnswer: string;
-    category: "math" | "logic" | "spatial" | "commonsense" | "counterint" | "causal" | "comparative" | "code";
+    category: "math" | "logic" | "spatial" | "commonsense" | "counterint" | "causal" | "comparative" | "analogy" | "reading" | "code";
   }
 
   const REASONING_TESTS: ReasoningTest[] = [
@@ -199,22 +199,50 @@ export default function (pi: ExtensionAPI) {
     { name: "cause_effect", prompt: "If you plant a seed in good soil with water and sunlight, what happens? Think about cause and effect. ANSWER: <outcome>", expectedAnswer: "grows", category: "causal" },
     // Phase 2: Comparative reasoning
     { name: "relative_quantities", prompt: "Tom has 3 times as many apples as Sara. Sara has 5 apples. How many apples does Tom have? ANSWER: <number>", expectedAnswer: "15", category: "comparative" },
+    // Phase 2: Analogical reasoning
+    { name: "analogy_1", prompt: "Book is to Shelf as Chair is to what? Think about relationships. ANSWER: <container>", expectedAnswer: "room", category: "analogy" },
+    { name: "analogy_2", prompt: "Hand is to Glove as Foot is to what? ANSWER: <item>", expectedAnswer: "boot", category: "analogy" },
+    // Phase 2: Common sense (physical properties)
+    { name: "physics_1", prompt: "Does a bowling ball or a tennis ball have more mass? ANSWER: <object>", expectedAnswer: "bowling ball", category: "commonsense" },
+    { name: "physics_2", prompt: "What happens to a metal spoon when heated? It usually becomes...? ANSWER: <state>", expectedAnswer: "hot", category: "commonsense" },
+    // Phase 2: Common sense (everyday objects)
+    { name: "objects_1", prompt: "What tool would you use to cut paper? ANSWER: <tool>", expectedAnswer: "scissors", category: "commonsense" },
+    // Phase 2: Common sense (social situations)
+    { name: "social_1", prompt: "If someone says 'please' and 'thank you', they are usually considered...? ANSWER: <trait>", expectedAnswer: "polite", category: "commonsense" },
+    // Phase 2: Common sense (animals/nature)
+    { name: "animals_1", prompt: "What do dolphins live in? ANSWER: <environment>", expectedAnswer: "water", category: "commonsense" },
+    // Phase 2: General knowledge
+    { name: "gk_1", prompt: "Which planet is known as the Red Planet? ANSWER: <planet>", expectedAnswer: "mars", category: "commonsense" },
+    { name: "gk_2", prompt: "How many days are in a leap year? ANSWER: <number>", expectedAnswer: "366", category: "commonsense" },
   ];
 
-  function scoreReasoningExtended(msg: string, expectedAnswer: string): { score: string; pass: boolean } {
+  function scoreReasoningExtended(msg: string, expectedAnswer: string): { score: string; pass: boolean; details?: string } {
+    const msgLower = msg.toLowerCase().trim();
     const allNumbers = msg.match(/\b(\d+)\b/g) || [];
     const answer = allNumbers.length > 0 ? allNumbers[allNumbers.length - 1] : "";
     // Check if expected answer is a number or text
     const isNumericAnswer = /^\d+$/.test(expectedAnswer);
-    const isCorrect = isNumericAnswer
-      ? answer === expectedAnswer
-      : msg.toLowerCase().includes(expectedAnswer.toLowerCase());
-    const reasoningPatterns = ["because", "therefore", "since", "step", "subtract", "minus", "each day", "each night", "slides", "climbs", "night", "reaches", "finally", "last day", "sequence", "pattern", "multiply", "clockwise", "counter", "facing", "egg", "rooster", "cost", "dollar", "heavy", "mammal", "warm", "grow", "apple", "rains", "wet", "grass", "plant", "seed", "soil", "sunlight", "water", "times", "more", "less", "than"];
-    const hasReasoning = reasoningPatterns.some(w => msg.toLowerCase().includes(w)) || /^\s*\d+\.\s/m.test(msg) || /^(1|2|3)\.\s/m.test(msg);
-    if (isCorrect && hasReasoning) return { score: "STRONG", pass: true };
-    if (isCorrect) return { score: "MODERATE", pass: true };
-    if (hasReasoning) return { score: "WEAK", pass: false };
-    return { score: "FAIL", pass: false };
+    let isCorrect: boolean;
+    let details = "";
+    
+    if (isNumericAnswer) {
+      isCorrect = answer === expectedAnswer;
+      if (details) details += " ";
+      details += `(expected: ${expectedAnswer}, got: ${answer})`;
+    } else {
+      // For text answers, check if expected answer appears in the response
+      isCorrect = msgLower.includes(expectedAnswer.toLowerCase());
+      if (details) details += " ";
+      details += `(expected: ${expectedAnswer})`;
+    }
+    
+    const reasoningPatterns = ["because", "therefore", "since", "step", "subtract", "minus", "each day", "each night", "slides", "climbs", "night", "reaches", "finally", "last day", "sequence", "pattern", "multiply", "clockwise", "counter", "facing", "egg", "rooster", "cost", "dollar", "heavy", "mammal", "warm", "grow", "apple", "rains", "wet", "grass", "plant", "seed", "soil", "sunlight", "water", "times", "more", "less", "than", "paper", "tool", "polite", "dolphin", "red", "planet", "leap", "hand", "glove", "foot", "boot", "metal", "bowling", "tennis"];
+    const hasReasoning = reasoningPatterns.some(w => msgLower.includes(w)) || /^\s*\d+\.\s/m.test(msg) || /^(1|2|3)\.\s/m.test(msg);
+    
+    if (isCorrect && hasReasoning) return { score: "STRONG", pass: true, details };
+    if (isCorrect) return { score: "MODERATE", pass: true, details };
+    if (hasReasoning) return { score: "WEAK", pass: false, details };
+    return { score: "FAIL", pass: false, details };
   }
 
   function averageScore(scores: string[]): string {
@@ -245,18 +273,29 @@ Return only the JSON.`;
 
   // ── Enhanced Test Functions (for test type 02) ───────────────────────
 
-  async function testReasoningExtended(chatFn: ChatFn, model: string): Promise<{ score: string; scores: string[]; answers: string[] }> {
-    const results: { score: string; answer: string }[] = [];
+  interface ReasoningTestResult {
+    name: string;
+    category: string;
+    score: string;
+    answer: string;
+    expectedAnswer: string;
+    pass: boolean;
+    details?: string;
+  }
+
+  async function testReasoningExtended(chatFn: ChatFn, model: string): Promise<{ score: string; scores: string[]; answers: string[]; results: ReasoningTestResult[] }> {
+    const results: ReasoningTestResult[] = [];
     for (const test of REASONING_TESTS) {
       try {
         const result = await chatFn(model, [{ role: "user", content: test.prompt }]);
         const msg = result.content.trim();
         const nums = msg.match(/\b(\d+)\b/g) || [];
         const answer = nums.length > 0 ? nums[nums.length - 1] : "?";
-        results.push({ score: scoreReasoningExtended(msg, test.expectedAnswer).score, answer });
-      } catch { results.push({ score: "ERROR", answer: "?" }); }
+        const scored = scoreReasoningExtended(msg, test.expectedAnswer);
+        results.push({ name: test.name, category: test.category, score: scored.score, answer, expectedAnswer: test.expectedAnswer, pass: scored.pass, details: scored.details });
+      } catch { results.push({ name: test.name, category: test.category, score: "ERROR", answer: "?", expectedAnswer: test.expectedAnswer, pass: false }); }
     }
-    return { score: averageScore(results.map(r => r.score)), scores: results.map(r => r.score), answers: results.map(r => r.answer) };
+    return { score: averageScore(results.map(r => r.score)), scores: results.map(r => r.score), answers: results.map(r => r.answer), results };
   }
 
   async function testInstructionFollowingExtended(chatFn: ChatFn, model: string): Promise<{ pass: boolean; score: string; output: string; schemaValid: boolean; elapsedMs: number }> {
@@ -1635,7 +1674,13 @@ Return only the JSON.`;
     lines.push(info(`Testing ${REASONING_TESTS.length} reasoning puzzles...`));
     await rateLimitDelay(lines);
     const reasoning = await testReasoningExtended(chatFn, model);
-    lines.push(info(`Scores: ${reasoning.scores.join(", ")}`));
+    
+    // Show individual test results
+    for (const r of reasoning.results) {
+      const passMark = r.pass ? "✅" : "❌";
+      const scoreLabel = r.score === "STRONG" ? ok : r.score === "MODERATE" ? warn : r.score === "WEAK" ? warn : fail;
+      lines.push(scoreLabel(`${passMark} ${r.name} (${r.category}): ${r.score} - expected "${r.expectedAnswer}", got "${r.answer}"${r.details ? ` [${r.details}]` : ""}`));
+    }
     lines.push(ok(`Average score: ${reasoning.score}`));
 
     // 2. Extended Instruction Following test
@@ -1645,6 +1690,7 @@ Return only the JSON.`;
     const instructions = await testInstructionFollowingExtended(chatFn, model);
     lines.push(info(`Time: ${msHuman(instructions.elapsedMs)}`));
     reportInstructionScore(lines, instructions);
+    lines.push(info(`Output: ${instructions.output}`));
 
     // 3. Extended Tool Usage test
     lines.push(section("TOOL USAGE TEST (EXTENDED)"));
@@ -1654,6 +1700,7 @@ Return only the JSON.`;
     lines.push(info(`Time: ${msHuman(tools.elapsedMs)}`));
     if (tools.score === "STRONG" || tools.score === "MODERATE") lines.push(ok(`Tool calls: ${tools.toolCalls.join(", ")} (${tools.score})`));
     else lines.push(fail(`Tool calls: ${tools.toolCalls.length > 0 ? tools.toolCalls.join(", ") : "none"} (${tools.score})`));
+    lines.push(info(`Response: ${sanitizeForReport(tools.response)}`));
 
     const totalMs = Date.now() - totalStart;
     const passed = [reasoning.score === "STRONG" || reasoning.score === "MODERATE", instructions.pass, tools.pass].filter(Boolean).length;

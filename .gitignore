@@ -4,3 +4,4 @@ node_modules/
 .build-npm/
 *.backup
 *.zip
+MODEL_TEST_IMPROVEMENTS.md
