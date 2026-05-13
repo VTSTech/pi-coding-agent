@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Pi Version](https://img.shields.io/badge/Pi-v0.66%2B-green.svg)](https://github.com/badlogic/pi-mono)
 [![Pi Package](https://img.shields.io/badge/Install-pi%20install%20git-blue.svg)](#installation)
-[![Version](https://img.shields.io/badge/Version-v1.3.0-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-v1.3.1-orange.svg)](CHANGELOG.md)
 
 <p>
   <a href="https://github.com/VTSTech"><strong>VTSTech</strong></a> •
@@ -191,30 +191,29 @@ Also registers a `self_diagnostic` tool so the AI agent can run diagnostics on c
 **Test any model for reasoning, tool usage, and instruction following — works with Ollama and cloud providers.**
 
 ```bash
-/model-test                     # Test current Pi model (auto-detects provider)
+/model-test                     # Test current Pi model
 /model-test qwen3:0.6b          # Test a specific Ollama model
 /model-test --all               # Test every Ollama model
 ```
 
-The extension auto-detects whether the active model is on **Ollama** or a **cloud provider** (OpenRouter, Anthropic, Google, OpenAI, Groq, DeepSeek, Mistral, xAI, Together, Fireworks, Cohere) and runs the appropriate test suite.
+The extension runs the **extended test flow** with 20 reasoning puzzles, multi-step JSON instruction compliance, and chained tool call generation.
 
-#### Ollama Test Suite (3 tests)
+#### Test Suite (3 tests)
 
 | Test | Method | Scoring |
 |------|--------|---------|
-| **Reasoning** | 20 puzzle tests (logic, math, spatial, commonsense, etc.) | STRONG / MODERATE / WEAK / FAIL / ERROR |
+| **Reasoning** | 20 puzzle tests (logic, math, spatial, commonsense, counter-intuitive, causal, comparative, analogical) | STRONG / MODERATE / WEAK / FAIL / ERROR |
 | **Instructions** | Multi-step JSON schema compliance with automatic repair | STRONG / MODERATE / WEAK / FAIL |
 | **Tool Usage** | Chained tool call generation | STRONG / MODERATE / WEAK / FAIL / ERROR |
 
-#### Cloud Provider Test Suite (3 tests)
-
-| Test | Method | Scoring |
-|------|--------|---------|
-| **Reasoning** | 20 puzzle tests via OpenAI-compatible chat completions API | STRONG / MODERATE / WEAK / FAIL / ERROR |
-| **Instructions** | Multi-step JSON schema compliance | STRONG / MODERATE / WEAK / FAIL |
-| **Tool Usage** | Tool call generation using OpenAI function calling format | STRONG / MODERATE / WEAK / FAIL / ERROR |
-
-Ollama-specific tests (thinking, ReAct parsing, tool support cache) are skipped for cloud providers.
+Features:
+- **Extended reasoning test** — 20 diverse puzzles with detailed breakdown
+- **Multi-step instructions** — JSON schema with multiple fields and types
+- **Chained tool calls** — tests multi-tool invocation capability
+- **Automatic provider detection** — classifies the active model as `ollama` or `builtin`
+- **Progress indicators** — UI notifications during testing
+- **No rate limit delay** — faster execution for Ollama instances
+- Tab-completion for model names in the `/model-test` command
 
 Features:
 - **Automatic provider detection** — classifies the active model as `ollama`, `builtin`, or `unknown`

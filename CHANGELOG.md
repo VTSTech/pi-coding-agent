@@ -5,6 +5,35 @@ All notable changes to the Pi Coding Agent Extensions (`@vtstech/pi-coding-agent
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 05-13-2026 7:47:10 PM
+
+### Changed
+
+- **model-test: Removed legacy `-t 01` test** (`extensions/model-test.ts`)
+  - Extended test flow (`-t 02`) is now the default and only test
+  - Removed ~60% of legacy code (reduced from ~2015 to ~813 lines)
+  - Removed legacy functions: `testModelOllama`, `testModelProvider`, `testReasoning`, `testThinking`, `testToolUsage`, `testReactParsing`, `testInstructionFollowing`, `testToolSupport`, `testConnectivity`, `updateModelsJsonReasoning`
+  - Updated command help to remove `-t 01` references
+  - Updated tool description to remove `test_type` parameter
+
+- **model-test: Removed rate limiting delay for Ollama** (`extensions/model-test.ts`)
+  - No delay between tests for any Ollama instance (local or remote)
+  - Faster test execution for local development
+
+- **model-test: Added progress indicators** (`extensions/model-test.ts`)
+  - Progress notifications during testing:
+    - "Testing 20 reasoning puzzles..."
+    - "Testing multi-step JSON schema compliance..."
+    - "Testing chained tool calls..."
+  - Uses `ctx.ui.notify()` for TUI mode
+
+### Performance
+
+- **Significant code reduction** (`extensions/model-test.ts`)
+  - File reduced from ~2015 lines to ~813 lines (~60% reduction)
+  - Cleaner, more maintainable codebase
+  - Focused on extended test flow with 20 reasoning puzzles
+
 ## [1.3.0] - 05-13-2026 6:41:26 PM
 
 ### Added
