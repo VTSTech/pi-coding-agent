@@ -179,23 +179,38 @@ export default function (pi: ExtensionAPI) {
     name: string;
     prompt: string;
     expectedAnswer: string;
-    category: "math" | "logic" | "spatial" | "commonsense" | "code";
+    category: "math" | "logic" | "spatial" | "commonsense" | "counterint" | "causal" | "comparative" | "code";
   }
 
   const REASONING_TESTS: ReasoningTest[] = [
+    // Original tests
     { name: "snail_wall", prompt: "A snail climbs 3 feet up a wall each day, but slides back 2 feet each night. The wall is 10 feet tall. How many days does it take the snail to reach the top? Think step by step. ANSWER: <number>", expectedAnswer: "8", category: "logic" },
     { name: "math_sequence", prompt: "What is the next number in this sequence: 2, 6, 18, 54, ? Think step by step. ANSWER: <number>", expectedAnswer: "162", category: "math" },
     { name: "spatial_directions", prompt: "If you face north and turn 90 degrees clockwise, then face west and turn 180 degrees counter-clockwise, which direction are you facing? ANSWER: <direction>", expectedAnswer: "south", category: "spatial" },
     { name: "commonsense", prompt: "A rooster laid an egg on top of the world's highest building. Which side is the egg on? ANSWER: <side>", expectedAnswer: "the other side", category: "commonsense" },
     { name: "code_simplify", prompt: "Simplify this code to one line: let x = 0; for(let i=1; i<=5; i++) x += i; ANSWER: <code>", expectedAnswer: "15", category: "code" },
+    // Phase 2: Counter-intuitive reasoning
+    { name: "bat_and_ball", prompt: "A bat and a ball cost $1.10 total. The bat costs $1 more than the ball. How much does the ball cost? Think step by step. ANSWER: <number> cents", expectedAnswer: "5", category: "counterint" },
+    { name: "scale_weight", prompt: "A scale weight is 100g. A similar scale weight is 4 times as heavy. How much does the second one weigh? Answer in grams. ANSWER: <number>", expectedAnswer: "400", category: "counterint" },
+    // Phase 2: Logical deduction
+    { name: "syllogism", prompt: "All mammals are warm-blooded. All dogs are mammals. Therefore, what can we conclude about dogs? Answer with the conclusion. ANSWER: <conclusion>", expectedAnswer: "warm-blooded", category: "logic" },
+    { name: "if_then_chain", prompt: "If it rains, the ground gets wet. If the ground gets wet, the grass grows. It is raining. What happens? Think step by step. ANSWER: <outcome>", expectedAnswer: "grass grows", category: "logic" },
+    // Phase 2: Causal reasoning
+    { name: "cause_effect", prompt: "If you plant a seed in good soil with water and sunlight, what happens? Think about cause and effect. ANSWER: <outcome>", expectedAnswer: "grows", category: "causal" },
+    // Phase 2: Comparative reasoning
+    { name: "relative_quantities", prompt: "Tom has 3 times as many apples as Sara. Sara has 5 apples. How many apples does Tom have? ANSWER: <number>", expectedAnswer: "15", category: "comparative" },
   ];
 
   function scoreReasoningExtended(msg: string, expectedAnswer: string): { score: string; pass: boolean } {
     const allNumbers = msg.match(/\b(\d+)\b/g) || [];
-    const answer = allNumbers.length > 0 ? allNumbers[allNumbers.length - 1] : "?";
-    const isCorrect = answer.toLowerCase().includes(expectedAnswer.toLowerCase());
-    const reasoningPatterns = ["because", "therefore", "since", "step", "subtract", "minus", "each day", "each night", "slides", "climbs", "night", "reaches", "finally", "last day", "sequence", "pattern", "multiply", "clockwise", "counter", "facing", "egg", "rooster"];
-    const hasReasoning = reasoningPatterns.some(w => msg.toLowerCase().includes(w)) || /^\s*\d+\.\s/m.test(msg);
+    const answer = allNumbers.length > 0 ? allNumbers[allNumbers.length - 1] : "";
+    // Check if expected answer is a number or text
+    const isNumericAnswer = /^\d+$/.test(expectedAnswer);
+    const isCorrect = isNumericAnswer
+      ? answer === expectedAnswer
+      : msg.toLowerCase().includes(expectedAnswer.toLowerCase());
+    const reasoningPatterns = ["because", "therefore", "since", "step", "subtract", "minus", "each day", "each night", "slides", "climbs", "night", "reaches", "finally", "last day", "sequence", "pattern", "multiply", "clockwise", "counter", "facing", "egg", "rooster", "cost", "dollar", "heavy", "mammal", "warm", "grow", "apple", "rains", "wet", "grass", "plant", "seed", "soil", "sunlight", "water", "times", "more", "less", "than"];
+    const hasReasoning = reasoningPatterns.some(w => msg.toLowerCase().includes(w)) || /^\s*\d+\.\s/m.test(msg) || /^(1|2|3)\.\s/m.test(msg);
     if (isCorrect && hasReasoning) return { score: "STRONG", pass: true };
     if (isCorrect) return { score: "MODERATE", pass: true };
     if (hasReasoning) return { score: "WEAK", pass: false };
