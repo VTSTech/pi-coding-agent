@@ -7,7 +7,7 @@ import {
 } from "../shared/format";
 import { getOllamaBaseUrl, detectProvider } from "../shared/ollama";
 import { debugLog } from "../shared/debug";
-import { CONFIG, WEATHER_TOOL_DEFINITION, type ChatFn } from "../shared/model-test-utils";
+import { CONFIG, WEATHER_TOOL_DEFINITION, getEffectiveConfig, type ChatFn } from "../shared/model-test-utils";
 import {
   branding as sharedBranding,
   formatTestSummary,
