@@ -266,7 +266,7 @@ build_extension() {
 }
 
 # ── Build all extensions ────────────────────────────────────────────────
-ALL_EXTENSIONS=("api" "diag" "ltm" "model-test" "ollama-sync" "openrouter-sync" "react-fallback" "security" "status" "soul")
+ALL_EXTENSIONS=("api" "diag" "long-term-memory" "model-test" "ollama-sync" "openrouter-sync" "react-fallback" "security" "status" "soul")
 
 build_all_extensions() {
   local failures=0
@@ -301,7 +301,7 @@ main() {
       echo ""
       build_all_extensions
       ;;
-    api|diag|model-test|ollama-sync|openrouter-sync|react-fallback|security|soul|status)
+    api|diag|long-term-memory|model-test|ollama-sync|openrouter-sync|react-fallback|security|soul|status)
       build_shared
       echo ""
       build_extension "$target"
@@ -315,6 +315,7 @@ Targets:
   shared           Build only @vtstech/pi-shared
   api              Build only @vtstech/pi-api
   diag             Build only @vtstech/pi-diag
+  long-term-memory Build only @vtstech/pi-long-term-memory
   model-test       Build only @vtstech/pi-model-test
   ollama-sync      Build only @vtstech/pi-ollama-sync
   openrouter-sync  Build only @vtstech/pi-openrouter-sync

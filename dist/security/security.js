@@ -640,7 +640,7 @@ function info(msg) {
 // shared/ollama.ts
 import * as path3 from "node:path";
 import os3 from "node:os";
-var EXTENSION_VERSION = "1.2.7";
+var EXTENSION_VERSION = "1.2.9";
 var MODELS_JSON_PATH = path3.join(os3.homedir(), ".pi", "agent", "models.json");
 
 // extensions/security.ts

@@ -1,8 +1,8 @@
 {
   "name": "@vtstech/pi-long-term-memory",
-  "version": "1.2.8",
+  "version": "1.2.9",
   "description": "Long-term memory extension for Pi - persistent memory across sessions",
-  "main": "ltm.js",
+  "main": "long-term-memory.js",
   "keywords": [
     "pi-package",
     "pi",
@@ -20,14 +20,14 @@
     "url": "https://github.com/VTSTech/pi-coding-agent"
   },
   "dependencies": {
-    "@vtstech/pi-shared": "^1.2.7"
+    "@vtstech/pi-shared": "1.2.9"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.66"
   },
   "pi": {
     "extensions": [
-      "./ltm.js"
+      "./long-term-memory.js"
     ]
   }
 }
