@@ -144,6 +144,28 @@ export interface SoulManifest {
   avatar_path?: string;
 }
 
+/**
+ * Expand a leading `~` segment to the current user's home directory.
+ *
+ * Neither `fs.existsSync` nor `path.resolve` perform tilde expansion — that is
+ * a shell convenience, not a Node.js one. Without this helper, any path
+ * starting with `~` (such as the default `soulsDirs` entries) is treated as a
+ * literal directory named `~` and never resolves to a real location.
+ *
+ * Only the standalone `~` and `~/` (or `~\`) prefixes are expanded; `~user`
+ * forms are passed through unchanged so they fail the way the user expects
+ * rather than being silently rewritten.
+ */
+export function expandHome(p: string): string {
+  const os = require('os');
+  const path = require('path');
+  if (p === "~") return os.homedir();
+  if (p.startsWith("~/") || p.startsWith("~\\")) {
+    return path.join(os.homedir(), p.slice(2));
+  }
+  return p;
+}
+
 // SoulSpec loader class
 export class SoulSpecLoader {
   private cache: Map<string, SoulManifest> = new Map();
@@ -152,9 +174,10 @@ export class SoulSpecLoader {
   constructor() {
     // Initialize with default paths that will be checked
     this.soulsDirs = [
-      "~/.pi/agent/souls",  // Global souls directory
-      ".pi/souls",          // Project-local souls directory
-      "./souls",           // Current directory souls
+      "~/.pi/agent/souls",            // Global Pi souls directory
+      "~/.openclaw/souls/clawsouls",  // ClawSouls CLI registry (e.g. `clawsouls install`)
+      ".pi/souls",                    // Project-local souls directory
+      "./souls",                      // Current directory souls
     ];
   }
 
@@ -167,8 +190,9 @@ export class SoulSpecLoader {
 
     for (const location of locations) {
       try {
-        if (require('fs').existsSync(location)) {
-          return location;
+        const expanded = expandHome(location);
+        if (require('fs').existsSync(expanded)) {
+          return expanded;
         }
       } catch {
         continue;
@@ -507,7 +531,9 @@ export class SoulSpecLoader {
     
     // Check all souls directories
     for (const soulsDir of this.soulsDirs) {
-      const resolvedDir = require('path').resolve(soulsDir);
+      // Expand `~` before resolving against cwd — `path.resolve` does not
+      // handle tildes and would otherwise produce `<cwd>/~/.pi/agent/souls`.
+      const resolvedDir = require('path').resolve(expandHome(soulsDir));
       
       try {
         if (require('fs').existsSync(resolvedDir)) {
@@ -691,7 +717,7 @@ export default function (pi: ExtensionAPI) {
     debug("SoulSpec extension discovering resources");
     return {
       skillPaths: [], // Souls are not skills
-      promptPaths: [".pi/souls", "./souls", "~/.pi/agent/souls"], // Add souls directories to prompt discovery
+      promptPaths: [".pi/souls", "./souls", "~/.pi/agent/souls", "~/.openclaw/souls/clawsouls"], // Add souls directories to prompt discovery
       themePaths: [],
     };
   });

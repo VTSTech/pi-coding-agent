@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Fixed
+
+- **SoulSpec discovery broken on every platform: `~` never expanded** (`extensions/soul.ts`, `individual-packages/pi-soul/src/soul.ts`)
+  - `SoulSpecLoader.soulsDirs` declared `"~/.pi/agent/souls"` as a configured path, but neither `fs.existsSync()` nor `path.resolve()` perform tilde expansion — that is a shell convenience, not a Node.js one. The hardcoded `~` was passed through verbatim:
+    - `resolveSoulPath()` called `fs.existsSync("~/.pi/agent/souls/<name>")`, which always returns `false` because there is no literal `~` directory.
+    - `getAllSouls()` called `path.resolve("~/.pi/agent/souls")`, which resolves against `process.cwd()` and produces e.g. `/Users/pc/Developer/~/.pi/agent/souls` — also nonexistent.
+  - End-to-end effect: `list_souls` always reported "No souls found" and `load_soul`/`/soul <name>` always reported "Soul not found", even when souls were correctly installed at the documented global location.
+  - Added an exported `expandHome(p)` helper that expands a leading `~` or `~/` (and `~\` on Windows) to `os.homedir()`. `~user` and mid-string `~` are passed through unchanged so they fail the way the user expects rather than being silently rewritten. `resolveSoulPath()` now expands every candidate location before `fs.existsSync`, and `getAllSouls()` expands each `soulsDir` before `path.resolve`.
+
+### Added
+
+- **`~/.openclaw/souls/clawsouls` added to default soul discovery path** (`extensions/soul.ts`, `individual-packages/pi-soul/src/soul.ts`)
+  - The ClawSouls CLI (`clawsouls install <owner/name>`) writes souls under `~/.openclaw/souls/clawsouls/<name>/`, but pi-soul was never configured to look there. Users installing souls via the official CLI saw them on disk but could not load them.
+  - Appended `"~/.openclaw/souls/clawsouls"` to the default `soulsDirs` (after `~/.pi/agent/souls`, before the project-local paths) and to the `promptPaths` returned from `resources_discover`. The `/souls` and `/souls --help` output now lists this path so users know where it is searched.
+
+### Testing
+
+- **Unit tests for tilde expansion and configured soul paths** (`tests/soul.test.ts` — new file)
+  - Added 7 tests covering `expandHome`: bare `~`, `~/` prefix, `~\` (Windows), absolute pass-through, relative pass-through, `~user` not expanded (intentional), and mid-string `~` not expanded.
+  - Added 4 tests covering `SoulSpecLoader.soulsDirs` membership (`~/.pi/agent/souls`, `~/.openclaw/souls/clawsouls`, `.pi/souls`, `./souls`) and a smoke test that `getAllSouls()` completes without throwing across tilde-prefixed directories.
+
 ## [1.2.8] - 05-12-2026
 
 ### Fixed
