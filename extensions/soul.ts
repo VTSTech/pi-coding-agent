@@ -1,33 +1,9 @@
-/**
- * SoulSpec Extension for Pi Coding Agent.
- * Ported from AgentNova SoulSpec system.
- *
- * Features:
- *   - Load and manage AI agent personas defined in SoulSpec format
- *   - Progressive disclosure support (Level 1-3)
- *   - Multiple soul locations (global, project-local, current directory)
- *   - Built-in tools for soul management
- *   - CLI commands for soul operations
- *   - Embodied agent support with hardware constraints
- *
- * Written by VTSTech — https://www.vts-tech.org
- */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { debugLog } from "../shared/debug";
-import { section, ok, fail, warn, info } from "../shared/format";
-import { EXTENSION_VERSION } from "../shared/ollama";
-import { expandHome } from "../shared/path-utils";
 
-// Re-exported for backward compatibility — earlier revisions exposed
-// `expandHome` directly from this module.
-export { expandHome };
-
-// ============================================================================
-// SoulSpec Types
-// ============================================================================
-
+// SoulSpec types ported to TypeScript
 export enum Environment {
   VIRTUAL = "virtual",
   EMBODIED = "embodied",
@@ -168,13 +144,29 @@ export interface SoulManifest {
   avatar_path?: string;
 }
 
-// ============================================================================
-// SoulSpec Loader
-// ============================================================================
+/**
+ * Expand a leading `~` segment to the current user's home directory.
+ *
+ * Neither `fs.existsSync` nor `path.resolve` perform tilde expansion — that is
+ * a shell convenience, not a Node.js one. Without this helper, any path
+ * starting with `~` (such as the default `soulsDirs` entries) is treated as a
+ * literal directory named `~` and never resolves to a real location.
+ *
+ * Only the standalone `~` and `~/` (or `~\`) prefixes are expanded; `~user`
+ * forms are passed through unchanged so they fail the way the user expects
+ * rather than being silently rewritten.
+ */
+export function expandHome(p: string): string {
+  const os = require('os');
+  const path = require('path');
+  if (p === "~") return os.homedir();
+  if (p.startsWith("~/") || p.startsWith("~\\")) {
+    return path.join(os.homedir(), p.slice(2));
+  }
+  return p;
+}
 
-import path from "path";
-import os from "os";
-
+// SoulSpec loader class
 export class SoulSpecLoader {
   private cache: Map<string, SoulManifest> = new Map();
   private soulsDirs: string[];
@@ -222,10 +214,10 @@ export class SoulSpecLoader {
     }
 
     const soulDir = require('fs').statSync(resolvedPath).isFile() 
-      ? path.dirname(resolvedPath)
+      ? require('path').dirname(resolvedPath)
       : resolvedPath;
 
-    const manifestPath = path.join(soulDir, 'soul.json');
+    const manifestPath = require('path').join(soulDir, 'soul.json');
     if (!require('fs').existsSync(manifestPath)) {
       throw new Error(`No soul.json found at: ${manifestPath}`);
     }
@@ -247,7 +239,7 @@ export class SoulSpecLoader {
   }
 
   private parseManifest(data: any, soulDir: string): SoulManifest {
-    debugLog("soul", `Parsing soul manifest: ${data.name}`);
+    debug(`Parsing soul manifest: ${data.name}`);
 
     // Parse author
     const author: Author = {
@@ -380,14 +372,14 @@ export class SoulSpecLoader {
 
   private async loadLevel2(manifest: SoulManifest, soulDir: string): Promise<void> {
     // Load SOUL.md
-    const soulPath = path.join(soulDir, manifest.files.soul);
+    const soulPath = require('path').join(soulDir, manifest.files.soul);
     if (require('fs').existsSync(soulPath)) {
       manifest.soul_content = require('fs').readFileSync(soulPath, 'utf-8');
     }
 
     // Load IDENTITY.md
     if (manifest.files.identity) {
-      const identityPath = path.join(soulDir, manifest.files.identity);
+      const identityPath = require('path').join(soulDir, manifest.files.identity);
       if (require('fs').existsSync(identityPath)) {
         manifest.identity_content = require('fs').readFileSync(identityPath, 'utf-8');
       }
@@ -397,7 +389,7 @@ export class SoulSpecLoader {
   private async loadLevel3(manifest: SoulManifest, soulDir: string): Promise<void> {
     // Load AGENTS.md
     if (manifest.files.agents) {
-      const agentsPath = path.join(soulDir, manifest.files.agents);
+      const agentsPath = require('path').join(soulDir, manifest.files.agents);
       if (require('fs').existsSync(agentsPath)) {
         manifest.agents_content = require('fs').readFileSync(agentsPath, 'utf-8');
       }
@@ -405,7 +397,7 @@ export class SoulSpecLoader {
 
     // Load STYLE.md
     if (manifest.files.style) {
-      const stylePath = path.join(soulDir, manifest.files.style);
+      const stylePath = require('path').join(soulDir, manifest.files.style);
       if (require('fs').existsSync(stylePath)) {
         manifest.style_content = require('fs').readFileSync(stylePath, 'utf-8');
       }
@@ -413,7 +405,7 @@ export class SoulSpecLoader {
 
     // Load HEARTBEAT.md
     if (manifest.files.heartbeat) {
-      const heartbeatPath = path.join(soulDir, manifest.files.heartbeat);
+      const heartbeatPath = require('path').join(soulDir, manifest.files.heartbeat);
       if (require('fs').existsSync(heartbeatPath)) {
         manifest.heartbeat_content = require('fs').readFileSync(heartbeatPath, 'utf-8');
       }
@@ -421,7 +413,7 @@ export class SoulSpecLoader {
 
     // Load USER_TEMPLATE.md
     if (manifest.files.user_template) {
-      const templatePath = path.join(soulDir, manifest.files.user_template);
+      const templatePath = require('path').join(soulDir, manifest.files.user_template);
       if (require('fs').existsSync(templatePath)) {
         manifest.user_template_content = require('fs').readFileSync(templatePath, 'utf-8');
       }
@@ -430,13 +422,13 @@ export class SoulSpecLoader {
     // Load calibration examples
     if (manifest.examples) {
       if (manifest.examples.good) {
-        const goodPath = path.join(soulDir, manifest.examples.good);
+        const goodPath = require('path').join(soulDir, manifest.examples.good);
         if (require('fs').existsSync(goodPath)) {
           manifest.examples_good_content = require('fs').readFileSync(goodPath, 'utf-8');
         }
       }
       if (manifest.examples.bad) {
-        const badPath = path.join(soulDir, manifest.examples.bad);
+        const badPath = require('path').join(soulDir, manifest.examples.bad);
         if (require('fs').existsSync(badPath)) {
           manifest.examples_bad_content = require('fs').readFileSync(badPath, 'utf-8');
         }
@@ -445,7 +437,7 @@ export class SoulSpecLoader {
 
     // Resolve avatar path
     if (manifest.files.avatar) {
-      const avatarPath = path.join(soulDir, manifest.files.avatar);
+      const avatarPath = require('path').join(soulDir, manifest.files.avatar);
       if (require('fs').existsSync(avatarPath)) {
         manifest.avatar_path = avatarPath;
       }
@@ -541,14 +533,14 @@ export class SoulSpecLoader {
     for (const soulsDir of this.soulsDirs) {
       // Expand `~` before resolving against cwd — `path.resolve` does not
       // handle tildes and would otherwise produce `<cwd>/~/.pi/agent/souls`.
-      const resolvedDir = path.resolve(expandHome(soulsDir));
+      const resolvedDir = require('path').resolve(expandHome(soulsDir));
       
       try {
         if (require('fs').existsSync(resolvedDir)) {
           const entries = require('fs').readdirSync(resolvedDir, { withFileTypes: true });
           for (const entry of entries) {
             if (entry.isDirectory() && !seenSouls.has(entry.name)) {
-              const soulJsonPath = path.join(resolvedDir, entry.name, 'soul.json');
+              const soulJsonPath = require('path').join(resolvedDir, entry.name, 'soul.json');
               if (require('fs').existsSync(soulJsonPath)) {
                 souls.push(entry.name);
                 seenSouls.add(entry.name);
@@ -557,7 +549,7 @@ export class SoulSpecLoader {
           }
         }
       } catch (error) {
-        debugLog("soul", `Error reading souls directory ${resolvedDir}: ${error}`);
+        debug(`Error reading souls directory ${resolvedDir}: ${error}`);
       }
     }
 
@@ -565,22 +557,14 @@ export class SoulSpecLoader {
   }
 }
 
-// ============================================================================
-// Extension
-// ============================================================================
-
-const branding = [
-  `  ⚡ Pi SoulSpec Extension v${EXTENSION_VERSION}`,
-  `  Written by VTSTech`,
-  `  GitHub: https://github.com/VTSTech`,
-  `  Website: www.vts-tech.org`,
-].join("\n");
+// Global loader instance
+let soulLoader: SoulSpecLoader;
 
 export default function (pi: ExtensionAPI) {
-  debugLog("soul", "SoulSpec extension loading...");
+  debug("SoulSpec extension loading...");
 
   // Initialize loader
-  const soulLoader = new SoulSpecLoader();
+  soulLoader = new SoulSpecLoader();
 
   // Register soul loader tool
   pi.registerTool({
@@ -597,7 +581,7 @@ export default function (pi: ExtensionAPI) {
       })),
     }),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
-      debugLog("soul", `Loading soul: ${params.soul_name}, level: ${params.level || 2}`);
+      debug(`Loading soul: ${params.soul_name}, level: ${params.level || 2}`);
       
       try {
         const soul = await soulLoader.load(params.soul_name, params.level || 2);
@@ -615,7 +599,7 @@ export default function (pi: ExtensionAPI) {
           }
         };
       } catch (error) {
-        debugLog("soul", `Error loading soul: ${error}`);
+        debug(`Error loading soul: ${error}`);
         return {
           content: [{ type: "text", text: `Error loading soul: ${error}` }],
           isError: true
@@ -672,7 +656,7 @@ export default function (pi: ExtensionAPI) {
       }),
     }),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
-      debugLog("soul", `Getting soul info for: ${params.soul_name}`);
+      debug(`Getting soul info for: ${params.soul_name}`);
       
       try {
         const soul = await soulLoader.load(params.soul_name, 1); // Level 1 for metadata
@@ -714,7 +698,7 @@ export default function (pi: ExtensionAPI) {
           details: { soul }
         };
       } catch (error) {
-        debugLog("soul", `Error loading soul info: ${error}`);
+        debug(`Error loading soul info: ${error}`);
         return {
           content: [{ type: "text", text: `Error loading soul info: ${error}` }],
           isError: true
@@ -725,12 +709,12 @@ export default function (pi: ExtensionAPI) {
 
   // Event handlers
   pi.on("session_start", async (event, ctx) => {
-    debugLog("soul", "SoulSpec extension session started");
+    debug("SoulSpec extension session started");
     ctx.ui.notify("SoulSpec extension loaded", "info");
   });
 
   pi.on("resources_discover", async (event, ctx) => {
-    debugLog("soul", "SoulSpec extension discovering resources");
+    debug("SoulSpec extension discovering resources");
     return {
       skillPaths: [], // Souls are not skills
       promptPaths: [".pi/souls", "./souls", "~/.pi/agent/souls", "~/.openclaw/souls/clawsouls"], // Add souls directories to prompt discovery
@@ -741,30 +725,8 @@ export default function (pi: ExtensionAPI) {
   // Add command to list souls
   pi.registerCommand("souls", {
     description: "List available souls",
-    detailedHelp: "\n\n🎭 Soul Management\n\nLists all available SoulSpec personas that can be loaded for your session.\n\n📋 Usage:\n  /souls                      - List all available souls\n  /souls --help              - Show this help\n\n📊 Information Displayed:\n• Soul name and display name\n• Description and purpose\n• Disclosure level summary\n• Location in filesystem\n\n💡 Tips:\n• Souls are stored in souls/ directories\n• Look for souls in: .pi/souls, ./souls, ~/.pi/agent/souls, ~/.openclaw/souls/clawsouls\n• Each soul should have a soul.json manifest\n",
     handler: async (args, ctx) => {
-      // Handle help command
-      if (args.trim() === "--help") {
-        ctx.ui.notify(
-          "🎭 Soul Management\n\n" +
-          "📋 Usage:\n" +
-          "  /souls                      - List all available souls\n" +
-          "  /souls --help              - Show this help\n\n" +
-          "📊 Information Displayed:\n" +
-          "• Soul name and display name\n" +
-          "• Description and purpose\n" +
-          "• Disclosure level summary\n" +
-          "• Location in filesystem\n\n" +
-          "💡 Tips:\n" +
-          "• Souls are stored in souls/ directories\n" +
-          "• Look for souls in: .pi/souls, ./souls, ~/.pi/agent/souls, ~/.openclaw/souls/clawsouls\n" +
-          "• Each soul should have a soul.json manifest\n",
-          "info"
-        );
-        return;
-      }
-      
-      debugLog("soul", "Listing souls command");
+      debug("Listing souls command");
       
       const souls = soulLoader.getAllSouls();
       
@@ -795,40 +757,8 @@ export default function (pi: ExtensionAPI) {
   // Add command to use a soul
   pi.registerCommand("soul", {
     description: "Use a soul for the current session",
-    detailedHelp: "\n\n🎭 SoulSpec Persona System\n\nLoads and manages AI agent personas defined in SoulSpec format with\nprogressive disclosure support and environment-specific customization.\n\n📋 Usage:\n  /soul <soul-name>            - Load a soul with standard disclosure (level 2)\n  /soul <soul-name> --level 1  - Load with minimal disclosure\n  /soul <soul-name> --level 2  - Load with standard disclosure (default)\n  /soul <soul-name> --level 3  - Load with full detailed information\n  /soul <soul-name> --info     - Show soul information without loading\n  /soul --help                - Show this help\n\n🔧 Disclosure Levels:\n• Level 1: Basic information only (minimal details)\n• Level 2: Standard disclosure with core capabilities\n• Level 3: Full detailed information and background\n\n📊 Soul Information:\n• Display name and description\n• Personality traits and communication style\n• Technical expertise and capabilities\n• Environmental constraints and preferences\n• Hardware specifications (for embodied agents)\n\n💡 Tips:\n• Use --info to preview a soul before loading\n• Adjust disclosure level based on your needs\n• Souls are automatically discovered from multiple directories\n• Each soul should have a soul.json manifest file\n",
     handler: async (args, ctx) => {
-      // Handle help command
-      if (args.trim() === "--help") {
-        ctx.ui.notify(
-          "🎭 SoulSpec Persona System\n\n" +
-          "📋 Usage:\n" +
-          "  /soul <soul-name>            - Load a soul with standard disclosure (level 2)\n" +
-          "  /soul <soul-name> --level 1  - Load with minimal disclosure\n" +
-          "  /soul <soul-name> --level 2  - Load with standard disclosure (default)\n" +
-          "  /soul <soul-name> --level 3  - Load with full detailed information\n" +
-          "  /soul <soul-name> --info     - Show soul information without loading\n" +
-          "  /soul --help                - Show this help\n\n" +
-          "🔧 Disclosure Levels:\n" +
-          "• Level 1: Basic information only (minimal details)\n" +
-          "• Level 2: Standard disclosure with core capabilities\n" +
-          "• Level 3: Full detailed information and background\n\n" +
-          "📊 Soul Information:\n" +
-          "• Display name and description\n" +
-          "• Personality traits and communication style\n" +
-          "• Technical expertise and capabilities\n" +
-          "• Environmental constraints and preferences\n" +
-          "• Hardware specifications (for embodied agents)\n\n" +
-          "💡 Tips:\n" +
-          "• Use --info to preview a soul before loading\n" +
-          "• Adjust disclosure level based on your needs\n" +
-          "• Souls are automatically discovered from multiple directories\n" +
-          "• Each soul should have a soul.json manifest file\n",
-          "info"
-        );
-        return;
-      }
-      
-      debugLog("soul", `Using soul command with: ${args}`);
+      debug(`Using soul command with: ${args}`);
       
       if (!args) {
         ctx.ui.notify("Usage: /soul <soul-name>", "error");
@@ -851,11 +781,11 @@ export default function (pi: ExtensionAPI) {
         
         ctx.ui.notify(`Using soul: ${soul.display_name}`, "success");
       } catch (error) {
-        debugLog("soul", `Error using soul: ${error}`);
+        debug(`Error using soul: ${error}`);
         ctx.ui.notify(`Error loading soul: ${error}`, "error");
       }
     },
   });
 
-  debugLog("soul", "SoulSpec extension loaded successfully");
+  debug("SoulSpec extension loaded successfully");
 }

@@ -10,34 +10,6 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
 
 // extensions/soul.ts
 import { Type } from "typebox";
-
-// shared/debug.ts
-var DEBUG_ENABLED = process?.env?.PI_EXTENSIONS_DEBUG === "1";
-function debugLog(module, message, ...args) {
-  if (!DEBUG_ENABLED) return;
-  const timestamp = (/* @__PURE__ */ new Date()).toISOString();
-  console.debug(`[pi-ext:${module}] ${timestamp} ${message}`, ...args);
-}
-
-// shared/ollama.ts
-import * as path from "node:path";
-import os from "node:os";
-var EXTENSION_VERSION = "1.2.9";
-var MODELS_JSON_PATH = path.join(os.homedir(), ".pi", "agent", "models.json");
-
-// shared/path-utils.ts
-import path2 from "path";
-import os2 from "os";
-function expandHome(p) {
-  if (p === "~") return os2.homedir();
-  if (p.startsWith("~/") || p.startsWith("~\\")) {
-    return path2.join(os2.homedir(), p.slice(2));
-  }
-  return p;
-}
-
-// extensions/soul.ts
-import path3 from "path";
 var Environment = /* @__PURE__ */ ((Environment2) => {
   Environment2["VIRTUAL"] = "virtual";
   Environment2["EMBODIED"] = "embodied";
@@ -63,6 +35,15 @@ var Mobility = /* @__PURE__ */ ((Mobility2) => {
   Mobility2["LIMITED"] = "limited";
   return Mobility2;
 })(Mobility || {});
+function expandHome(p) {
+  const os = __require("os");
+  const path = __require("path");
+  if (p === "~") return os.homedir();
+  if (p.startsWith("~/") || p.startsWith("~\\")) {
+    return path.join(os.homedir(), p.slice(2));
+  }
+  return p;
+}
 var SoulSpecLoader = class {
   constructor() {
     __publicField(this, "cache", /* @__PURE__ */ new Map());
@@ -78,11 +59,11 @@ var SoulSpecLoader = class {
       // Current directory souls
     ];
   }
-  resolveSoulPath(path4) {
+  resolveSoulPath(path) {
     const locations = [
-      path4,
+      path,
       // Absolute or relative path
-      ...this.soulsDirs.map((dir) => `${dir}/${path4}`)
+      ...this.soulsDirs.map((dir) => `${dir}/${path}`)
       // All configured souls directories
     ];
     for (const location of locations) {
@@ -106,8 +87,8 @@ var SoulSpecLoader = class {
     if (this.cache.has(cacheKey)) {
       return this.cache.get(cacheKey);
     }
-    const soulDir = __require("fs").statSync(resolvedPath).isFile() ? path3.dirname(resolvedPath) : resolvedPath;
-    const manifestPath = path3.join(soulDir, "soul.json");
+    const soulDir = __require("fs").statSync(resolvedPath).isFile() ? __require("path").dirname(resolvedPath) : resolvedPath;
+    const manifestPath = __require("path").join(soulDir, "soul.json");
     if (!__require("fs").existsSync(manifestPath)) {
       throw new Error(`No soul.json found at: ${manifestPath}`);
     }
@@ -123,7 +104,7 @@ var SoulSpecLoader = class {
     return manifest;
   }
   parseManifest(data, soulDir) {
-    debugLog("soul", `Parsing soul manifest: ${data.name}`);
+    debug(`Parsing soul manifest: ${data.name}`);
     const author = {
       name: data.author?.name || "Unknown",
       github: data.author?.github,
@@ -233,12 +214,12 @@ var SoulSpecLoader = class {
     };
   }
   async loadLevel2(manifest, soulDir) {
-    const soulPath = path3.join(soulDir, manifest.files.soul);
+    const soulPath = __require("path").join(soulDir, manifest.files.soul);
     if (__require("fs").existsSync(soulPath)) {
       manifest.soul_content = __require("fs").readFileSync(soulPath, "utf-8");
     }
     if (manifest.files.identity) {
-      const identityPath = path3.join(soulDir, manifest.files.identity);
+      const identityPath = __require("path").join(soulDir, manifest.files.identity);
       if (__require("fs").existsSync(identityPath)) {
         manifest.identity_content = __require("fs").readFileSync(identityPath, "utf-8");
       }
@@ -246,45 +227,45 @@ var SoulSpecLoader = class {
   }
   async loadLevel3(manifest, soulDir) {
     if (manifest.files.agents) {
-      const agentsPath = path3.join(soulDir, manifest.files.agents);
+      const agentsPath = __require("path").join(soulDir, manifest.files.agents);
       if (__require("fs").existsSync(agentsPath)) {
         manifest.agents_content = __require("fs").readFileSync(agentsPath, "utf-8");
       }
     }
     if (manifest.files.style) {
-      const stylePath = path3.join(soulDir, manifest.files.style);
+      const stylePath = __require("path").join(soulDir, manifest.files.style);
       if (__require("fs").existsSync(stylePath)) {
         manifest.style_content = __require("fs").readFileSync(stylePath, "utf-8");
       }
     }
     if (manifest.files.heartbeat) {
-      const heartbeatPath = path3.join(soulDir, manifest.files.heartbeat);
+      const heartbeatPath = __require("path").join(soulDir, manifest.files.heartbeat);
       if (__require("fs").existsSync(heartbeatPath)) {
         manifest.heartbeat_content = __require("fs").readFileSync(heartbeatPath, "utf-8");
       }
     }
     if (manifest.files.user_template) {
-      const templatePath = path3.join(soulDir, manifest.files.user_template);
+      const templatePath = __require("path").join(soulDir, manifest.files.user_template);
       if (__require("fs").existsSync(templatePath)) {
         manifest.user_template_content = __require("fs").readFileSync(templatePath, "utf-8");
       }
     }
     if (manifest.examples) {
       if (manifest.examples.good) {
-        const goodPath = path3.join(soulDir, manifest.examples.good);
+        const goodPath = __require("path").join(soulDir, manifest.examples.good);
         if (__require("fs").existsSync(goodPath)) {
           manifest.examples_good_content = __require("fs").readFileSync(goodPath, "utf-8");
         }
       }
       if (manifest.examples.bad) {
-        const badPath = path3.join(soulDir, manifest.examples.bad);
+        const badPath = __require("path").join(soulDir, manifest.examples.bad);
         if (__require("fs").existsSync(badPath)) {
           manifest.examples_bad_content = __require("fs").readFileSync(badPath, "utf-8");
         }
       }
     }
     if (manifest.files.avatar) {
-      const avatarPath = path3.join(soulDir, manifest.files.avatar);
+      const avatarPath = __require("path").join(soulDir, manifest.files.avatar);
       if (__require("fs").existsSync(avatarPath)) {
         manifest.avatar_path = avatarPath;
       }
@@ -396,13 +377,13 @@ Safety: ${ps.contact_policy} contact policy`);
     const souls = [];
     const seenSouls = /* @__PURE__ */ new Set();
     for (const soulsDir of this.soulsDirs) {
-      const resolvedDir = path3.resolve(expandHome(soulsDir));
+      const resolvedDir = __require("path").resolve(expandHome(soulsDir));
       try {
         if (__require("fs").existsSync(resolvedDir)) {
           const entries = __require("fs").readdirSync(resolvedDir, { withFileTypes: true });
           for (const entry of entries) {
             if (entry.isDirectory() && !seenSouls.has(entry.name)) {
-              const soulJsonPath = path3.join(resolvedDir, entry.name, "soul.json");
+              const soulJsonPath = __require("path").join(resolvedDir, entry.name, "soul.json");
               if (__require("fs").existsSync(soulJsonPath)) {
                 souls.push(entry.name);
                 seenSouls.add(entry.name);
@@ -411,21 +392,16 @@ Safety: ${ps.contact_policy} contact policy`);
           }
         }
       } catch (error) {
-        debugLog("soul", `Error reading souls directory ${resolvedDir}: ${error}`);
+        debug(`Error reading souls directory ${resolvedDir}: ${error}`);
       }
     }
     return souls;
   }
 };
-var branding = [
-  `  \u26A1 Pi SoulSpec Extension v${EXTENSION_VERSION}`,
-  `  Written by VTSTech`,
-  `  GitHub: https://github.com/VTSTech`,
-  `  Website: www.vts-tech.org`
-].join("\n");
+var soulLoader;
 function soul_default(pi) {
-  debugLog("soul", "SoulSpec extension loading...");
-  const soulLoader = new SoulSpecLoader();
+  debug("SoulSpec extension loading...");
+  soulLoader = new SoulSpecLoader();
   pi.registerTool({
     name: "load_soul",
     label: "Load Soul",
@@ -440,7 +416,7 @@ function soul_default(pi) {
       }))
     }),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
-      debugLog("soul", `Loading soul: ${params.soul_name}, level: ${params.level || 2}`);
+      debug(`Loading soul: ${params.soul_name}, level: ${params.level || 2}`);
       try {
         const soul = await soulLoader.load(params.soul_name, params.level || 2);
         const systemPrompt = soulLoader.buildSystemPrompt(soul, params.level || 2);
@@ -459,7 +435,7 @@ ${systemPrompt}`
           }
         };
       } catch (error) {
-        debugLog("soul", `Error loading soul: ${error}`);
+        debug(`Error loading soul: ${error}`);
         return {
           content: [{ type: "text", text: `Error loading soul: ${error}` }],
           isError: true
@@ -515,7 +491,7 @@ ${systemPrompt}`
       })
     }),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
-      debugLog("soul", `Getting soul info for: ${params.soul_name}`);
+      debug(`Getting soul info for: ${params.soul_name}`);
       try {
         const soul = await soulLoader.load(params.soul_name, 1);
         let info = `# ${soul.display_name}
@@ -573,7 +549,7 @@ ${systemPrompt}`
           details: { soul }
         };
       } catch (error) {
-        debugLog("soul", `Error loading soul info: ${error}`);
+        debug(`Error loading soul info: ${error}`);
         return {
           content: [{ type: "text", text: `Error loading soul info: ${error}` }],
           isError: true
@@ -582,11 +558,11 @@ ${systemPrompt}`
     }
   });
   pi.on("session_start", async (event, ctx) => {
-    debugLog("soul", "SoulSpec extension session started");
+    debug("SoulSpec extension session started");
     ctx.ui.notify("SoulSpec extension loaded", "info");
   });
   pi.on("resources_discover", async (event, ctx) => {
-    debugLog("soul", "SoulSpec extension discovering resources");
+    debug("SoulSpec extension discovering resources");
     return {
       skillPaths: [],
       // Souls are not skills
@@ -597,16 +573,8 @@ ${systemPrompt}`
   });
   pi.registerCommand("souls", {
     description: "List available souls",
-    detailedHelp: "\n\n\u{1F3AD} Soul Management\n\nLists all available SoulSpec personas that can be loaded for your session.\n\n\u{1F4CB} Usage:\n  /souls                      - List all available souls\n  /souls --help              - Show this help\n\n\u{1F4CA} Information Displayed:\n\u2022 Soul name and display name\n\u2022 Description and purpose\n\u2022 Disclosure level summary\n\u2022 Location in filesystem\n\n\u{1F4A1} Tips:\n\u2022 Souls are stored in souls/ directories\n\u2022 Look for souls in: .pi/souls, ./souls, ~/.pi/agent/souls, ~/.openclaw/souls/clawsouls\n\u2022 Each soul should have a soul.json manifest\n",
     handler: async (args, ctx) => {
-      if (args.trim() === "--help") {
-        ctx.ui.notify(
-          "\u{1F3AD} Soul Management\n\n\u{1F4CB} Usage:\n  /souls                      - List all available souls\n  /souls --help              - Show this help\n\n\u{1F4CA} Information Displayed:\n\u2022 Soul name and display name\n\u2022 Description and purpose\n\u2022 Disclosure level summary\n\u2022 Location in filesystem\n\n\u{1F4A1} Tips:\n\u2022 Souls are stored in souls/ directories\n\u2022 Look for souls in: .pi/souls, ./souls, ~/.pi/agent/souls, ~/.openclaw/souls/clawsouls\n\u2022 Each soul should have a soul.json manifest\n",
-          "info"
-        );
-        return;
-      }
-      debugLog("soul", "Listing souls command");
+      debug("Listing souls command");
       const souls = soulLoader.getAllSouls();
       if (souls.length === 0) {
         ctx.ui.notify("No souls found. Create a souls/ directory with soul.json files.", "info");
@@ -636,16 +604,8 @@ ${systemPrompt}`
   });
   pi.registerCommand("soul", {
     description: "Use a soul for the current session",
-    detailedHelp: "\n\n\u{1F3AD} SoulSpec Persona System\n\nLoads and manages AI agent personas defined in SoulSpec format with\nprogressive disclosure support and environment-specific customization.\n\n\u{1F4CB} Usage:\n  /soul <soul-name>            - Load a soul with standard disclosure (level 2)\n  /soul <soul-name> --level 1  - Load with minimal disclosure\n  /soul <soul-name> --level 2  - Load with standard disclosure (default)\n  /soul <soul-name> --level 3  - Load with full detailed information\n  /soul <soul-name> --info     - Show soul information without loading\n  /soul --help                - Show this help\n\n\u{1F527} Disclosure Levels:\n\u2022 Level 1: Basic information only (minimal details)\n\u2022 Level 2: Standard disclosure with core capabilities\n\u2022 Level 3: Full detailed information and background\n\n\u{1F4CA} Soul Information:\n\u2022 Display name and description\n\u2022 Personality traits and communication style\n\u2022 Technical expertise and capabilities\n\u2022 Environmental constraints and preferences\n\u2022 Hardware specifications (for embodied agents)\n\n\u{1F4A1} Tips:\n\u2022 Use --info to preview a soul before loading\n\u2022 Adjust disclosure level based on your needs\n\u2022 Souls are automatically discovered from multiple directories\n\u2022 Each soul should have a soul.json manifest file\n",
     handler: async (args, ctx) => {
-      if (args.trim() === "--help") {
-        ctx.ui.notify(
-          "\u{1F3AD} SoulSpec Persona System\n\n\u{1F4CB} Usage:\n  /soul <soul-name>            - Load a soul with standard disclosure (level 2)\n  /soul <soul-name> --level 1  - Load with minimal disclosure\n  /soul <soul-name> --level 2  - Load with standard disclosure (default)\n  /soul <soul-name> --level 3  - Load with full detailed information\n  /soul <soul-name> --info     - Show soul information without loading\n  /soul --help                - Show this help\n\n\u{1F527} Disclosure Levels:\n\u2022 Level 1: Basic information only (minimal details)\n\u2022 Level 2: Standard disclosure with core capabilities\n\u2022 Level 3: Full detailed information and background\n\n\u{1F4CA} Soul Information:\n\u2022 Display name and description\n\u2022 Personality traits and communication style\n\u2022 Technical expertise and capabilities\n\u2022 Environmental constraints and preferences\n\u2022 Hardware specifications (for embodied agents)\n\n\u{1F4A1} Tips:\n\u2022 Use --info to preview a soul before loading\n\u2022 Adjust disclosure level based on your needs\n\u2022 Souls are automatically discovered from multiple directories\n\u2022 Each soul should have a soul.json manifest file\n",
-          "info"
-        );
-        return;
-      }
-      debugLog("soul", `Using soul command with: ${args}`);
+      debug(`Using soul command with: ${args}`);
       if (!args) {
         ctx.ui.notify("Usage: /soul <soul-name>", "error");
         return;
@@ -663,12 +623,12 @@ ${systemPrompt}`
         });
         ctx.ui.notify(`Using soul: ${soul.display_name}`, "success");
       } catch (error) {
-        debugLog("soul", `Error using soul: ${error}`);
+        debug(`Error using soul: ${error}`);
         ctx.ui.notify(`Error loading soul: ${error}`, "error");
       }
     }
   });
-  debugLog("soul", "SoulSpec extension loaded successfully");
+  debug("SoulSpec extension loaded successfully");
 }
 export {
   ContactPolicy,
