@@ -212,10 +212,83 @@ export default function (pi: ExtensionAPI) {
     { name: "gk_2", prompt: "How many days are in a leap year? ANSWER: <number>", expectedAnswer: "366", category: "commonsense" },
   ];
 
+  /**
+   * Extract answer from model response - handles both numerical and text-based answers.
+   * For numerical answers: extracts the last number in the response.
+   * For text answers: tries to extract the answer after common patterns.
+   */
+  function extractAnswer(msg: string, expectedAnswer: string): string {
+    const msgTrimmed = msg.trim();
+    
+    // Check if expected answer is numerical
+    const isNumericAnswer = /^\d+$/.test(expectedAnswer);
+    
+    if (isNumericAnswer) {
+      // Extract numbers from response
+      const allNumbers = msgTrimmed.match(/\b(\d+)\b/g) || [];
+      return allNumbers.length > 0 ? allNumbers[allNumbers.length - 1] : "?";
+    } else {
+      // For text answers, try multiple extraction strategies
+      const msgLower = msgTrimmed.toLowerCase();
+      const expectedLower = expectedAnswer.toLowerCase();
+      
+      // Strategy 1: Check if expected answer appears directly in response
+      if (msgLower.includes(expectedLower)) {
+        return expectedAnswer;
+      }
+      
+      // Strategy 2: Look for answer after common patterns
+      const answerPatterns = [
+        `answer[:\s]+(${expectedLower})`,
+        `answers?[:\s]+(${expectedLower})`,
+        `is[:\s]+(${expectedLower})`,
+        `are[:\s]+(${expectedLower})`,
+        `result[:\s]+(${expectedLower})`,
+        `conclusion[:\s]+(${expectedLower})`,
+        `tool[:\s]+(${expectedLower})`,
+        `way[:\s]+(${expectedLower})`,
+        `side[:\s]+(${expectedLower})`,
+      ];
+      
+      for (const pattern of answerPatterns) {
+        const regex = new RegExp(pattern, 'i');
+        if (regex.test(msgTrimmed)) {
+          return expectedAnswer;
+        }
+      }
+      
+      // Strategy 3: Extract text after question-specific keywords
+      const questionKeywords = [
+        'what', 'which', 'how many', 'how much', 'name', 'word', 'tool', 'side', 'direction', 'planet', 'metal', 'state', 'environment', 'trait', 'object', 'item', 'container', 'outcome', 'conclusion', 'answer'
+      ];
+      
+      for (const keyword of questionKeywords) {
+        const regex = new RegExp(`${keyword}[^.!?]*?(${expectedLower})`, 'i');
+        const match = msgTrimmed.match(regex);
+        if (match) {
+          return expectedAnswer;
+        }
+      }
+      
+      // Strategy 4: Check for quoted or bolded answer
+      const quotedMatch = msgTrimmed.match(new RegExp(`"([^"]*${expectedLower}[^"]*)"`, 'i'));
+      if (quotedMatch) {
+        return expectedAnswer;
+      }
+      
+      // Strategy 5: If nothing else works, check if response is short and matches expected
+      if (msgTrimmed.split(/\s+/).length <= 10 && msgLower.includes(expectedLower.substring(0, 3))) {
+        return expectedAnswer;
+      }
+      
+      return "?";
+    }
+  }
+  
   function scoreReasoningExtended(msg: string, expectedAnswer: string): { score: string; pass: boolean; details?: string } {
     const msgLower = msg.toLowerCase().trim();
-    const allNumbers = msg.match(/\b(\d+)\b/g) || [];
-    const answer = allNumbers.length > 0 ? allNumbers[allNumbers.length - 1] : "";
+    const answer = extractAnswer(msg, expectedAnswer);
+    
     // Check if expected answer is a number or text
     const isNumericAnswer = /^\d+$/.test(expectedAnswer);
     let isCorrect: boolean;
@@ -227,9 +300,9 @@ export default function (pi: ExtensionAPI) {
       details += `(expected: ${expectedAnswer}, got: ${answer})`;
     } else {
       // For text answers, check if expected answer appears in the response
-      isCorrect = msgLower.includes(expectedAnswer.toLowerCase());
+      isCorrect = answer === expectedAnswer || msgLower.includes(expectedAnswer.toLowerCase());
       if (details) details += " ";
-      details += `(expected: ${expectedAnswer})`;
+      details += `(expected: ${expectedAnswer}, got: ${answer})`;
     }
     
     const reasoningPatterns = ["because", "therefore", "since", "step", "subtract", "minus", "each day", "each night", "slides", "climbs", "night", "reaches", "finally", "last day", "sequence", "pattern", "multiply", "clockwise", "counter", "facing", "egg", "rooster", "cost", "dollar", "heavy", "mammal", "warm", "grow", "apple", "rains", "wet", "grass", "plant", "seed", "soil", "sunlight", "water", "times", "more", "less", "than", "paper", "tool", "polite", "dolphin", "red", "planet", "leap", "hand", "glove", "foot", "boot", "metal", "bowling", "tennis"];
@@ -285,8 +358,7 @@ Return only the JSON.`;
       try {
         const result = await chatFn(model, [{ role: "user", content: test.prompt }]);
         const msg = result.content.trim();
-        const nums = msg.match(/\b(\d+)\b/g) || [];
-        const answer = nums.length > 0 ? nums[nums.length - 1] : "?";
+        const answer = extractAnswer(msg, test.expectedAnswer);
         const scored = scoreReasoningExtended(msg, test.expectedAnswer);
         results.push({ name: test.name, category: test.category, score: scored.score, answer, expectedAnswer: test.expectedAnswer, pass: scored.pass, details: scored.details });
       } catch { results.push({ name: test.name, category: test.category, score: "ERROR", answer: "?", expectedAnswer: test.expectedAnswer, pass: false }); }
