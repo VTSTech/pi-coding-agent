@@ -18,6 +18,11 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { debugLog } from "../shared/debug";
 import { section, ok, fail, warn, info } from "../shared/format";
 import { EXTENSION_VERSION } from "../shared/ollama";
+import { expandHome } from "../shared/path-utils";
+
+// Re-exported for backward compatibility — earlier revisions exposed
+// `expandHome` directly from this module.
+export { expandHome };
 
 // ============================================================================
 // SoulSpec Types
@@ -177,9 +182,10 @@ export class SoulSpecLoader {
   constructor() {
     // Initialize with default paths that will be checked
     this.soulsDirs = [
-      "~/.pi/agent/souls",  // Global souls directory
-      ".pi/souls",          // Project-local souls directory
-      "./souls",           // Current directory souls
+      "~/.pi/agent/souls",            // Global Pi souls directory
+      "~/.openclaw/souls/clawsouls",  // ClawSouls CLI registry (e.g. `clawsouls install`)
+      ".pi/souls",                    // Project-local souls directory
+      "./souls",                      // Current directory souls
     ];
   }
 
@@ -192,8 +198,9 @@ export class SoulSpecLoader {
 
     for (const location of locations) {
       try {
-        if (require('fs').existsSync(location)) {
-          return location;
+        const expanded = expandHome(location);
+        if (require('fs').existsSync(expanded)) {
+          return expanded;
         }
       } catch {
         continue;
@@ -532,7 +539,9 @@ export class SoulSpecLoader {
     
     // Check all souls directories
     for (const soulsDir of this.soulsDirs) {
-      const resolvedDir = path.resolve(soulsDir);
+      // Expand `~` before resolving against cwd — `path.resolve` does not
+      // handle tildes and would otherwise produce `<cwd>/~/.pi/agent/souls`.
+      const resolvedDir = path.resolve(expandHome(soulsDir));
       
       try {
         if (require('fs').existsSync(resolvedDir)) {
@@ -724,7 +733,7 @@ export default function (pi: ExtensionAPI) {
     debugLog("soul", "SoulSpec extension discovering resources");
     return {
       skillPaths: [], // Souls are not skills
-      promptPaths: [".pi/souls", "./souls", "~/.pi/agent/souls"], // Add souls directories to prompt discovery
+      promptPaths: [".pi/souls", "./souls", "~/.pi/agent/souls", "~/.openclaw/souls/clawsouls"], // Add souls directories to prompt discovery
       themePaths: [],
     };
   });
@@ -732,7 +741,7 @@ export default function (pi: ExtensionAPI) {
   // Add command to list souls
   pi.registerCommand("souls", {
     description: "List available souls",
-    detailedHelp: "\n\n🎭 Soul Management\n\nLists all available SoulSpec personas that can be loaded for your session.\n\n📋 Usage:\n  /souls                      - List all available souls\n  /souls --help              - Show this help\n\n📊 Information Displayed:\n• Soul name and display name\n• Description and purpose\n• Disclosure level summary\n• Location in filesystem\n\n💡 Tips:\n• Souls are stored in souls/ directories\n• Look for souls in: .pi/souls, ./souls, ~/.pi/agent/souls\n• Each soul should have a soul.json manifest\n",
+    detailedHelp: "\n\n🎭 Soul Management\n\nLists all available SoulSpec personas that can be loaded for your session.\n\n📋 Usage:\n  /souls                      - List all available souls\n  /souls --help              - Show this help\n\n📊 Information Displayed:\n• Soul name and display name\n• Description and purpose\n• Disclosure level summary\n• Location in filesystem\n\n💡 Tips:\n• Souls are stored in souls/ directories\n• Look for souls in: .pi/souls, ./souls, ~/.pi/agent/souls, ~/.openclaw/souls/clawsouls\n• Each soul should have a soul.json manifest\n",
     handler: async (args, ctx) => {
       // Handle help command
       if (args.trim() === "--help") {
@@ -748,7 +757,7 @@ export default function (pi: ExtensionAPI) {
           "• Location in filesystem\n\n" +
           "💡 Tips:\n" +
           "• Souls are stored in souls/ directories\n" +
-          "• Look for souls in: .pi/souls, ./souls, ~/.pi/agent/souls\n" +
+          "• Look for souls in: .pi/souls, ./souls, ~/.pi/agent/souls, ~/.openclaw/souls/clawsouls\n" +
           "• Each soul should have a soul.json manifest\n",
           "info"
         );
