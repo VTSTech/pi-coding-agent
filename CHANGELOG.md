@@ -6,7 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [1.2.9] - 2026-05-13 9:04:10 AM
+## [Unreleased]
+
+
+## [1.2.9] - 05-13-2026 9:04:10 AM
 
 ### Fixed
 
@@ -15,7 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `resolveSoulPath()` called `fs.existsSync("~/.pi/agent/souls/<name>")`, which always returns `false` because there is no literal `~` directory.
     - `getAllSouls()` called `path.resolve("~/.pi/agent/souls")`, which resolves against `process.cwd()` and produces e.g. `/Users/pc/Developer/~/.pi/agent/souls` — also nonexistent.
   - End-to-end effect: `list_souls` always reported "No souls found" and `load_soul`/`/soul <name>` always reported "Soul not found", even when souls were correctly installed at the documented global location.
-  - Added an exported `expandHome(p)` helper that expands a leading `~` or `~/` (and `~\` on Windows) to `os.homedir()`. `~user` and mid-string `~` are passed through unchanged so they fail the way the user expects rather than being silently rewritten. `resolveSoulPath()` now expands every candidate location before `fs.existsSync`, and `getAllSouls()` expands each `soulsDir` before `path.resolve`.
+  - Added an exported `expandHome(p)` helper that expands a leading `~` or `~/` (and `~\` on Windows) to `os.homedir()`. `~user` and mid-string `~` are passed through unchanged so they fail the way the user expects rather than be silently rewritten. `resolveSoulPath()` now expands every candidate location before `fs.existsSync`, and `getAllSouls()` expands each `soulsDir` before `path.resolve`.
+
+- **Build script package naming inconsistency** (`extensions/`, `individual-packages/`, `scripts/build-tgz.sh`)
+  - Extension file was named `ltm.ts` but package directory was `pi-long-term-memory`, causing build failures
+  - Renamed `extensions/ltm.ts` → `extensions/long-term-memory.ts` for consistency
+  - Renamed `individual-packages/pi-long-term-memory/ltm.ts` → `individual-packages/pi-long-term-memory/long-term-memory.ts`
+  - Renamed `individual-packages/pi-long-term-memory/ltm.js` → `individual-packages/pi-long-term-memory/long-term-memory.js`
+  - Updated `package.json` main field and pi.extensions array to reference correct filenames
+  - Updated build script `ALL_EXTENSIONS` array and usage targets to use `"long-term-memory"` instead of `"ltm"`
+  - Updated build script help text to reflect new package name
+  - All 11 packages now build successfully without warnings
 
 ### Added
 
