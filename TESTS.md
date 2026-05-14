@@ -44,11 +44,11 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 
 | Model | Provider | Reasoning | Instructions | Tool Usage | Score |
 |-------|----------|-----------|--------------|------------|-------|
-| `zai/glm-4.5-flash` | ZAI | ❌ ERROR | ✅ STRONG | ✅ STRONG | **2/3** |
+| `glm-4.5-flash` | ZAI | 11/20 | ❌ FAIL | ✅ STRONG | **2/3** |
 | `poolside/laguna-xs.2:free` | OpenRouter | 17/20 | ✅ STRONG | ✅ STRONG | **3/3** |
 
 > **Notes:**
-> - `zai/glm-4.5-flash` — reasoning returns empty response; instructions and tool usage work correctly (direct ZAI provider).
+> - `glm-4.5-flash` — reasoning MODERATE (11/20), instructions FAIL (truncated JSON), tool usage STRONG (chained: get_weather, calculate).
 > - `poolside/laguna-xs.2:free` — all tests pass via OpenRouter.
 
 ---
