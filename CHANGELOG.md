@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated command description to mention help option
   - Updated no-args error message to include help hint
 
+### Fixed
+
+- **model-test: Added 10-second delay between reasoning tests** (`extensions/model-test.ts`)
+  - Previously, the delay was only applied between test types (reasoning, instruction, tool)
+  - Now delays between each of the 20 individual reasoning puzzles
+  - Prevents rate limiting issues when testing models with high token throughput
+
 ## [1.3.2] - 05-13-2026 8:31:59 PM
 
 ### Fixed

@@ -588,6 +588,8 @@ Return only the JSON.`;
         const scored = scoreReasoningExtended(msg, test.expectedAnswer);
         results.push({ name: test.name, category: test.category, score: scored.score, answer, expectedAnswer: test.expectedAnswer, pass: scored.pass, details: scored.details });
       } catch { results.push({ name: test.name, category: test.category, score: "ERROR", answer: "?", expectedAnswer: test.expectedAnswer, pass: false }); }
+      // Delay between reasoning tests to avoid rate limiting
+      await rateLimitDelay();
     }
     return { score: averageScore(results.map(r => r.score)), scores: results.map(r => r.score), answers: results.map(r => r.answer), results };
   }
