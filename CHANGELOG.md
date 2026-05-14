@@ -5,6 +5,45 @@ All notable changes to the Pi Coding Agent Extensions (`@vtstech/pi-coding-agent
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.4] - 05-14-2026 3:53:31 PM
+
+### Added
+
+- **soul: Enhanced partial matching for soul names** (`extensions/soul.ts`)
+  - Added regex-based partial matching to improve soul name resolution and tab autocomplete compatibility
+  - When exact soul name matching fails, attempts partial string matching (case-insensitive)
+  - Supports regex patterns like `/dev/ig` for advanced matching with flags
+  - Auto-resolves to single match, shows suggestions for multiple matches, provides helpful error messages
+  - Enhanced error handling with smart suggestions when no exact match is found
+  - Updated `load_soul`, `soul_info`, and `/soul` command to leverage partial matching
+  - Added `findPartialSoulPath()` and `findMatchingSouls()` helper functions
+  - Maintains backward compatibility with exact matching while adding flexible search capabilities
+
+- **soul: Improved error messages and suggestions** (`extensions/soul.ts`)
+  - When soul loading fails, shows potential matches with helpful guidance
+  - Displays available souls when no matches found, encouraging users to try partial matching
+  - Error messages include specific suggestions like "try 'dev' or 'assist' for partial matching"
+  - Enhanced tool descriptions to document partial matching capabilities
+  - Better user experience when soul names are misspelled or incomplete
+
+### Changed
+
+- **soul: Enhanced command help text** (`extensions/soul.ts`)
+  - Updated `/soul --help` to document partial matching capabilities
+  - Added examples showing partial matching usage (e.g., `/soul dev` matches 'developer')
+  - Simplified regex pattern documentation while maintaining functionality
+  - Removed complex regex examples to focus on simple partial matching
+  - Improved clarity around partial matching vs exact matching behavior
+
+### Fixed
+
+- **soul: Resolved tab autocomplete compatibility issues** (`extensions/soul.ts`)
+  - Fixed exact-only matching that caused problems with tab autocomplete scenarios
+  - Partial matching now works seamlessly with shell tab completion
+  - Single match resolution prevents ambiguity while maintaining user control
+  - Multiple matches provide clear guidance without auto-resolving
+  - Enhanced robustness for various soul naming patterns and user input styles
+
 ## [1.3.3] - 05-14-2026 10:21:00 AM
 
 ### Added
@@ -41,7 +80,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Removed the redundant delay that ran before the reasoning loop (was wasting one full delay before any test started).
   - Skips the delay after the last reasoning puzzle to avoid unnecessary waiting at the end of the loop.
   - Default delay configurable via `TEST_DELAY_MS` in `shared/model-test-utils.ts` (user-overridable via `~/.pi/agent/model-test-config.json`).
-
 
 ## [1.3.2] - 05-13-2026 8:31:59 PM
 
