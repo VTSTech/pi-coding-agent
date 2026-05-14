@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { debugLog } from "../shared/debug";
@@ -526,16 +527,16 @@ export class SoulSpecLoader {
     return parts.join('');
   }
 
-  getAllSouls(): string[] {
-    const souls: string[] = [];
+  getAllSouls(): Array<{ name: string; displayName: string; description: string }> {
+    const souls: Array<{ name: string; displayName: string; description: string }> = [];
     const seenSouls = new Set<string>();
-    
+
     // Check all souls directories
     for (const soulsDir of this.soulsDirs) {
       // Expand `~` before resolving against cwd — `path.resolve` does not
       // handle tildes and would otherwise produce `<cwd>/~/.pi/agent/souls`.
       const resolvedDir = path.resolve(expandHome(soulsDir));
-      
+
       try {
         if (fs.existsSync(resolvedDir)) {
           const entries = fs.readdirSync(resolvedDir, { withFileTypes: true });
@@ -543,7 +544,16 @@ export class SoulSpecLoader {
             if (entry.isDirectory() && !seenSouls.has(entry.name)) {
               const soulJsonPath = path.join(resolvedDir, entry.name, 'soul.json');
               if (fs.existsSync(soulJsonPath)) {
-                souls.push(entry.name);
+                try {
+                  const data = JSON.parse(fs.readFileSync(soulJsonPath, 'utf-8'));
+                  souls.push({
+                    name: entry.name,
+                    displayName: data.displayName || entry.name,
+                    description: data.description || ''
+                  });
+                } catch {
+                  souls.push({ name: entry.name, displayName: entry.name, description: '' });
+                }
                 seenSouls.add(entry.name);
               }
             }
@@ -625,18 +635,18 @@ export default function (pi: ExtensionAPI) {
       }
 
       let response = "Available souls:\n\n";
-      for (const soul of souls) {
+      for (const s of souls) {
+        response += `- **${s.displayName}** (${s.name})\n`;
+        response += `  ${s.description}\n`;
         try {
-          const manifest = await soulLoader.load(soul, 1); // Level 1 for quick info
-          response += `- **${manifest.display_name}** (${soul})\n`;
-          response += `  ${manifest.description}\n`;
+          const manifest = await soulLoader.load(s.name, 1);
           if (manifest.disclosure?.summary) {
             response += `  ${manifest.disclosure.summary}\n`;
           }
-          response += `\n`;
         } catch (error) {
-          response += `- **${soul}** (Error loading: ${error})\n\n`;
+          response += `  (Error loading details: ${error})\n`;
         }
+        response += `\n`;
       }
 
       return {
@@ -737,18 +747,18 @@ export default function (pi: ExtensionAPI) {
       }
 
       let message = "Available souls:\n\n";
-      for (const soul of souls) {
+      for (const s of souls) {
+        message += `• **${s.displayName}** (${s.name})\n`;
+        message += `  ${s.description}\n`;
         try {
-          const manifest = await soulLoader.load(soul, 1);
-          message += `• **${manifest.display_name}** (${soul})\n`;
-          message += `  ${manifest.description}\n`;
+          const manifest = await soulLoader.load(s.name, 1);
           if (manifest.disclosure?.summary) {
             message += `  ${manifest.disclosure.summary}\n`;
           }
-          message += "\n";
         } catch (error) {
-          message += `• **${soul}** (Error: ${error})\n\n`;
+          message += `  (Error loading details: ${error})\n`;
         }
+        message += "\n";
       }
       
       ctx.ui.notify(message, "info");
@@ -758,11 +768,27 @@ export default function (pi: ExtensionAPI) {
   // Add command to use a soul
   pi.registerCommand("soul", {
     description: "Use a soul for the current session",
+    getArgumentCompletions: (prefix: string): AutocompleteItem[] | null => {
+      const souls = soulLoader.getAllSouls();
+      const items: AutocompleteItem[] = souls.map((s) => ({
+        value: s.name,
+        label: s.displayName,
+        description: s.description
+      }));
+      const filtered = items.filter((i) => i.value.startsWith(prefix));
+      return filtered.length > 0 ? filtered : null;
+    },
     handler: async (args, ctx) => {
       debugLog("soul", `Using soul command with: ${args}`);
       
       if (!args) {
-        ctx.ui.notify("Usage: /soul <soul-name>", "error");
+        const souls = soulLoader.getAllSouls();
+        let msg = "Usage: /soul <soul-name>\n\nAvailable souls:\n";
+        for (const s of souls) {
+          const desc = s.description ? ` — ${s.description}` : '';
+          msg += `\n  \u2022 ${s.name}${desc}`;
+        }
+        ctx.ui.notify(msg, "error");
         return;
       }
 
