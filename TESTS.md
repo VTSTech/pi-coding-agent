@@ -2,7 +2,7 @@
 
 Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via remote Ollama over Cloudflare Tunnel.
 
-> **Test Suite (v1.3.1):**
+> **Test Suite (v1.3.3):**
 > - **Reasoning** — 20 puzzle tests (logic, math, spatial, commonsense, etc.)
 > - **Instructions** — Multi-step JSON schema compliance
 > - **Tool Usage** — Chained tool call generation
@@ -46,20 +46,22 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 |-------|----------|-----------|--------------|------------|-------|
 | `glm-4.5-flash` | ZAI | 11/20 | ❌ FAIL | ✅ STRONG | **2/3** |
 | `minimax/minimax-m2.5:free` | OpenRouter | 9/20 | ✅ STRONG | ✅ STRONG | **2/3** |
-| `nvidia/nemotron-3-nano-30b-a3b:free` | OpenRouter | 12/20 | ✅ STRONG | ✅ STRONG | **3/3** |
+| `nvidia/nemotron-3-nano-30b-a3b:free` | OpenRouter | 13/20 | ✅ STRONG | ✅ STRONG | **3/3** |
 | `openai/gpt-oss-120b:free` | OpenRouter | 14/20 | ✅ STRONG | MODERATE | **3/3** |
-| `poolside/laguna-xs.2:free` | OpenRouter | 17/20 | ✅ STRONG | ✅ STRONG | **3/3** |
+| `poolside/laguna-m.1:free` | OpenRouter | 13/20 | ✅ STRONG | MODERATE | **3/3** |
+| `poolside/laguna-xs.2:free` | OpenRouter | 17/20 | ✅ STRONG | MODERATE | **3/3** |
 
 > **Notes:**
 > - `glm-4.5-flash` — reasoning MODERATE (11/20), instructions FAIL (truncated JSON), tool usage STRONG (chained: get_weather, calculate).
 > - `minimax/minimax-m2.5:free` — reasoning WEAK (9/20, many ERROR results), instructions STRONG, tool usage STRONG (chained: get_weather, calculate).
-> - `nvidia/nemotron-3-nano-30b-a3b:free` — reasoning MODERATE (12/20), instructions STRONG, tool usage STRONG (chained: get_weather, calculate). MoE with 30B total / 3B active params.
+> - `nvidia/nemotron-3-nano-30b-a3b:free` — reasoning MODERATE (13/20), instructions STRONG, tool usage STRONG (chained: get_weather, calculate). MoE with 30B total / 3B active params.
 > - `openai/gpt-oss-120b:free` — reasoning MODERATE (14/20), instructions STRONG, tool usage MODERATE (only called get_weather, missed calculate).
-> - `poolside/laguna-xs.2:free` — all tests pass via OpenRouter.
+> - `poolside/laguna-m.1:free` — reasoning MODERATE (13/20), instructions STRONG, tool usage MODERATE (only called get_weather, missed calculate).
+> - `poolside/laguna-xs.2:free` — reasoning STRONG (17/20), instructions STRONG, tool usage MODERATE.
 
 ---
 
-### Sample Report — `poolside/laguna-xs.2:free` via OpenRouter
+### Sample Report — `poolside/laguna-m.1:free` via OpenRouter
 
 ```
 [model-test-report]                                                                                                 
@@ -69,60 +71,60 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
    GitHub: https://github.com/VTSTech                                                                                
    Website: www.vts-tech.org (http://www.vts-tech.org)                                                               
                                                                                                                      
- ── MODEL: poolside/laguna-xs.2:free ────────────────────────                                                        
+ ── MODEL: poolside/laguna-m.1:free ─────────────────────────                                                        
    ℹ️  Provider: openrouter (builtin)                                                                                
                                                                                                                      
  ── REASONING TEST (EXTENDED) ───────────────────────────────                                                        
    ℹ️  Testing 20 reasoning puzzles...                                                                               
-   ✅ ✅ snail_wall (logic): STRONG - expected "8", got "8" [ (expected: 8, got: 8)]                                 
+   ⚠️  ❌ snail_wall (logic): WEAK - expected "8", got "2" [ (expected: 8, got: 2)]                                  
    ✅ ✅ math_sequence (math): STRONG - expected "162", got "162" [ (expected: 162, got: 162)]                       
-   ⚠️  ❌ spatial_directions (spatial): WEAK - expected "south", got "?" [ (expected: south, got: ?)]                
+   ❌ ❌ spatial_directions (spatial): FAIL - expected "south", got "?" [ (expected: south, got: ?)]                 
    ❌ ❌ commonsense (commonsense): FAIL - expected "the other side", got "?" [ (expected: the other side, got: ?)]  
-   ⚠️  ✅ code_simplify (code): MODERATE - expected "15", got "15" [ (expected: 15, got: 15)]                        
+   ❌ ❌ code_simplify (code): FAIL - expected "15", got "?" [ (expected: 15, got: ?)]                               
    ✅ ✅ bat_and_ball (counterint): STRONG - expected "5", got "5" [ (expected: 5, got: 5)]                          
-   ✅ ✅ scale_weight (counterint): STRONG - expected "400", got "400" [ (expected: 400, got: 400)]                  
+   ⚠️  ✅ scale_weight (counterint): MODERATE - expected "400", got "400" [ (expected: 400, got: 400)]               
    ✅ ✅ syllogism (logic): STRONG - expected "warm-blooded", got "warm-blooded" [ (expected: warm-blooded, got:     
  warm-blooded)]                                                                                                      
    ✅ ✅ if_then_chain (logic): STRONG - expected "grass grows", got "grass grows" [ (expected: grass grows, got:    
  grass grows)]                                                                                                       
    ✅ ✅ cause_effect (causal): STRONG - expected "grows", got "grows" [ (expected: grows, got: grows)]              
    ✅ ✅ relative_quantities (comparative): STRONG - expected "15", got "15" [ (expected: 15, got: 15)]              
-   ✅ ✅ analogy_1 (analogy): STRONG - expected "room", got "room" [ (expected: room, got: room)]                    
-   ⚠️  ❌ analogy_2 (analogy): WEAK - expected "boot", got "?" [ (expected: boot, got: ?)]                           
+   ❌ ❌ analogy_1 (analogy): FAIL - expected "room", got "?" [ (expected: room, got: ?)]                            
+   ❌ ❌ analogy_2 (analogy): FAIL - expected "boot", got "?" [ (expected: boot, got: ?)]                            
    ✅ ✅ physics_1 (commonsense): STRONG - expected "bowling ball", got "bowling ball" [ (expected: bowling ball,    
  got: bowling ball)]                                                                                                 
-   ⚠️  ✅ physics_2 (commonsense): MODERATE - expected "hot", got "hot" [ (expected: hot, got: hot)]                 
-   ✅ ✅ objects_1 (commonsense): STRONG - expected "scissors", got "scissors" [ (expected: scissors, got:           
+   ✅ ✅ physics_2 (commonsense): STRONG - expected "hot", got "hot" [ (expected: hot, got: hot)]                    
+   ⚠️  ✅ objects_1 (commonsense): MODERATE - expected "scissors", got "scissors" [ (expected: scissors, got:        
  scissors)]                                                                                                          
    ✅ ✅ social_1 (commonsense): STRONG - expected "polite", got "polite" [ (expected: polite, got: polite)]         
-   ✅ ✅ animals_1 (commonsense): STRONG - expected "water", got "water" [ (expected: water, got: water)]            
-   ✅ ✅ gk_1 (commonsense): STRONG - expected "mars", got "mars" [ (expected: mars, got: mars)]                     
-   ✅ ✅ gk_2 (commonsense): STRONG - expected "366", got "366" [ (expected: 366, got: 366)]                         
-   ✅ Average score: STRONG                                                                                          
+   ❌ ❌ animals_1 (commonsense): FAIL - expected "water", got "?" [ (expected: water, got: ?)]                      
+   ⚠️  ✅ gk_1 (commonsense): MODERATE - expected "mars", got "mars" [ (expected: mars, got: mars)]                  
+   ⚠️  ✅ gk_2 (commonsense): MODERATE - expected "366", got "366" [ (expected: 366, got: 366)]                      
+   ✅ Average score: MODERATE                                                                                        
                                                                                                                      
  ── INSTRUCTION FOLLOWING TEST (EXTENDED) ───────────────────                                                        
    ℹ️  Testing multi-step JSON schema compliance...                                                                  
-   ℹ️  Time: 2.1s                                                                                                    
+   ℹ️  Time: 24.2s                                                                                                   
    ✅ JSON output valid with correct values (STRONG)                                                                 
-   ℹ️  Output: {"name":"Poolside                                                                                     
- Assistant","can_count":true,"sum":42,"language":"English","colors":["red","blue","green"],"timestamp":"2025-01-09T1 
- 2:00:00Z"}                                                                                                          
+   ℹ️  Output:                                                                                                       
+ {"name":"Poolside","can_count":true,"sum":42,"language":"English","colors":["red","blue","green"],"timestamp":"2023 
+ -10-05T12:34:56Z"}                                                                                                  
                                                                                                                      
  ── TOOL USAGE TEST (EXTENDED) ──────────────────────────────                                                        
    ℹ️  Testing chained tool calls...                                                                                 
-   ℹ️  Time: 318ms                                                                                                   
+   ℹ️  Time: 388ms                                                                                                   
    ✅ Tool calls: get_weather (MODERATE)                                                                             
-   ℹ️  Response: I'll get the weather for Tokyo and calculate that multiplication for you.                           
+   ℹ️  Response: I'll get the weather in Tokyo and calculate 15*24 for you.                                          
                                                                                                                      
  ── SUMMARY ─────────────────────────────────────────────────                                                        
-   ✅ Reasoning: STRONG                                                                                              
+   ✅ Reasoning: MODERATE                                                                                            
    ✅ Instructions: STRONG                                                                                           
    ✅ Tool Usage: MODERATE                                                                                           
-   ℹ️  Total time: 1.6m                                                                                              
+   ℹ️  Total time: 14.1m                                                                                             
    ℹ️  Score: 3/3 tests passed                                                                                       
                                                                                                                      
-   ℹ️  Detailed: Reasoning 17/20 tests passed, Instructions 1/1, Tool Usage 1/1                                      
+   ℹ️  Detailed: Reasoning 13/20 tests passed, Instructions 1/1, Tool Usage 1/1                                      
                                                                                                                      
  ── RECOMMENDATION ──────────────────────────────────────────                                                        
-   ❌ poolside/laguna-xs.2:free is WEAK — limited capabilities for agent use
+   ❌ poolside/laguna-m.1:free is WEAK — limited capabilities for agent use
 ```
