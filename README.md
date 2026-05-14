@@ -1,13 +1,13 @@
 <div align="center">
 
-# ⚡ Pi Coding Agent — VTSTech's Extensions
+# ⚡ Pi Coding Agent - VTSTech's Extensions
 
 **Pi package with custom extensions, themes, and configurations for the [Pi Coding Agent](https://github.com/badlogic/pi-mono)**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Pi Version](https://img.shields.io/badge/Pi-v0.66%2B-green.svg)](https://github.com/badlogic/pi-mono)
 [![Pi Package](https://img.shields.io/badge/Install-pi%20install%20git-blue.svg)](#installation)
-[![Version](https://img.shields.io/badge/Version-v1.3.1-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-v1.3.2-orange.svg)](CHANGELOG.md)
 
 <p>
   <a href="https://github.com/VTSTech"><strong>VTSTech</strong></a> •
@@ -23,9 +23,9 @@
 
 ## Overview
 
-A [Pi package](#pi-package-format) containing extensions, themes, and configuration for the [Pi Coding Agent](https://github.com/badlogic/pi-mono). These tools are built and optimized for running Pi on **resource-constrained environments** such as **Google Colab (CPU-only, 12GB RAM)** with **Ollama** serving small local models (0.3B–2B parameters), as well as with **cloud providers** like OpenRouter, Anthropic, Google, OpenAI, Groq, DeepSeek, and more.
+A [Pi package](#pi-package-format) containing extensions, themes, and configuration for the [Pi Coding Agent](https://github.com/badlogic/pi-mono). These tools are built and optimized for running Pi on **resource-constrained environments** such as **Google Colab (CPU-only, 12GB RAM)** with **Ollama** serving small local models (0.3B-2B parameters), as well as with **cloud providers** like OpenRouter, Anthropic, Google, OpenAI, Groq, DeepSeek, and more.
 
-Everything here is battle-tested on real hardware with real models — from small local Ollama models on budget machines to cloud providers via OpenRouter.
+Everything here is battle-tested on real hardware with real models - from small local Ollama models on budget machines to cloud providers via OpenRouter.
 
 ---
 
@@ -75,7 +75,7 @@ pi update
 | Package | Description |
 |---------|-------------|
 | `@vtstech/pi-diag` | System diagnostic suite |
-| `@vtstech/pi-model-test` | Model benchmark — Ollama & cloud providers |
+| `@vtstech/pi-model-test` | Model benchmark - Ollama & cloud providers |
 | `@vtstech/pi-security` | Command/path/SSRF protection |
 | `@vtstech/pi-soul` | SoulSpec persona management |
 | `@vtstech/pi-status` | System resource monitor & status bar |
@@ -125,7 +125,7 @@ Pi auto-discovers from conventional directories (`extensions/`, `themes/`, `skil
 
 ## 🔌 Remote Ollama Support
 
-All extensions support **remote Ollama instances** out of the box — no extra configuration needed. The Ollama URL is resolved automatically from `models.json`:
+All extensions support **remote Ollama instances** out of the box - no extra configuration needed. The Ollama URL is resolved automatically from `models.json`:
 
 ```
 models.json ollama provider baseUrl  →  OLLAMA_HOST env var  →  http://localhost:11434
@@ -174,21 +174,21 @@ Provider detection uses a three-tier lookup: user-defined providers in `models.j
 ```
 
 Checks:
-- **System** — OS, CPU, RAM usage, uptime, Node.js version
-- **Disk** — Disk usage via `df -h`
-- **Ollama** — Running? Version? Response latency? Models pulled? Currently loaded in VRAM?
-- **models.json** — Valid JSON? Provider config? Models listed? Cross-references with Ollama
-- **Settings** — settings.json exists? Valid?
-- **Extensions** — Extension files found? Active tools?
-- **Themes** — Theme files? Valid JSON?
-- **Session** — Active model? API mode? Provider? Base URL? Context window? Context usage? Thinking level?
-- **Security** — Active security mode, effective blocklist sizes (mode-aware), command/SSRF/path validation tests, audit log status
+- **System** - OS, CPU, RAM usage, uptime, Node.js version
+- **Disk** - Disk usage via `df -h`
+- **Ollama** - Running? Version? Response latency? Models pulled? Currently loaded in VRAM?
+- **models.json** - Valid JSON? Provider config? Models listed? Cross-references with Ollama
+- **Settings** - settings.json exists? Valid?
+- **Extensions** - Extension files found? Active tools?
+- **Themes** - Theme files? Valid JSON?
+- **Session** - Active model? API mode? Provider? Base URL? Context window? Context usage? Thinking level?
+- **Security** - Active security mode, effective blocklist sizes (mode-aware), command/SSRF/path validation tests, audit log status
 
 Also registers a `self_diagnostic` tool so the AI agent can run diagnostics on command.
 
 ### 🧪 Model Benchmark (`model-test.ts`)
 
-**Test any model for reasoning, tool usage, and instruction following — works with Ollama and cloud providers.**
+**Test any model for reasoning, tool usage, and instruction following - works with Ollama and all cloud providers (OpenRouter, OpenAI, Anthropic, etc.).**
 
 ```bash
 /model-test                     # Test current Pi model
@@ -207,29 +207,30 @@ The extension runs the **extended test flow** with 20 reasoning puzzles, multi-s
 | **Tool Usage** | Chained tool call generation | STRONG / MODERATE / WEAK / FAIL / ERROR |
 
 Features:
-- **Extended reasoning test** — 20 diverse puzzles with detailed breakdown
-- **Multi-step instructions** — JSON schema with multiple fields and types
-- **Chained tool calls** — tests multi-tool invocation capability
-- **Automatic provider detection** — classifies the active model as `ollama` or `builtin`
-- **Progress indicators** — UI notifications during testing
-- **No rate limit delay** — faster execution for Ollama instances
+- **Extended reasoning test** - 20 diverse puzzles with detailed breakdown
+- **Multi-step instructions** - JSON schema with multiple fields and types
+- **Chained tool calls** - tests multi-tool invocation capability
+- **Automatic provider detection** - classifies the active model as `ollama`, `builtin`, or `unknown`
+- **Cloud provider support** - works with OpenRouter, OpenAI, Anthropic, and 11+ built-in providers
+- **Progress indicators** - UI notifications during testing
+- **No rate limit delay** - faster execution for Ollama instances
 - Tab-completion for model names in the `/model-test` command
 
 Features:
-- **Automatic provider detection** — classifies the active model as `ollama`, `builtin`, or `unknown`
-- **Extended reasoning test** — 20 diverse puzzles with detailed breakdown
-- **Multi-step instructions** — JSON schema with multiple fields and types
-- **Chained tool calls** — tests multi-tool invocation capability
-- **Built-in provider registry** — 11 known cloud providers with API modes and base URLs
-- **Automatic remote Ollama URL** — reads from `models.json`, no manual config
-- **Timeout resilience** — 180s default with `--connect-timeout`, auto-retry on failures
-- **Rate limit delay** — configurable delay between tests
-- **Thinking model fallback** — retries with `think:true` for models like qwen3
-- **Displays API mode** — shows the active API mode from `models.json`
-- **Native context length** — displays true max context from Ollama `/api/show`
-- **Tool support cache** — persistent cache avoids re-probing on every run
-- **Text-based tool call detection** — handles models that output JSON as text
-- **JSON repair** — automatically fixes truncated output
+- **Automatic provider detection** - classifies the active model as `ollama`, `builtin`, or `unknown`
+- **Extended reasoning test** - 20 diverse puzzles with detailed breakdown
+- **Multi-step instructions** - JSON schema with multiple fields and types
+- **Chained tool calls** - tests multi-tool invocation capability
+- **Built-in provider registry** - 11 known cloud providers with API modes and base URLs
+- **Automatic remote Ollama URL** - reads from `models.json`, no manual config
+- **Timeout resilience** - 180s default with `--connect-timeout`, auto-retry on failures
+- **Rate limit delay** - configurable delay between tests
+- **Thinking model fallback** - retries with `think:true` for models like qwen3
+- **Displays API mode** - shows the active API mode from `models.json`
+- **Native context length** - displays true max context from Ollama `/api/show`
+- **Tool support cache** - persistent cache avoids re-probing on every run
+- **Text-based tool call detection** - handles models that output JSON as text
+- **JSON repair** - automatically fixes truncated output
 - Tab-completion for model names in the `/model-test` command
 - Final recommendation: STRONG / GOOD / USABLE / WEAK
 
@@ -237,66 +238,66 @@ Sample output (cloud provider):
 ```
 [model-test-report]                                                                                                 
                                                                                                                      
-   ⚡ Pi Model Benchmark v1.3.1                                                                                      
+   ⚡ Pi Model Benchmark v1.3.2                                                                                      
    Written by VTSTech                                                                                                
    GitHub: https://github.com/VTSTech                                                                                
    Website: www.vts-tech.org (http://www.vts-tech.org)                                                               
                                                                                                                      
- ── MODEL: poolside/laguna-xs.2:free ────────────────────────                                                        
-   ℹ️  Provider: openrouter (builtin)                                                                                
-                                                                                                                     
- ── REASONING TEST (EXTENDED) ───────────────────────────────                                                        
-   ℹ️  Testing 20 reasoning puzzles...                                                                               
-   ℹ️  Waiting 10.0s to avoid rate limiting...                                                                       
-   ✅ ✅ snail_wall (logic): STRONG - expected "8", got "8" [(expected: 8, got: 8)]                                  
-   ✅ ✅ math_sequence (math): STRONG - expected "162", got "162" [(expected: 162, got: 162)]                        
-   ✅ ✅ spatial_directions (spatial): STRONG - expected "south", got "180" [(expected: south)]                      
-   ⚠️  ❌ commonsense (commonsense): WEAK - expected "the other side", got "?" [(expected: the other side)]          
-   ❌ ❌ code_simplify (code): FAIL - expected "15", got "2" [(expected: 15, got: 2)]                                
-   ✅ ✅ bat_and_ball (counterint): STRONG - expected "5", got "5" [(expected: 5, got: 5)]                           
-   ✅ ✅ scale_weight (counterint): STRONG - expected "400", got "400" [(expected: 400, got: 400)]                   
-   ✅ ✅ syllogism (logic): STRONG - expected "warm-blooded", got "?" [(expected: warm-blooded)]                     
-   ✅ ✅ if_then_chain (logic): STRONG - expected "grass grows", got "1" [(expected: grass grows)]                   
-   ✅ ✅ cause_effect (causal): STRONG - expected "grows", got "?" [(expected: grows)]                               
-   ✅ ✅ relative_quantities (comparative): STRONG - expected "15", got "15" [(expected: 15, got: 15)]               
-   ⚠️  ❌ analogy_1 (analogy): WEAK - expected "room", got "?" [(expected: room)]                                    
-   ✅ ✅ analogy_2 (analogy): STRONG - expected "boot", got "?" [(expected: boot)]                                   
-   ✅ ✅ physics_1 (commonsense): STRONG - expected "bowling ball", got "80" [(expected: bowling ball)]              
-   ⚠️  ❌ physics_2 (commonsense): WEAK - expected "hot", got "?" [(expected: hot)]                                  
-   ✅ ✅ objects_1 (commonsense): STRONG - expected "scissors", got "?" [(expected: scissors)]                       
-   ✅ ✅ social_1 (commonsense): STRONG - expected "polite", got "?" [(expected: polite)]                            
-   ✅ ✅ animals_1 (commonsense): STRONG - expected "water", got "?" [(expected: water)]                             
-   ✅ ✅ gk_1 (commonsense): STRONG - expected "mars", got "?" [(expected: mars)]                                    
-   ✅ ✅ gk_2 (commonsense): STRONG - expected "366", got "366" [(expected: 366, got: 366)]                          
-   ✅ Average score: STRONG                                                                                          
-                                                                                                                     
- ── INSTRUCTION FOLLOWING TEST (EXTENDED) ───────────────────                                                        
-   ℹ️  Testing multi-step JSON schema compliance...                                                                  
-   ℹ️  Waiting 10.0s to avoid rate limiting...                                                                       
-   ℹ️  Time: 1.4s                                                                                                    
-   ✅ JSON output valid with correct values (STRONG)                                                                 
-   ℹ️  Output: {"name":"Poolside                                                                                     
- Assistant","can_count":true,"sum":42,"language":"English","colors":["red","blue","green"],"timestamp":"2025-01-09T1 
- 2:00:00Z"}                                                                                                          
-                                                                                                                     
- ── TOOL USAGE TEST (EXTENDED) ──────────────────────────────                                                        
-   ℹ️  Testing chained tool calls...                                                                                 
-   ℹ️  Waiting 10.0s to avoid rate limiting...                                                                       
-   ℹ️  Time: 349ms                                                                                                   
-   ✅ Tool calls: get_weather (MODERATE)                                                                             
-   ℹ️  Response: I'll get the weather for Tokyo and calculate that multiplication for you.                           
-                                                                                                                     
- ── SUMMARY ─────────────────────────────────────────────────                                                        
-   ✅ Reasoning: STRONG                                                                                              
-   ✅ Instructions: STRONG                                                                                           
-   ✅ Tool Usage: MODERATE                                                                                           
-   ℹ️  Total time: 1.3m                                                                                              
-   ℹ️  Score: 3/3 tests passed                                                                                       
-                                                                                                                     
-   ℹ️  Detailed: Reasoning 16/20 tests passed, Instructions 1/1, Tool Usage 1/1                                      
-                                                                                                                     
- ── RECOMMENDATION ──────────────────────────────────────────                                                        
-   ❌ poolside/laguna-xs.2:free is WEAK — limited capabilities for agent use 
+ ── MODEL: poolside/laguna-xs.2:free ────────────────────────                                                       
+   ℹ️  Provider: openrouter (builtin)
+
+ ── REASONING TEST (EXTENDED) ───────────────────────────────
+   i️  Testing 20 reasoning puzzles...
+   i️  Waiting 10.0s to avoid rate limiting...
+   ✅ ✅ snail_wall (logic): STRONG - expected "8", got "8" [(expected: 8, got: 8)]
+   ✅ ✅ math_sequence (math): STRONG - expected "162", got "162" [(expected: 162, got: 162)]
+   ✅ ✅ spatial_directions (spatial): STRONG - expected "south", got "180" [(expected: south)]
+   ⚠️  ❌ commonsense (commonsense): WEAK - expected "the other side", got "?" [(expected: the other side)]
+   ❌ ❌ code_simplify (code): FAIL - expected "15", got "2" [(expected: 15, got: 2)]
+   ✅ ✅ bat_and_ball (counterint): STRONG - expected "5", got "5" [(expected: 5, got: 5)]
+   ✅ ✅ scale_weight (counterint): STRONG - expected "400", got "400" [(expected: 400, got: 400)]
+   ✅ ✅ syllogism (logic): STRONG - expected "warm-blooded", got "?" [(expected: warm-blooded)]
+   ✅ ✅ if_then_chain (logic): STRONG - expected "grass grows", got "1" [(expected: grass grows)]
+   ✅ ✅ cause_effect (causal): STRONG - expected "grows", got "?" [(expected: grows)]
+   ✅ ✅ relative_quantities (comparative): STRONG - expected "15", got "15" [(expected: 15, got: 15)]
+   ⚠️  ❌ analogy_1 (analogy): WEAK - expected "room", got "?" [(expected: room)]
+   ✅ ✅ analogy_2 (analogy): STRONG - expected "boot", got "?" [(expected: boot)]
+   ✅ ✅ physics_1 (commonsense): STRONG - expected "bowling ball", got "80" [(expected: bowling ball)]
+   ⚠️  ❌ physics_2 (commonsense): WEAK - expected "hot", got "?" [(expected: hot)]
+   ✅ ✅ objects_1 (commonsense): STRONG - expected "scissors", got "?" [(expected: scissors)]
+   ✅ ✅ social_1 (commonsense): STRONG - expected "polite", got "?" [(expected: polite)]
+   ✅ ✅ animals_1 (commonsense): STRONG - expected "water", got "?" [(expected: water)]
+   ✅ ✅ gk_1 (commonsense): STRONG - expected "mars", got "?" [(expected: mars)]
+   ✅ ✅ gk_2 (commonsense): STRONG - expected "366", got "366" [(expected: 366, got: 366)]
+   ✅ Average score: STRONG
+
+ ── INSTRUCTION FOLLOWING TEST (EXTENDED) ───────────────────
+   i️  Testing multi-step JSON schema compliance...
+   i️  Waiting 10.0s to avoid rate limiting...
+   i️  Time: 1.4s
+   ✅ JSON output valid with correct values (STRONG)
+   i️  Output: {"name":"Poolside
+ Assistant","can_count":true,"sum":42,"language":"English","colors":["red","blue","green"],"timestamp":"2025-01-09T1
+ 2:00:00Z"}
+
+ ── TOOL USAGE TEST (EXTENDED) ──────────────────────────────
+   i️  Testing chained tool calls...
+   i️  Waiting 10.0s to avoid rate limiting...
+   i️  Time: 349ms
+   ✅ Tool calls: get_weather (MODERATE)
+   i️  Response: I'll get the weather for Tokyo and calculate that multiplication for you.
+
+ ── SUMMARY ─────────────────────────────────────────────────
+   ✅ Reasoning: STRONG
+   ✅ Instructions: STRONG
+   ✅ Tool Usage: MODERATE
+   i️  Total time: 1.3m
+   i️  Score: 3/3 tests passed
+
+   i️  Detailed: Reasoning 16/20 tests passed, Instructions 1/1, Tool Usage 1/1
+
+ ── RECOMMENDATION ──────────────────────────────────────────
+   ❌ poolside/laguna-xs.2:free is WEAK - limited capabilities for agent use
 ```
 
 ### 🔀 API Mode Switcher (`api.ts`)
@@ -319,46 +320,46 @@ Supports all 10 Pi API modes:
 ```
 
 **Features:**
-- **Partial mode matching** — `/api mode openai-r` matches `openai-responses`
-- **Auto-detect local provider** — targets the first `localhost`/`ollama` provider by default
-- **Batch thinking toggle** — set `reasoning: true/false` across all models at once
-- **Compat flag management** — get/set `supportsDeveloperRole`, `thinkingFormat`, `maxTokensField`, etc.
+- **Partial mode matching** - `/api mode openai-r` matches `openai-responses`
+- **Auto-detect local provider** - targets the first `localhost`/`ollama` provider by default
+- **Batch thinking toggle** - set `reasoning: true/false` across all models at once
+- **Compat flag management** - get/set `supportsDeveloperRole`, `thinkingFormat`, `maxTokensField`, etc.
 - Tab-completion for sub-commands
 
 ### 🔒 Security (`security.ts`)
 
 **Command, path, and network security layer for Pi's tool execution with a configurable security mode.**
 
-Automatically loaded — protects against:
+Automatically loaded - protects against:
 
-- **Partitioned command blocklist** — 41 CRITICAL commands (always blocked: system modification, privilege escalation, network attacks, shell escapes) + 25 EXTENDED commands (blocked in max mode: package management, process control, development tools)
-- **Mode-aware SSRF protection** — 22 ALWAYS_BLOCKED URL patterns (loopback, RFC1918 private ranges, cloud metadata endpoints) + 7 MAX_ONLY patterns (localhost by name, broadcast, link-local, current network) that are allowed in basic mode
-- **Security mode toggle** — switch between `basic`, `max`, and `off` modes at runtime; persisted to `~/.pi/agent/security.json`
-- **Path validation** — prevents filesystem escape and access to critical system directories; symlinks are dereferenced via `fs.realpathSync()` to block `/tmp/evil → /etc/passwd` bypasses
-- **Shell injection detection** — regex patterns for command chaining, substitution, and redirection
-- **Audit logging** — JSON-lines audit log at `~/.pi/agent/audit.log` with security mode recorded per entry (path exported as `AUDIT_LOG_PATH`)
+- **Partitioned command blocklist** - 41 CRITICAL commands (always blocked: system modification, privilege escalation, network attacks, shell escapes) + 25 EXTENDED commands (blocked in max mode: package management, process control, development tools)
+- **Mode-aware SSRF protection** - 22 ALWAYS_BLOCKED URL patterns (loopback, RFC1918 private ranges, cloud metadata endpoints) + 7 MAX_ONLY patterns (localhost by name, broadcast, link-local, current network) that are allowed in basic mode
+- **Security mode toggle** - switch between `basic`, `max`, and `off` modes at runtime; persisted to `~/.pi/agent/security.json`
+- **Path validation** - prevents filesystem escape and access to critical system directories; symlinks are dereferenced via `fs.realpathSync()` to block `/tmp/evil → /etc/passwd` bypasses
+- **Shell injection detection** - regex patterns for command chaining, substitution, and redirection
+- **Audit logging** - JSON-lines audit log at `~/.pi/agent/audit.log` with security mode recorded per entry (path exported as `AUDIT_LOG_PATH`)
 
 ```bash
-/security mode basic    # Relaxed mode — CRITICAL commands blocked, localhost URLs allowed
-/security mode max      # Full lockdown — all 66 commands blocked, strict SSRF
+/security mode basic    # Relaxed mode - CRITICAL commands blocked, localhost URLs allowed
+/security mode max      # Full lockdown - all 66 commands blocked, strict SSRF
 /security mode off     # Disable all security checks
 ```
 
-**Default mode: `max`** — if `security.json` doesn't exist, the extension starts in max mode and creates it on first use. The current mode is displayed in the status bar (`SEC:BASIC`, `SEC:MAX`, or `SEC:OFF`).
+**Default mode: `max`** - if `security.json` doesn't exist, the extension starts in max mode and creates it on first use. The current mode is displayed in the status bar (`SEC:BASIC`, `SEC:MAX`, or `SEC:OFF`).
 
 ### 🎭 SoulSpec (`soul.ts`)
 
 **Load and manage AI agent personas defined in SoulSpec format with progressive disclosure support.**
 
-Automatically loaded — provides tools and commands for managing AI personas:
+Automatically loaded - provides tools and commands for managing AI personas:
 
-- **Soul loading** — Load personas from multiple locations with progressive disclosure (Level 1-3)
-- **Multiple locations** — Supports global (`~/.pi/agent/souls/`), project-local (`.pi/souls/`), and current directory (`./souls/`) soul storage
-- **Progressive disclosure** — Level 1 (basic info), Level 2 (core persona), Level 3 (extended behavior)
-- **Embodied agent support** — Hardware constraints, safety policies, sensors, and actuators
-- **Built-in tools** — `load_soul`, `list_souls`, `soul_info` for programmatic access
-- **CLI commands** — `/souls` to list available souls, `/soul <name>` to use a soul
-- **Sample personas** — Includes `nova-helper` (coding assistant) and `robot-assistant` (physical robot)
+- **Soul loading** - Load personas from multiple locations with progressive disclosure (Level 1-3)
+- **Multiple locations** - Supports global (`~/.pi/agent/souls/`), project-local (`.pi/souls/`), and current directory (`./souls/`) soul storage
+- **Progressive disclosure** - Level 1 (basic info), Level 2 (core persona), Level 3 (extended behavior)
+- **Embodied agent support** - Hardware constraints, safety policies, sensors, and actuators
+- **Built-in tools** - `load_soul`, `list_souls`, `soul_info` for programmatic access
+- **CLI commands** - `/souls` to list available souls, `/soul <name>` to use a soul
+- **Sample personas** - Includes `nova-helper` (coding assistant) and `robot-assistant` (physical robot)
 
 ```bash
 /souls                    # List all available souls
@@ -367,23 +368,23 @@ Automatically loaded — provides tools and commands for managing AI personas:
 /soul_info robot-assistant  # Get detailed information about a soul
 ```
 
-**Soul locations** — The extension searches for souls in multiple directories:
-- `~/.pi/agent/souls/` — Global souls directory
-- `.pi/souls/` — Project-local souls directory  
-- `./souls/` — Current directory souls
+**Soul locations** - The extension searches for souls in multiple directories:
+- `~/.pi/agent/souls/` - Global souls directory
+- `.pi/souls/` - Project-local souls directory
+- `./souls/` - Current directory souls
 
 **Sample souls included**:
-- **nova-helper** — Helpful coding assistant focused on clear explanations and practical solutions
-- **robot-assistant** — Physical robot assistant with voice interaction and manipulation capabilities
+- **nova-helper** - Helpful coding assistant focused on clear explanations and practical solutions
+- **robot-assistant** - Physical robot assistant with voice interaction and manipulation capabilities
 
 ### 🔄 ReAct Fallback (`react-fallback.ts`)
 
 **Text-based tool calling bridge for models without native function calling support.**
 
-Automatically loaded — no commands needed. When a model lacks native tool calling:
+Automatically loaded - no commands needed. When a model lacks native tool calling:
 
 - Parses `Thought:`, `Action:`, `Action Input:` patterns from model output
-- **Multi-dialect support**: classic ReAct (`Action:`), Function (`Function:`), Tool (`Tool:`), Call (`Call:`) — each with dynamically-built regex patterns
+- **Multi-dialect support**: classic ReAct (`Action:`), Function (`Function:`), Tool (`Tool:`), Call (`Call:`) - each with dynamically-built regex patterns
 - Multiple regex strategies including parenthetical style and loose matching
 - Bridges text-based tool calls into Pi's native tool execution pipeline
 - Disabled by default; toggle via `/react-mode` with persistent config across restarts
@@ -410,15 +411,15 @@ Automatically loaded — no commands needed. When a model lacks native tool call
 - **Token Management**: ~4k token window with auto-summarization
 
 **Memory Injection Hooks:**
-- `pre_session_start` — Ensures metadata is complete
-- `session_start` — Displays memory context to user
-- `before_provider_request` — Prepends memory to the API request
+- `pre_session_start` - Ensures metadata is complete
+- `session_start` - Displays memory context to user
+- `before_provider_request` - Prepends memory to the API request
 
 **Storage:** `.pi/agent/long-term-memory.json`
 
 ### 🔄 Ollama Sync (`ollama-sync.ts`)
 
-**Auto-populate models.json with all available Ollama models — works with local and remote instances.**
+**Auto-populate models.json with all available Ollama models - works with local and remote instances.**
 
 ```bash
 /ollama-sync                                    # Sync from models.json URL (or localhost)
@@ -457,19 +458,19 @@ Automatically loaded — no commands needed. When a model lacks native tool call
 
 **Adds composable named status items to the framework footer using `ctx.ui.setStatus()`. Each metric gets its own slot so it coexists cleanly with other extensions' status items.**
 
-CPU/RAM/Swap are only shown when using a local Ollama provider (not for cloud/remote). For cloud providers, system metrics are omitted. Model name, session tokens, and context usage are shown by the framework — not duplicated here. All labels use dimmed coloring; all values use green highlighting.
+CPU/RAM/Swap are only shown when using a local Ollama provider (not for cloud/remote). For cloud providers, system metrics are omitted. Model name, session tokens, and context usage are shown by the framework - not duplicated here. All labels use dimmed coloring; all values use green highlighting.
 
 **Status slots (updated every 5s, 1s for active tool):**
-- **CtxMax + RespMax** — combined slot showing native model context window and max response/completion tokens (e.g., `CtxMax:33k RespMax:16.4k`)
-- **Resp** — agent loop duration via `agent_start`/`agent_end` events
-- **CPU%** — per-core delta via `os.cpus()` (local Ollama only)
-- **RAM** — used/total via `os.totalmem()` / `os.freemem()` (local Ollama only)
-- **Swap** — used/total from `/proc/meminfo` (shown only when swap is active, local only)
-- **Generation params** — temperature, top_p, top_k, num_predict, context size, reasoning_effort (dimmed)
-- **SEC** — security mode indicator (`SEC:BASIC` or `SEC:MAX`) + session-scoped blocked count + 3s flash on blocked tools (resets on shutdown)
-- **Active tool** — live elapsed timer with `>` indicator while a tool is running
-- **Prompt** — system prompt size as `chars chr tokens tok` displayed on agent start
-- **Pi version** — `pi:0.66.1` fetched once at `session_start` (dim label + green value, always last slot)
+- **CtxMax + RespMax** - combined slot showing native model context window and max response/completion tokens (e.g., `CtxMax:33k RespMax:16.4k`)
+- **Resp** - agent loop duration via `agent_start`/`agent_end` events
+- **CPU%** - per-core delta via `os.cpus()` (local Ollama only)
+- **RAM** - used/total via `os.totalmem()` / `os.freemem()` (local Ollama only)
+- **Swap** - used/total from `/proc/meminfo` (shown only when swap is active, local only)
+- **Generation params** - temperature, top_p, top_k, num_predict, context size, reasoning_effort (dimmed)
+- **SEC** - security mode indicator (`SEC:BASIC` or `SEC:MAX`) + session-scoped blocked count + 3s flash on blocked tools (resets on shutdown)
+- **Active tool** - live elapsed timer with `>` indicator while a tool is running
+- **Prompt** - system prompt size as `chars chr tokens tok` displayed on agent start
+- **Pi version** - `pi:0.66.1` fetched once at `session_start` (dim label + green value, always last slot)
 
 All slots are cleared on session shutdown. Metrics that the framework already provides (model name, session tokens, context usage, thinking level) are intentionally omitted to avoid duplication.
 
@@ -489,7 +490,7 @@ A Matrix movie-inspired theme with neon green on pure black. Designed for termin
 
 | Token | Color | Usage |
 |-------|-------|-------|
-| `green` | `#39ff14` | Primary text — neon green |
+| `green` | `#39ff14` | Primary text - neon green |
 | `brightGreen` | `#7fff00` | Accents, headings, inline code, highlights |
 | `phosphor` | `#66ff33` | Links, tool titles, code block text, secondary text |
 | `glowGreen` | `#00ff41` | Thinking text, quotes |
@@ -532,10 +533,10 @@ pi -c
 If Ollama is running on a different machine, expose it via a tunnel and point Pi at it:
 
 ```bash
-# On the Ollama machine — create a tunnel (example with cloudflared)
+# On the Ollama machine - create a tunnel (example with cloudflared)
 cloudflared tunnel --url http://localhost:11434
 
-# In Pi — sync models from the tunnel URL
+# In Pi - sync models from the tunnel URL
 /ollama-sync https://your-tunnel-url.trycloudflare.com
 ```
 
@@ -543,12 +544,12 @@ The URL gets saved to `models.json` and all extensions use it automatically. No 
 
 ### Cloud Provider Setup
 
-Pi handles cloud providers natively — just set your API key in the environment and select a model:
+Pi handles cloud providers natively - just set your API key in the environment and select a model:
 
 ```bash
 export OPENROUTER_API_KEY="sk-or-..."
 
-# In Pi — select a cloud model
+# In Pi - select a cloud model
 /model openrouter/openai/gpt-oss-120b:free
 
 # Test it
@@ -662,9 +663,9 @@ See [TESTS.md](TESTS.md) for full benchmark results across all tested Ollama and
 ```
 pi-coding-agent/
 ├── extensions/
-│   ├── api.ts                # API mode switcher — modes, URLs, thinking, compat flags
+│   ├── api.ts                # API mode switcher - modes, URLs, thinking, compat flags
 │   ├── diag.ts              # System diagnostic suite
-│   ├── model-test.ts        # Model benchmark — Ollama & cloud providers
+│   ├── model-test.ts        # Model benchmark - Ollama & cloud providers
 │   ├── ollama-sync.ts       # Ollama ↔ models.json sync
 │   ├── openrouter-sync.ts   # OpenRouter → models.json sync
 │   ├── react-fallback.ts    # ReAct fallback for non-native tool models

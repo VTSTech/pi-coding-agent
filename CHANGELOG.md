@@ -5,6 +5,20 @@ All notable changes to the Pi Coding Agent Extensions (`@vtstech/pi-coding-agent
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 05-13-2026 8:31:59 PM
+
+### Fixed
+
+- **model-test: Added support for built-in cloud providers** (`extensions/model-test.ts`, `shared/ollama.ts`)
+  - Fixed issue where model-test extension always used Ollama-specific chat functions, causing failures when testing models on cloud providers like OpenRouter, OpenAI, etc.
+  - Added `makeOpenAiChatFn()` function for OpenAI-compatible API format with proper authentication headers
+  - Added `makeChatFn()` selector function that returns the appropriate chat function based on provider type
+  - Updated `testModelExtended()` to use provider-appropriate chat functions
+  - Fixed `detectProvider()` in shared/ollama.ts to also check models.json for built-in providers' API keys (previously only read from environment variables)
+  - Now correctly uses OpenAI-compatible `/chat/completions` endpoint for built-in providers
+  - Includes proper `Authorization: Bearer <apiKey>` header for authenticated requests
+  - Supports both streaming (Ollama) and non-streaming (OpenAI-compatible) response formats
+
 ## [1.3.1] - 05-13-2026 7:47:10 PM
 
 ### Changed
