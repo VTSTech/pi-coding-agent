@@ -13,14 +13,14 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 
 | Model | Reasoning | Instructions | Tool Usage | Score |
 |-------|-----------|--------------|------------|-------|
-| `functiongemma:270m` | ❌ WEAK | ❌ FAIL | ✅ STRONG | **1/3** |
-| `gemma3:270m` | ❌ WEAK | ❌ FAIL | ❌ ERROR | **0/3** |
-| `granite4:350m` | MODERATE | FAIL | STRONG | **2/3** |
+| `functiongemma:270m` | 4/20 | ❌ FAIL | ✅ STRONG | **1/3** |
+| `gemma3:270m` | 6/20 | ❌ FAIL | ❌ ERROR | **0/3** |
+| `granite4:350m` | 10/20 | FAIL | STRONG | **2/3** |
 
 > **Notes:**
-> - `functiongemma:270m` — reasoning WEAK (4/20 tests), instructions FAIL (empty streaming response), tool usage STRONG (correct chained calls: get_weather, calculate).
-> - `gemma3:270m` — reasoning WEAK (6/20 tests), instructions FAIL (markdown-wrapped JSON), tool usage ERROR (model does not support tools).
-> - `granite4:350m` — reasoning is MODERATE (10/20 tests), instructions FAIL due to JSON parsing error, tool usage is STRONG.
+> - `functiongemma:270m` — instructions FAIL (empty streaming response), tool usage STRONG (correct chained calls: get_weather, calculate).
+> - `gemma3:270m` — instructions FAIL (markdown-wrapped JSON), tool usage ERROR (model does not support tools).
+> - `granite4:350m` — instructions FAIL due to JSON parsing error, tool usage is STRONG.
 
 ---
 
@@ -29,7 +29,7 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 | Model | Provider | Reasoning | Instructions | Tool Usage | Score |
 |-------|----------|-----------|--------------|------------|-------|
 | `zai/glm-4.5-flash` | ZAI | ❌ ERROR | ✅ STRONG | ✅ STRONG | **2/3** |
-| `poolside/laguna-xs.2:free` | OpenRouter | ✅ MODERATE | ✅ STRONG | ✅ STRONG | **3/3** |
+| `poolside/laguna-xs.2:free` | OpenRouter | 17/20 | ✅ STRONG | ✅ STRONG | **3/3** |
 
 > **Notes:**
 > - `zai/glm-4.5-flash` — reasoning returns empty response; instructions and tool usage work correctly (direct ZAI provider).
