@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Pi Version](https://img.shields.io/badge/Pi-v0.66%2B-green.svg)](https://github.com/badlogic/pi-mono)
 [![Pi Package](https://img.shields.io/badge/Install-pi%20install%20git-blue.svg)](#installation)
-[![Version](https://img.shields.io/badge/Version-v1.3.2-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-v1.3.3-orange.svg)](CHANGELOG.md)
 
 <p>
   <a href="https://github.com/VTSTech"><strong>VTSTech</strong></a> •
@@ -238,7 +238,7 @@ Sample output (cloud provider):
 ```
 [model-test-report]                                                                                                 
                                                                                                                      
-   ⚡ Pi Model Benchmark v1.3.2                                                                                      
+   ⚡ Pi Model Benchmark v1.3.3                                                                                      
    Written by VTSTech                                                                                                
    GitHub: https://github.com/VTSTech                                                                                
    Website: www.vts-tech.org (http://www.vts-tech.org)                                                               
