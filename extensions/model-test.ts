@@ -302,7 +302,7 @@ Return only the JSON.`;
   /**
    * Create a chat function for OpenAI-compatible API (OpenRouter, OpenAI, etc.).
    */
-  function makeOpenAiChatFn(baseUrl: string): ChatFn {
+  function makeOpenAiChatFn(baseUrl: string, apiKey?: string): ChatFn {
     return async (model, messages, options) => {
       const tools = (options?.tools as any[] | undefined) || undefined;
       const body: any = {
@@ -323,13 +323,18 @@ Return only the JSON.`;
         }));
       }
 
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (apiKey) {
+        headers["Authorization"] = `Bearer ${apiKey}`;
+      }
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), CONFIG.TOOL_TEST_TIMEOUT_MS);
       const start = Date.now();
       try {
         const res = await fetch(`${baseUrl}/chat/completions`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify(body),
           signal: controller.signal,
         });
@@ -361,13 +366,13 @@ Return only the JSON.`;
   /**
    * Create the appropriate chat function based on provider type.
    */
-  function makeChatFn(providerInfo: { kind: string; name: string; baseUrl?: string }): ChatFn {
+  function makeChatFn(providerInfo: { kind: string; name: string; baseUrl?: string; apiKey?: string }): ChatFn {
     if (providerInfo.kind === "ollama") {
       return makeOllamaChatFn();
     }
     // For built-in providers (OpenAI-compatible API)
     const baseUrl = providerInfo.baseUrl || ollamaBase();
-    return makeOpenAiChatFn(baseUrl);
+    return makeOpenAiChatFn(baseUrl, providerInfo.apiKey);
   }
 
   function makeOllamaToolChatFn(): ChatFn {
@@ -646,7 +651,7 @@ Return only the JSON.`;
     // Create chat functions for different test types
     // Use provider-appropriate chat functions
     const chatFn = makeChatFn(providerInfo);
-    const toolChatFn = providerInfo.kind === "ollama" ? makeOllamaToolChatFn() : makeOpenAiChatFn(providerInfo.baseUrl || ollamaBase());
+    const toolChatFn = providerInfo.kind === "ollama" ? makeOllamaToolChatFn() : makeOpenAiChatFn(providerInfo.baseUrl || ollamaBase(), providerInfo.apiKey);
 
     // 1. Extended Reasoning test
     lines.push(section("REASONING TEST (EXTENDED)"));

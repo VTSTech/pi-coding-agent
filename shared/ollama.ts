@@ -755,7 +755,12 @@ export function detectProvider(ctx: PiExtensionContext, modelsJson?: PiModelsJso
   // Tier 2: Check built-in providers
   const builtin = BUILTIN_PROVIDERS[providerName];
   if (builtin) {
-    const apiKey = process.env[builtin.envKey] || "";
+    // First check if the provider is also configured in models.json (user may have stored API key there)
+    const userProviderCfg = (effectiveModelsJson.providers || {})[providerName];
+    const apiKeyFromConfig = userProviderCfg?.apiKey || "";
+    const apiKeyFromEnv = process.env[builtin.envKey] || "";
+    const apiKey = apiKeyFromConfig || apiKeyFromEnv;
+    
     return {
       kind: "builtin",
       name: providerName,
