@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Pi Version](https://img.shields.io/badge/Pi-v0.66%2B-green.svg)](https://github.com/badlogic/pi-mono)
 [![Pi Package](https://img.shields.io/badge/Install-pi%20install%20git-blue.svg)](#installation)
-[![Version](https://img.shields.io/badge/Version-v1.3.3-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-v1.3.4-orange.svg)](CHANGELOG.md)
 
 <p>
   <a href="https://github.com/VTSTech"><strong>VTSTech</strong></a> •
@@ -349,24 +349,36 @@ Automatically loaded - protects against:
 
 ### 🎭 SoulSpec (`soul.ts`)
 
-**Load and manage AI agent personas defined in SoulSpec format with progressive disclosure support.**
+**Load and manage AI agent personas defined in SoulSpec format with progressive disclosure support and enhanced partial matching.**
 
 Automatically loaded - provides tools and commands for managing AI personas:
 
+- **Enhanced partial matching** - Flexible soul name matching with regex support for better tab autocomplete compatibility
 - **Soul loading** - Load personas from multiple locations with progressive disclosure (Level 1-3)
 - **Multiple locations** - Supports global (`~/.pi/agent/souls/`), project-local (`.pi/souls/`), and current directory (`./souls/`) soul storage
 - **Progressive disclosure** - Level 1 (basic info), Level 2 (core persona), Level 3 (extended behavior)
 - **Embodied agent support** - Hardware constraints, safety policies, sensors, and actuators
-- **Built-in tools** - `load_soul`, `list_souls`, `soul_info` for programmatic access
-- **CLI commands** - `/souls` to list available souls, `/soul <name>` to use a soul
+- **Built-in tools** - `load_soul`, `list_souls`, `soul_info` for programmatic access with smart suggestions
+- **CLI commands** - `/souls` to list available souls, `/soul <name>` to use a soul with partial matching
+- **Smart error handling** - Helpful suggestions when no exact match is found
 - **Sample personas** - Includes `nova-helper` (coding assistant) and `robot-assistant` (physical robot)
 
 ```bash
-/souls                    # List all available souls
-/soul nova-helper         # Use the Nova Helper persona
+/souls                           # List all available souls
+/soul nova-helper                # Use the Nova Helper persona (exact match)
+/soul dev                        # Load any soul containing 'dev' (partial matching)
+/soul /dev/ig                    # Load any soul with 'dev' (case-insensitive regex)
 /load_soul {"soul_name":"robot-assistant"}  # Load robot assistant persona
-/soul_info robot-assistant  # Get detailed information about a soul
+/soul_info robot-assistant       # Get detailed information about a soul
+/soul --help                     # Show enhanced help with partial matching examples
 ```
+
+**Partial matching features**:
+- **String matching** - `dev` matches `developer`, `assistant`, etc.
+- **Regex support** - `/dev/ig` for case-insensitive matching with flags
+- **Smart suggestions** - Shows potential matches when no exact match found
+- **Tab completion friendly** - Works seamlessly with shell tab autocomplete
+- **Single resolution** - Auto-resolves to one match, shows guidance for multiple
 
 **Soul locations** - The extension searches for souls in multiple directories:
 - `~/.pi/agent/souls/` - Global souls directory
