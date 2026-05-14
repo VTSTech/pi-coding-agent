@@ -47,12 +47,14 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 | `glm-4.5-flash` | ZAI | 11/20 | ❌ FAIL | ✅ STRONG | **2/3** |
 | `minimax/minimax-m2.5:free` | OpenRouter | 9/20 | ✅ STRONG | ✅ STRONG | **2/3** |
 | `nvidia/nemotron-3-nano-30b-a3b:free` | OpenRouter | 12/20 | ✅ STRONG | ✅ STRONG | **3/3** |
+| `openai/gpt-oss-120b:free` | OpenRouter | 14/20 | ✅ STRONG | MODERATE | **3/3** |
 | `poolside/laguna-xs.2:free` | OpenRouter | 17/20 | ✅ STRONG | ✅ STRONG | **3/3** |
 
 > **Notes:**
 > - `glm-4.5-flash` — reasoning MODERATE (11/20), instructions FAIL (truncated JSON), tool usage STRONG (chained: get_weather, calculate).
 > - `minimax/minimax-m2.5:free` — reasoning WEAK (9/20, many ERROR results), instructions STRONG, tool usage STRONG (chained: get_weather, calculate).
 > - `nvidia/nemotron-3-nano-30b-a3b:free` — reasoning MODERATE (12/20), instructions STRONG, tool usage STRONG (chained: get_weather, calculate). MoE with 30B total / 3B active params.
+> - `openai/gpt-oss-120b:free` — reasoning MODERATE (14/20), instructions STRONG, tool usage MODERATE (only called get_weather, missed calculate).
 > - `poolside/laguna-xs.2:free` — all tests pass via OpenRouter.
 
 ---
