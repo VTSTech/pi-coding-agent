@@ -5,6 +5,16 @@ All notable changes to the Pi Coding Agent Extensions (`@vtstech/pi-coding-agent
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.3] - 05-14-2026 10:21:00 AM
+
+### Added
+
+- **soul: Added `--help` option to `/soul` command** (`extensions/soul.ts`)
+  - New `/soul --help` or `/soul -h` flag shows comprehensive usage information
+  - Displays arguments, options, special values, and examples
+  - Updated command description to mention help option
+  - Updated no-args error message to include help hint
+
 ## [1.3.2] - 05-13-2026 8:31:59 PM
 
 ### Fixed
