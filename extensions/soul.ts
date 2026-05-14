@@ -864,8 +864,18 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
+      // Parse --level N from args (support both "--level 3" and "--level=3")
+      let soulArgs = args.trim();
+      let level = 2;
+      const levelMatch = soulArgs.match(/--level\s*=\s*(\d+)/i) || soulArgs.match(/--level\s+(\d+)/i);
+      if (levelMatch) {
+        level = parseInt(levelMatch[1], 10);
+        level = Math.max(1, Math.min(3, level));
+        soulArgs = soulArgs.replace(/--level\s*[= ]\s*\d+/i, "").trim();
+      }
+
       // Handle /soul off / clear to stop auto-loading
-      const trimmedArgs = args.trim().toLowerCase();
+      const trimmedArgs = soulArgs.toLowerCase();
       if (trimmedArgs === "off" || trimmedArgs === "clear" || trimmedArgs === "none" || trimmedArgs === "default") {
         clearActiveSoul();
         autoAppliedSoul = null;
@@ -874,23 +884,23 @@ export default function (pi: ExtensionAPI) {
       }
 
       try {
-        const soul = await soulLoader.load(trimmedArgs, 2);
-        const systemPrompt = soulLoader.buildSystemPrompt(soul, 2);
+        const soul = await soulLoader.load(trimmedArgs, level);
+        const systemPrompt = soulLoader.buildSystemPrompt(soul, level);
         
         // Persist this soul as the default for future sessions
-        saveActiveSoul(soul.name, 2);
+        saveActiveSoul(soul.name, level);
         
         // Inject the soul prompt as a system message
         pi.sendMessage({
           customType: "soulspec",
           content: systemPrompt,
           display: true,
-          details: { soul: soul.name, level: 2 }
+          details: { soul: soul.name, level }
         }, {
           deliverAs: "steer"
         });
         
-        ctx.ui.notify(`Now using soul: ${soul.display_name}. This soul will auto-load in future sessions.`, "success");
+        ctx.ui.notify(`Now using soul: ${soul.display_name} (level ${level}). This soul will auto-load in future sessions.`, "success");
       } catch (error) {
         debugLog("soul", `Error using soul: ${error}`);
         ctx.ui.notify(`Error loading soul: ${error}`, "error");
