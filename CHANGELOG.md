@@ -9,18 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **soul: Persist active soul across sessions** (`extensions/soul.ts`)
+  - Active soul choice is now saved to `~/.pi/agent/.active-soul.json` when a user runs `/soul <name>`, so it is automatically loaded in all future Pi sessions without re-selecting.
+  - On fresh sessions (`session_start` with reason `"startup"` or `"new"`), the persisted soul is loaded and injected into the system prompt before the first user message.
+  - `/soul off` clears the persisted choice and disables auto-loading for future sessions.
+  - Startup notification shows the auto-loaded soul name, or the number of available souls if none is active.
+  - All notifications guarded by `ctx.hasUI` to remain silent in non-interactive (LLM tool call) contexts.
+  - Added `saveActiveSoul()`, `loadActiveSoul()`, and `clearActiveSoul()` helpers for persistence management.
+
+- **soul: `--level` flag now respected** (`extensions/soul.ts`)
+  - The `/soul` command handler previously hardcoded `level=2` for both loading and persisting the soul, ignoring the `--level` flag advertised in its help text.
+  - Now parses `--level N` or `--level=N` from args before stripping it from the soul name lookup. Falls back to level 2 if not specified.
+  - Usage: `/soul bodhisattva-coder --level 3`
+
 - **soul: Added `--help` option to `/soul` command** (`extensions/soul.ts`)
-  - New `/soul --help` or `/soul -h` flag shows comprehensive usage information
-  - Displays arguments, options, special values, and examples
-  - Updated command description to mention help option
-  - Updated no-args error message to include help hint
+  - New `/soul --help` or `/soul -h` flag shows comprehensive usage information.
+  - Displays arguments, options, special values, and examples.
+  - Updated command description to mention help option.
+  - Updated no-args error message to include help hint.
+
+- **model-test: Real-time progress notifications during testing** (`extensions/model-test.ts`)
+  - Added per-puzzle progress notifications during the reasoning test phase using `ctx.ui.notify()`. Each of the 20 puzzles emits a start notification (`[1/3] Reasoning 3/20: bat_and_ball (counterint)...`) and a result notification (`[1/3] Reasoning 3/20: bat_and_ball → STRONG`).
+  - Added phase transition notifications (`[2/3] Instruction following test...`, `[3/3] Tool usage test...`) so the user always knows which test phase is running.
+  - Progress uses optional chaining (`ctx?.ui?.notify?.(msg, "info")`) to degrade gracefully when called without a TUI context (e.g. from the LLM-callable `model_test` tool).
 
 ### Fixed
 
-- **model-test: Added 10-second delay between reasoning tests** (`extensions/model-test.ts`)
-  - Previously, the delay was only applied between test types (reasoning, instruction, tool)
-  - Now delays between each of the 20 individual reasoning puzzles
-  - Prevents rate limiting issues when testing models with high token throughput
+- **model-test: Added rate limiting delay between reasoning tests** (`extensions/model-test.ts`, `shared/model-test-utils.ts`)
+  - Previously, the delay was only applied between test types (reasoning → instruction → tool), but not between the 20 individual reasoning puzzles. This caused rate limiting errors with cloud providers (OpenRouter, etc.).
+  - Now delays between each reasoning puzzle using `rateLimitDelay()`.
+  - Removed the redundant delay that ran before the reasoning loop (was wasting one full delay before any test started).
+  - Skips the delay after the last reasoning puzzle to avoid unnecessary waiting at the end of the loop.
+  - Default delay configurable via `TEST_DELAY_MS` in `shared/model-test-utils.ts` (user-overridable via `~/.pi/agent/model-test-config.json`).
+
 
 ## [1.3.2] - 05-13-2026 8:31:59 PM
 
