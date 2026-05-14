@@ -13,14 +13,30 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 
 | Model | Reasoning | Instructions | Tool Usage | Score |
 |-------|-----------|--------------|------------|-------|
+| `deepseek-r1:1.5b` | 8/20 | ❌ FAIL | ❌ ERROR | **1/3** |
 | `functiongemma:270m` | 4/20 | ❌ FAIL | ✅ STRONG | **1/3** |
 | `gemma3:270m` | 6/20 | ❌ FAIL | ❌ ERROR | **0/3** |
-| `granite4:350m` | 10/20 | FAIL | STRONG | **2/3** |
+| `granite3.1-moe:1b` | 8/20 | ❌ FAIL | ❌ FAIL | **1/3** |
+| `granite4:1b` | 0/20 | ❌ FAIL | ❌ ERROR | **0/3** |
+| `granite4:350m` | 7/20 | ❌ FAIL | ✅ STRONG | **2/3** |
+| `llama3.2:1b` | 8/20 | ❌ FAIL | ✅ STRONG | **2/3** |
+| `qwen:0.5b` | 4/20 | ❌ FAIL | ❌ ERROR | **0/3** |
+| `qwen2:0.5b` | 5/20 | ❌ FAIL | ❌ ERROR | **0/3** |
+| `qwen2.5:0.5b` | 10/20 | ❌ FAIL | ✅ STRONG | **2/3** |
+| `qwen3:0.6b` | 6/20 | ❌ FAIL | ✅ STRONG | **1/3** |
 
 > **Notes:**
-> - `functiongemma:270m` — instructions FAIL (empty streaming response), tool usage STRONG (correct chained calls: get_weather, calculate).
+> - `deepseek-r1:1.5b` — instructions FAIL (bad control character in JSON), tool usage ERROR (model does not support tools).
+> - `functiongemma:270m` — instructions FAIL (empty streaming response), tool usage STRONG (chained: get_weather, calculate).
 > - `gemma3:270m` — instructions FAIL (markdown-wrapped JSON), tool usage ERROR (model does not support tools).
-> - `granite4:350m` — instructions FAIL due to JSON parsing error, tool usage is STRONG.
+> - `granite3.1-moe:1b` — instructions FAIL, tool usage FAIL (malformed tool calls).
+> - `granite4:1b` — OOM (requires 13.0 GiB, only 12.2 GiB available), all 0/20 reasoning ERROR.
+> - `granite4:350m` — instructions FAIL, tool usage STRONG.
+> - `llama3.2:1b` — instructions FAIL, tool usage STRONG (chained: get_weather, calculate).
+> - `qwen:0.5b` — instructions FAIL, tool usage ERROR (model does not support tools).
+> - `qwen2:0.5b` — instructions FAIL (Python embedded in JSON output), tool usage ERROR (model does not support tools).
+> - `qwen2.5:0.5b` — instructions FAIL, tool usage STRONG (chained: get_weather, calculate).
+> - `qwen3:0.6b` — instructions FAIL, tool usage STRONG (chained: get_weather, calculate).
 
 ---
 
