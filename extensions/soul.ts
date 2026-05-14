@@ -952,7 +952,7 @@ export default function (pi: ExtensionAPI) {
 
   // Add command to use a soul
   pi.registerCommand("soul", {
-    description: "Use a soul for the current session — persists across sessions. Supports partial matching and regex patterns.",
+    description: "Use a soul for the current session — persists across sessions. Supports partial matching.",
     handler: async (args, ctx) => {
       debugLog("soul", `Using soul command with: ${args}`);
       
@@ -989,9 +989,8 @@ export default function (pi: ExtensionAPI) {
         let helpMsg = "Usage: /soul <soul-name> [options]\n\n";
         helpMsg += "Load and activate a SoulSpec persona for the current session.\n\n";
         helpMsg += "Arguments:\n";
-        helpMsg += "  <soul-name>    Name of the soul to load (directory name or path). Supports:\n";
-        helpMsg += "                 Partial matching: 'dev' matches 'developer'\n";
-        helpMsg += "                 Regex patterns: '/dev/ig' (case-insensitive match)\n\n";
+        helpMsg += "  <soul-name>    Name of the soul to load (directory name or path).\n";
+        helpMsg += "                 Supports partial matching: 'dev' matches 'developer'\n\n";
         helpMsg += "Options:\n";
         helpMsg += "  --level N      Set progressive disclosure level (1-3, default: 2)\n";
         helpMsg += "  --help, -h     Show this help message\n\n";
@@ -1000,7 +999,6 @@ export default function (pi: ExtensionAPI) {
         helpMsg += "Examples:\n";
         helpMsg += "  /soul my-soul              Load soul named 'my-soul' at level 2\n";
         helpMsg += "  /soul dev                  Load any soul containing 'dev'\n";
-        helpMsg += "  /soul /dev/ig             Load any soul with 'dev' (case-insensitive)\n";
         helpMsg += "  /soul my-soul --level 3    Load soul at level 3 (full details)\n";
         helpMsg += "  /soul off                  Clear active soul\n\n";
         helpMsg += "To list available souls, use /souls or run /soul without arguments.";
@@ -1044,7 +1042,7 @@ export default function (pi: ExtensionAPI) {
             const matchList = matches.slice(0, 5).join(', ');
             const suggestion = matches.length > 5 ? ` (showing first 5 of ${matches.length})` : '';
             
-            ctx.ui.notify(`No exact match found for "${trimmedArgs}". Did you mean one of these?\n\n${matchList}${suggestion}\n\nTry one of these exact names, or use a more specific pattern like /dev/ for partial matching.`, "warning");
+            ctx.ui.notify(`No exact match found for "${trimmedArgs}". Did you mean one of these?\n\n${matchList}${suggestion}\n\nTry one of these exact names, or use a more specific pattern.`, "warning");
           } else {
             const allSouls = soulLoader.getAllSouls();
             if (allSouls.length > 0) {
