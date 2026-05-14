@@ -13,9 +13,13 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
 
 | Model | Reasoning | Instructions | Tool Usage | Score |
 |-------|-----------|--------------|------------|-------|
+| `functiongemma:270m` | ❌ WEAK | ❌ FAIL | ✅ STRONG | **1/3** |
+| `gemma3:270m` | ❌ WEAK | ❌ FAIL | ❌ ERROR | **0/3** |
 | `granite4:350m` | MODERATE | FAIL | STRONG | **2/3** |
 
 > **Notes:**
+> - `functiongemma:270m` — reasoning WEAK (4/20 tests), instructions FAIL (empty streaming response), tool usage STRONG (correct chained calls: get_weather, calculate).
+> - `gemma3:270m` — reasoning WEAK (6/20 tests), instructions FAIL (markdown-wrapped JSON), tool usage ERROR (model does not support tools).
 > - `granite4:350m` — reasoning is MODERATE (10/20 tests), instructions FAIL due to JSON parsing error, tool usage is STRONG.
 
 ---
