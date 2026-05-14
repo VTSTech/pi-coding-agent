@@ -60,7 +60,7 @@ export const CONFIG = {
   CONTEXT_BATCH_SIZE: 3,             // Concurrent requests when fetching model context lengths
 
   // Rate limiting
-  TEST_DELAY_MS: 10000,              // 10 seconds between tests to avoid rate limiting
+  TEST_DELAY_MS: 4000,              // 4 seconds between tests to avoid rate limiting
 
   // Cache management
   MAX_CACHE_SIZE: 1000,              // Maximum number of entries in tool support cache
