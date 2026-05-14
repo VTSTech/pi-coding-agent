@@ -228,6 +228,22 @@ export class SoulSpecLoader {
   }
 
   private resolveSoulPath(soulPath: string): string | null {
+    // First try exact matching (for backward compatibility)
+    const exactPath = this.findExactSoulPath(soulPath);
+    if (exactPath) {
+      return exactPath;
+    }
+
+    // Try regex-based partial matching
+    const partialPath = this.findPartialSoulPath(soulPath);
+    if (partialPath) {
+      return partialPath;
+    }
+
+    return null;
+  }
+
+  private findExactSoulPath(soulPath: string): string | null {
     // Try multiple locations for soul packages
     const locations = [
       soulPath, // Absolute or relative path
@@ -243,6 +259,39 @@ export class SoulSpecLoader {
       } catch {
         continue;
       }
+    }
+
+    return null;
+  }
+
+  private findPartialSoulPath(soulPath: string): string | null {
+    // Check if soulPath looks like a regex pattern
+    const regexPattern = soulPath.match(/^\/([^\/]*)\/([a-z]*)$/i);
+    let regex: RegExp;
+    
+    if (regexPattern) {
+      // It's a regex pattern like /pattern/flags
+      try {
+        regex = new RegExp(regexPattern[1], regexPattern[2]);
+      } catch (e) {
+        debugLog("soul", `Invalid regex pattern: ${soulPath}`);
+        return null;
+      }
+    } else {
+      // Treat as partial string match (case-insensitive)
+      regex = new RegExp(soulPath, 'i');
+    }
+
+    // Find all matching souls
+    const matches = this.findMatchingSouls(regex);
+    
+    if (matches.length === 1) {
+      // Single match - return it
+      return this.findExactSoulPath(matches[0]);
+    } else if (matches.length > 1) {
+      debugLog("soul", `Multiple matches found for "${soulPath}": ${matches.join(', ')}`);
+      // For multiple matches, we don't auto-resolve to avoid ambiguity
+      return null;
     }
 
     return null;
@@ -601,6 +650,11 @@ export class SoulSpecLoader {
 
     return souls;
   }
+
+  findMatchingSouls(pattern: RegExp): string[] {
+    const allSouls = this.getAllSouls();
+    return allSouls.filter(soul => pattern.test(soul));
+  }
 }
 
 // Global loader instance
@@ -617,10 +671,10 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "load_soul",
     label: "Load Soul",
-    description: "Load a SoulSpec persona and build system prompt",
+    description: "Load a SoulSpec persona and build system prompt. Supports partial matching.",
     parameters: Type.Object({
       soul_name: Type.String({ 
-        description: "Name of the soul to load (directory name or path)" 
+        description: "Name of the soul to load (directory name or path). Supports partial matching: 'dev' matches 'developer'" 
       }),
       level: Type.Optional(Type.Number({ 
         description: "Progressive disclosure level (1-3, default 2)",
@@ -646,6 +700,38 @@ export default function (pi: ExtensionAPI) {
           }
         };
       } catch (error) {
+        // Check if it's a "not found" error and provide helpful suggestions
+        if (error.message && error.message.includes("Soul not found")) {
+          const matches = soulLoader.findMatchingSouls(new RegExp(params.soul_name, 'i'));
+          
+          if (matches.length > 0) {
+            const matchList = matches.slice(0, 5).join(', ');
+            const suggestion = matches.length > 5 ? ` (showing first 5 of ${matches.length})` : '';
+            
+            return {
+              content: [{ 
+                type: "text", 
+                text: `No exact match found for "${params.soul_name}". Did you mean one of these?\n\n${matchList}${suggestion}\n\nTry one of these exact names, or use a more specific pattern.` 
+              }],
+              isError: true
+            };
+          } else {
+            const allSouls = soulLoader.getAllSouls();
+            if (allSouls.length > 0) {
+              const soulList = allSouls.slice(0, 10).join(', ');
+              const remaining = allSouls.length > 10 ? ` (and ${allSouls.length - 10} more)` : '';
+              
+              return {
+                content: [{ 
+                  type: "text", 
+                  text: `No soul found matching "${params.soul_name}".\n\nAvailable souls:\n\n${soulList}${remaining}\n\nUse /souls to see all available souls, or try a partial match like 'dev' or 'assist'.` 
+                }],
+                isError: true
+              };
+            }
+          }
+        }
+        
         debugLog("soul", `Error loading soul: ${error}`);
         return {
           content: [{ type: "text", text: `Error loading soul: ${error}` }],
@@ -696,10 +782,10 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "soul_info",
     label: "Soul Info",
-    description: "Get detailed information about a soul",
+    description: "Get detailed information about a soul. Supports partial matching.",
     parameters: Type.Object({
       soul_name: Type.String({ 
-        description: "Name of the soul to get info for" 
+        description: "Name of the soul to get info for. Supports partial matching: 'dev' matches 'developer'" 
       }),
     }),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
@@ -745,6 +831,24 @@ export default function (pi: ExtensionAPI) {
           details: { soul }
         };
       } catch (error) {
+        // Check if it's a "not found" error and provide helpful suggestions
+        if (error.message && error.message.includes("Soul not found")) {
+          const matches = soulLoader.findMatchingSouls(new RegExp(params.soul_name, 'i'));
+          
+          if (matches.length > 0) {
+            const matchList = matches.slice(0, 5).join(', ');
+            const suggestion = matches.length > 5 ? ` (showing first 5 of ${matches.length})` : '';
+            
+            return {
+              content: [{ 
+                type: "text", 
+                text: `No exact match found for "${params.soul_name}". Did you mean one of these?\n\n${matchList}${suggestion}\n\nTry one of these exact names, or use a more specific pattern.` 
+              }],
+              isError: true
+            };
+          }
+        }
+        
         debugLog("soul", `Error loading soul info: ${error}`);
         return {
           content: [{ type: "text", text: `Error loading soul info: ${error}` }],
@@ -848,7 +952,7 @@ export default function (pi: ExtensionAPI) {
 
   // Add command to use a soul
   pi.registerCommand("soul", {
-    description: "Use a soul for the current session — persists across sessions. Use /soul --help for options.",
+    description: "Use a soul for the current session — persists across sessions. Supports partial matching and regex patterns.",
     handler: async (args, ctx) => {
       debugLog("soul", `Using soul command with: ${args}`);
       
@@ -856,8 +960,13 @@ export default function (pi: ExtensionAPI) {
         const souls = soulLoader.getAllSouls();
         let msg = "Usage: /soul <soul-name>\n\nAvailable souls:\n";
         for (const s of souls) {
-          const desc = s.description ? ` — ${s.description}` : '';
-          msg += `\n  \u2022 ${s.name}${desc}`;
+          try {
+            const manifest = await soulLoader.load(s, 1);
+            const desc = manifest.description ? ` — ${manifest.description}` : '';
+            msg += `\n  \u2022 **${s}**${desc}`;
+          } catch {
+            msg += `\n  \u2022 ${s}`;
+          }
         }
         msg += "\n\nUse /soul off to clear the active soul and stop auto-loading.";
         msg += "\n\nUse /soul --help for more options.";
@@ -880,7 +989,9 @@ export default function (pi: ExtensionAPI) {
         let helpMsg = "Usage: /soul <soul-name> [options]\n\n";
         helpMsg += "Load and activate a SoulSpec persona for the current session.\n\n";
         helpMsg += "Arguments:\n";
-        helpMsg += "  <soul-name>    Name of the soul to load (directory name or path)\n\n";
+        helpMsg += "  <soul-name>    Name of the soul to load (directory name or path). Supports:\n";
+        helpMsg += "                 Partial matching: 'dev' matches 'developer'\n";
+        helpMsg += "                 Regex patterns: '/dev/ig' (case-insensitive match)\n\n";
         helpMsg += "Options:\n";
         helpMsg += "  --level N      Set progressive disclosure level (1-3, default: 2)\n";
         helpMsg += "  --help, -h     Show this help message\n\n";
@@ -888,6 +999,8 @@ export default function (pi: ExtensionAPI) {
         helpMsg += "  off, clear, none, default  Clear the active soul\n\n";
         helpMsg += "Examples:\n";
         helpMsg += "  /soul my-soul              Load soul named 'my-soul' at level 2\n";
+        helpMsg += "  /soul dev                  Load any soul containing 'dev'\n";
+        helpMsg += "  /soul /dev/ig             Load any soul with 'dev' (case-insensitive)\n";
         helpMsg += "  /soul my-soul --level 3    Load soul at level 3 (full details)\n";
         helpMsg += "  /soul off                  Clear active soul\n\n";
         helpMsg += "To list available souls, use /souls or run /soul without arguments.";
@@ -923,8 +1036,28 @@ export default function (pi: ExtensionAPI) {
         
         ctx.ui.notify(`Now using soul: ${soul.display_name} (level ${level}). This soul will auto-load in future sessions.`, "success");
       } catch (error) {
-        debugLog("soul", `Error using soul: ${error}`);
-        ctx.ui.notify(`Error loading soul: ${error}`, "error");
+        // Check if it's a "not found" error and provide helpful suggestions
+        if (error.message && error.message.includes("Soul not found")) {
+          const matches = soulLoader.findMatchingSouls(new RegExp(trimmedArgs, 'i'));
+          
+          if (matches.length > 0) {
+            const matchList = matches.slice(0, 5).join(', ');
+            const suggestion = matches.length > 5 ? ` (showing first 5 of ${matches.length})` : '';
+            
+            ctx.ui.notify(`No exact match found for "${trimmedArgs}". Did you mean one of these?\n\n${matchList}${suggestion}\n\nTry one of these exact names, or use a more specific pattern like /dev/ for partial matching.`, "warning");
+          } else {
+            const allSouls = soulLoader.getAllSouls();
+            if (allSouls.length > 0) {
+              const soulList = allSouls.slice(0, 10).join(', ');
+              const remaining = allSouls.length > 10 ? ` (and ${allSouls.length - 10} more)` : '';
+              
+              ctx.ui.notify(`No soul found matching "${trimmedArgs}".\n\nAvailable souls:\n\n${soulList}${remaining}\n\nUse /souls to see all available souls, or try a partial match like 'dev' or 'assist'.`, "warning");
+            }
+          }
+        } else {
+          debugLog("soul", `Error using soul: ${error}`);
+          ctx.ui.notify(`Error loading soul: ${error}`, "error");
+        }
       }
     },
   });
