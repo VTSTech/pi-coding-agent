@@ -284,6 +284,9 @@ Return only the JSON.`;
 
   // ── ChatFn wrappers ──────────────────────────────────────────────────
 
+  /**
+   * Create a chat function for Ollama API.
+   */
   function makeOllamaChatFn(useStreaming = true): ChatFn {
     return async (model, messages, _options) => {
       const chatFn = useStreaming ? ollamaChatStream : ollamaChat;
@@ -294,6 +297,77 @@ Return only the JSON.`;
         raw: result.response,
       };
     };
+  }
+
+  /**
+   * Create a chat function for OpenAI-compatible API (OpenRouter, OpenAI, etc.).
+   */
+  function makeOpenAiChatFn(baseUrl: string): ChatFn {
+    return async (model, messages, options) => {
+      const tools = (options?.tools as any[] | undefined) || undefined;
+      const body: any = {
+        model,
+        messages,
+        stream: false,
+        temperature: CONFIG.TEMPERATURE,
+        max_tokens: CONFIG.NUM_PREDICT,
+      };
+      if (tools && tools.length > 0) {
+        body.tools = tools.map((t: any) => ({
+          type: "function",
+          function: {
+            name: t.function?.name || t.name,
+            description: t.function?.description || t.description,
+            parameters: t.function?.parameters || t.parameters,
+          },
+        }));
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), CONFIG.TOOL_TEST_TIMEOUT_MS);
+      const start = Date.now();
+      try {
+        const res = await fetch(`${baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+        const elapsedMs = Date.now() - start;
+        clearTimeout(timeoutId);
+
+        if (!res.ok) {
+          const errorText = await res.text().catch(() => "unknown error");
+          throw new Error(`OpenAI API returned ${res.status}: ${truncate(errorText, 200)}`);
+        }
+
+        const parsed = await res.json();
+        const choice = parsed?.choices?.[0];
+        const content = choice?.message?.content || "";
+        const toolCalls = choice?.message?.tool_calls;
+        return {
+          content,
+          toolCalls: toolCalls && toolCalls.length > 0 ? toolCalls : undefined,
+          elapsedMs,
+          raw: parsed,
+        };
+      } catch (e: any) {
+        clearTimeout(timeoutId);
+        throw e;
+      }
+    };
+  }
+
+  /**
+   * Create the appropriate chat function based on provider type.
+   */
+  function makeChatFn(providerInfo: { kind: string; name: string; baseUrl?: string }): ChatFn {
+    if (providerInfo.kind === "ollama") {
+      return makeOllamaChatFn();
+    }
+    // For built-in providers (OpenAI-compatible API)
+    const baseUrl = providerInfo.baseUrl || ollamaBase();
+    return makeOpenAiChatFn(baseUrl);
   }
 
   function makeOllamaToolChatFn(): ChatFn {
@@ -570,8 +644,9 @@ Return only the JSON.`;
     lines.push(info(`Provider: ${providerInfo.name} (${providerInfo.kind})`));
 
     // Create chat functions for different test types
-    const chatFn = makeOllamaChatFn();
-    const toolChatFn = makeOllamaToolChatFn();
+    // Use provider-appropriate chat functions
+    const chatFn = makeChatFn(providerInfo);
+    const toolChatFn = providerInfo.kind === "ollama" ? makeOllamaToolChatFn() : makeOpenAiChatFn(providerInfo.baseUrl || ollamaBase());
 
     // 1. Extended Reasoning test
     lines.push(section("REASONING TEST (EXTENDED)"));
