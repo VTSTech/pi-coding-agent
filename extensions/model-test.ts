@@ -578,18 +578,27 @@ Return only the JSON.`;
     details?: string;
   }
 
-  async function testReasoningExtended(chatFn: ChatFn, model: string): Promise<{ score: string; scores: string[]; answers: string[]; results: ReasoningTestResult[] }> {
+  type ProgressFn = (msg: string) => void;
+
+  async function testReasoningExtended(chatFn: ChatFn, model: string, onProgress?: ProgressFn): Promise<{ score: string; scores: string[]; answers: string[]; results: ReasoningTestResult[] }> {
     const results: ReasoningTestResult[] = [];
-    for (const test of REASONING_TESTS) {
+    const total = REASONING_TESTS.length;
+    for (let i = 0; i < total; i++) {
+      const test = REASONING_TESTS[i];
+      onProgress?.(`[1/3] Reasoning ${i + 1}/${total}: ${test.name} (${test.category})...`);
       try {
         const result = await chatFn(model, [{ role: "user", content: test.prompt }]);
         const msg = result.content.trim();
         const answer = extractAnswer(msg, test.expectedAnswer);
         const scored = scoreReasoningExtended(msg, test.expectedAnswer);
         results.push({ name: test.name, category: test.category, score: scored.score, answer, expectedAnswer: test.expectedAnswer, pass: scored.pass, details: scored.details });
-      } catch { results.push({ name: test.name, category: test.category, score: "ERROR", answer: "?", expectedAnswer: test.expectedAnswer, pass: false }); }
-      // Delay between reasoning tests to avoid rate limiting
-      await rateLimitDelay();
+        onProgress?.(`[1/3] Reasoning ${i + 1}/${total}: ${test.name} → ${scored.score}`);
+      } catch {
+        results.push({ name: test.name, category: test.category, score: "ERROR", answer: "?", expectedAnswer: test.expectedAnswer, pass: false });
+        onProgress?.(`[1/3] Reasoning ${i + 1}/${total}: ${test.name} → ERROR`);
+      }
+      // Delay between reasoning tests to avoid rate limiting (skip after last test)
+      if (i < total - 1) await rateLimitDelay();
     }
     return { score: averageScore(results.map(r => r.score)), scores: results.map(r => r.score), answers: results.map(r => r.answer), results };
   }
@@ -655,12 +664,14 @@ Return only the JSON.`;
     const chatFn = makeChatFn(providerInfo);
     const toolChatFn = providerInfo.kind === "ollama" ? makeOllamaToolChatFn() : makeOpenAiChatFn(providerInfo.baseUrl || ollamaBase(), providerInfo.apiKey);
 
+    // Progress notification helper — safe to call even without a TUI context
+    const progress = (msg: string) => ctx?.ui?.notify?.(msg, "info");
+
     // 1. Extended Reasoning test
     lines.push(section("REASONING TEST (EXTENDED)"));
     lines.push(info(`Testing ${REASONING_TESTS.length} reasoning puzzles...`));
-    await rateLimitDelay();
-    const reasoning = await testReasoningExtended(chatFn, model);
-    
+    const reasoning = await testReasoningExtended(chatFn, model, progress);
+
     for (const r of reasoning.results) {
       const passMark = r.pass ? "✅" : "❌";
       const scoreLabel = r.score === "STRONG" ? ok : r.score === "MODERATE" ? warn : r.score === "WEAK" ? warn : fail;
@@ -669,6 +680,7 @@ Return only the JSON.`;
     lines.push(ok(`Average score: ${reasoning.score}`));
 
     // 2. Extended Instruction Following test
+    progress("[2/3] Instruction following test...");
     lines.push(section("INSTRUCTION FOLLOWING TEST (EXTENDED)"));
     lines.push(info("Testing multi-step JSON schema compliance..."));
     await rateLimitDelay();
@@ -678,6 +690,7 @@ Return only the JSON.`;
     lines.push(info(`Output: ${instructions.output}`));
 
     // 3. Extended Tool Usage test
+    progress("[3/3] Tool usage test...");
     lines.push(section("TOOL USAGE TEST (EXTENDED)"));
     lines.push(info("Testing chained tool calls..."));
     await rateLimitDelay();
