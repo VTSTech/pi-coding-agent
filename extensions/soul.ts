@@ -167,6 +167,51 @@ export function expandHome(p: string): string {
   return p;
 }
 
+// Active soul persistence across sessions
+const ACTIVE_SOUL_PATH = path.join(os.homedir(), '.pi', 'agent', '.active-soul.json');
+
+function saveActiveSoul(soulName: string, level: number): void {
+  try {
+    const dir = path.dirname(ACTIVE_SOUL_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(ACTIVE_SOUL_PATH, JSON.stringify({
+      soul: soulName,
+      level: level || 2,
+      updatedAt: Date.now()
+    }, null, 2), 'utf-8');
+    debugLog("soul", `Saved active soul: ${soulName}`);
+  } catch (err) {
+    debugLog("soul", `Failed to save active soul: ${err}`);
+  }
+}
+
+function loadActiveSoul(): { soul: string; level: number } | null {
+  try {
+    if (fs.existsSync(ACTIVE_SOUL_PATH)) {
+      const data = JSON.parse(fs.readFileSync(ACTIVE_SOUL_PATH, 'utf-8'));
+      if (data && data.soul) {
+        return { soul: data.soul, level: data.level || 2 };
+      }
+    }
+  } catch (err) {
+    debugLog("soul", `Failed to load active soul: ${err}`);
+  }
+  return null;
+}
+
+function clearActiveSoul(): void {
+  try {
+    if (fs.existsSync(ACTIVE_SOUL_PATH)) {
+      fs.unlinkSync(ACTIVE_SOUL_PATH);
+      debugLog("soul", "Cleared active soul");
+    }
+  } catch (err) {
+    debugLog("soul", `Failed to clear active soul: ${err}`);
+  }
+}
+
 // SoulSpec loader class
 export class SoulSpecLoader {
   private cache: Map<string, SoulManifest> = new Map();
@@ -566,6 +611,7 @@ export default function (pi: ExtensionAPI) {
 
   // Initialize loader
   soulLoader = new SoulSpecLoader();
+  let autoAppliedSoul: { name: string; displayName: string; prompt: string; level: number } | null = null;
 
   // Register soul loader tool
   pi.registerTool({
@@ -710,8 +756,42 @@ export default function (pi: ExtensionAPI) {
 
   // Event handlers
   pi.on("session_start", async (event, ctx) => {
-    debugLog("soul", "SoulSpec extension session started");
-    ctx.ui.notify("SoulSpec extension loaded", "info");
+    debugLog("soul", `SoulSpec extension session started: ${event.reason}`);
+
+    // On fresh sessions, check for persisted active soul
+    if (event.reason === "startup" || event.reason === "new") {
+      const active = loadActiveSoul();
+      if (active) {
+        debugLog("soul", `Found active soul from previous session: ${active.soul}`);
+        try {
+          const manifest = await soulLoader.load(active.soul, active.level || 2);
+          autoAppliedSoul = {
+            name: manifest.name,
+            displayName: manifest.display_name,
+            prompt: soulLoader.buildSystemPrompt(manifest, active.level || 2),
+            level: active.level || 2
+          };
+          debugLog("soul", `Preloaded soul for auto-apply: ${manifest.display_name}`);
+          if (ctx.hasUI) {
+            ctx.ui.notify(`🪷 Soul auto-loaded: ${manifest.display_name}`, "info");
+          }
+        } catch (err) {
+          debugLog("soul", `Failed to preload active soul: ${err}`);
+          autoAppliedSoul = null;
+          if (ctx.hasUI) {
+            ctx.ui.notify(`⚠️ Active soul "${active.soul}" not found. Use /soul <name> to set one.`, "warning");
+          }
+        }
+      } else {
+        const souls = soulLoader.getAllSouls();
+        if (souls.length > 0) {
+          debugLog("soul", `Found ${souls.length} available souls`);
+          if (event.reason === "startup" && ctx.hasUI) {
+            ctx.ui.notify(`🪷 Souls available (${souls.length}). Use /soul <name> to activate one.`, "info");
+          }
+        }
+      }
+    }
   });
 
   pi.on("resources_discover", async (event, ctx) => {
@@ -721,6 +801,17 @@ export default function (pi: ExtensionAPI) {
       promptPaths: [".pi/souls", "./souls", "~/.pi/agent/souls", "~/.openclaw/souls/clawsouls"], // Add souls directories to prompt discovery
       themePaths: [],
     };
+  });
+
+  // Auto-apply persisted soul into system prompt before agent processes user input
+  pi.on("before_agent_start", async (event) => {
+    if (autoAppliedSoul) {
+      debugLog("soul", `Auto-applying soul to system prompt: ${autoAppliedSoul.displayName}`);
+      // Inject soul content into the system prompt. The system prompt is rebuilt fresh
+      // each user prompt cycle, so we apply every time, not just once.
+      const enhancedPrompt = event.systemPrompt + "\n\n---\n" + autoAppliedSoul.prompt;
+      return { systemPrompt: enhancedPrompt };
+    }
   });
 
   // Add command to list souls
@@ -757,30 +848,59 @@ export default function (pi: ExtensionAPI) {
 
   // Add command to use a soul
   pi.registerCommand("soul", {
-    description: "Use a soul for the current session",
+    description: "Use a soul for the current session — persists across sessions",
     handler: async (args, ctx) => {
       debugLog("soul", `Using soul command with: ${args}`);
       
       if (!args) {
-        ctx.ui.notify("Usage: /soul <soul-name>", "error");
+        const souls = soulLoader.getAllSouls();
+        let msg = "Usage: /soul <soul-name>\n\nAvailable souls:\n";
+        for (const s of souls) {
+          const desc = s.description ? ` — ${s.description}` : '';
+          msg += `\n  \u2022 ${s.name}${desc}`;
+        }
+        msg += "\n\nUse /soul off to clear the active soul and stop auto-loading.";
+        ctx.ui.notify(msg, "error");
+        return;
+      }
+
+      // Parse --level N from args (support both "--level 3" and "--level=3")
+      let soulArgs = args.trim();
+      let level = 2;
+      const levelMatch = soulArgs.match(/--level\s*=\s*(\d+)/i) || soulArgs.match(/--level\s+(\d+)/i);
+      if (levelMatch) {
+        level = parseInt(levelMatch[1], 10);
+        level = Math.max(1, Math.min(3, level));
+        soulArgs = soulArgs.replace(/--level\s*[= ]\s*\d+/i, "").trim();
+      }
+
+      // Handle /soul off / clear to stop auto-loading
+      const trimmedArgs = soulArgs.toLowerCase();
+      if (trimmedArgs === "off" || trimmedArgs === "clear" || trimmedArgs === "none" || trimmedArgs === "default") {
+        clearActiveSoul();
+        autoAppliedSoul = null;
+        ctx.ui.notify("Active soul cleared. No soul will auto-load in future sessions.", "info");
         return;
       }
 
       try {
-        const soul = await soulLoader.load(args, 2);
-        const systemPrompt = soulLoader.buildSystemPrompt(soul, 2);
+        const soul = await soulLoader.load(trimmedArgs, level);
+        const systemPrompt = soulLoader.buildSystemPrompt(soul, level);
+        
+        // Persist this soul as the default for future sessions
+        saveActiveSoul(soul.name, level);
         
         // Inject the soul prompt as a system message
         pi.sendMessage({
           customType: "soulspec",
           content: systemPrompt,
           display: true,
-          details: { soul: soul.name, level: 2 }
+          details: { soul: soul.name, level }
         }, {
           deliverAs: "steer"
         });
         
-        ctx.ui.notify(`Using soul: ${soul.display_name}`, "success");
+        ctx.ui.notify(`Now using soul: ${soul.display_name} (level ${level}). This soul will auto-load in future sessions.`, "success");
       } catch (error) {
         debugLog("soul", `Error using soul: ${error}`);
         ctx.ui.notify(`Error loading soul: ${error}`, "error");
