@@ -848,7 +848,7 @@ export default function (pi: ExtensionAPI) {
 
   // Add command to use a soul
   pi.registerCommand("soul", {
-    description: "Use a soul for the current session — persists across sessions",
+    description: "Use a soul for the current session — persists across sessions. Use /soul --help for options.",
     handler: async (args, ctx) => {
       debugLog("soul", `Using soul command with: ${args}`);
       
@@ -860,6 +860,7 @@ export default function (pi: ExtensionAPI) {
           msg += `\n  \u2022 ${s.name}${desc}`;
         }
         msg += "\n\nUse /soul off to clear the active soul and stop auto-loading.";
+        msg += "\n\nUse /soul --help for more options.";
         ctx.ui.notify(msg, "error");
         return;
       }
@@ -872,6 +873,26 @@ export default function (pi: ExtensionAPI) {
         level = parseInt(levelMatch[1], 10);
         level = Math.max(1, Math.min(3, level));
         soulArgs = soulArgs.replace(/--level\s*[= ]\s*\d+/i, "").trim();
+      }
+
+      // Handle --help flag
+      if (soulArgs === "--help" || soulArgs === "-h") {
+        let helpMsg = "Usage: /soul <soul-name> [options]\n\n";
+        helpMsg += "Load and activate a SoulSpec persona for the current session.\n\n";
+        helpMsg += "Arguments:\n";
+        helpMsg += "  <soul-name>    Name of the soul to load (directory name or path)\n\n";
+        helpMsg += "Options:\n";
+        helpMsg += "  --level N      Set progressive disclosure level (1-3, default: 2)\n";
+        helpMsg += "  --help, -h     Show this help message\n\n";
+        helpMsg += "Special values:\n";
+        helpMsg += "  off, clear, none, default  Clear the active soul\n\n";
+        helpMsg += "Examples:\n";
+        helpMsg += "  /soul my-soul              Load soul named 'my-soul' at level 2\n";
+        helpMsg += "  /soul my-soul --level 3    Load soul at level 3 (full details)\n";
+        helpMsg += "  /soul off                  Clear active soul\n\n";
+        helpMsg += "To list available souls, use /souls or run /soul without arguments.";
+        ctx.ui.notify(helpMsg, "info");
+        return;
       }
 
       // Handle /soul off / clear to stop auto-loading
