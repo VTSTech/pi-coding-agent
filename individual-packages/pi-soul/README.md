@@ -1,15 +1,17 @@
 # @vtstech/pi-soul
 
-SoulSpec extension for Pi Coding Agent - Load and manage AI agent personas with progressive disclosure support.
+SoulSpec extension for Pi Coding Agent - Load and manage AI agent personas with progressive disclosure support and enhanced partial matching.
 
 ## Features
 
+- **Enhanced Partial Matching**: Flexible soul name matching with regex support for better tab autocomplete compatibility
 - **SoulSpec Loading**: Load AI agent personas defined in SoulSpec format
 - **Progressive Disclosure**: Support for Level 1-3 disclosure levels
 - **Multiple Soul Locations**: Load souls from global and project-local directories
-- **Built-in Tools**: Tools for listing, loading, and inspecting souls
-- **CLI Commands**: Commands for soul management
+- **Built-in Tools**: Tools for listing, loading, and inspecting souls with smart suggestions
+- **CLI Commands**: Commands for soul management with partial matching support
 - **Embodied Agent Support**: Hardware constraints and safety configurations
+- **Smart Error Handling**: Helpful suggestions when no exact match is found
 
 ## Installation
 
@@ -48,7 +50,14 @@ Get detailed information about a soul.
 List available souls.
 
 #### `/soul <name>`
-Use a soul for the current session.
+Use a soul for the current session with partial matching support.
+
+```bash
+/soul nova-helper     # Use the Nova Helper persona (exact match)
+/soul dev             # Load any soul containing 'dev' (partial matching)
+/soul /dev/ig         # Load any soul with 'dev' (case-insensitive regex)
+/soul --help          # Show enhanced help with partial matching examples
+```
 
 ## Soul Structure
 
@@ -115,9 +124,11 @@ The extension searches for souls in the following directories (in order):
 
 ## Examples
 
-### Loading a soul
+### Loading a soul with partial matching
 ```bash
-/soul nova-helper
+/soul nova-helper     # Exact match
+/soul dev             # Partial match (matches 'developer', 'assistant-dev', etc.)
+/soul /dev/ig         # Regex match (case-insensitive)
 ```
 
 ### Listing souls
@@ -125,8 +136,9 @@ The extension searches for souls in the following directories (in order):
 /souls
 ```
 
-### Getting soul info
+### Getting soul info with partial matching
 ```bash
+/soul_info dev        # Get info for souls matching 'dev'
 /load_soul {"soul_name": "nova-helper"}
 ```
 
