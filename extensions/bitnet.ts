@@ -67,33 +67,93 @@ export default async function (pi: ExtensionAPI) {
     }
   });
 
-  // BitNet-specific command for health check and model info
-  pi.registerCommand("bitnet-status", {
-    description: "Check BitNet server health and list models",
-    handler: async (_args, ctx) => {
-      try {
-        const isHealthy = await checkBitNetHealth(config.baseUrl);
-        const models = await discoverBitNetModels(config.baseUrl);
-        
-        ctx.ui.notify(`BitNet server: ${isHealthy ? "Healthy" : "Unhealthy"}`, "info");
-        ctx.ui.notify(`Models: ${models.map(m => m.name).join(", ")}`, "info");
-        
-        // Show BitNet-specific warnings
-        if (models.length > 0) {
-          ctx.ui.notify("⚠️ BitNet has strict prompt limits (~1024 chars)", "warning");
-          ctx.ui.notify("⚠️ Small models may lose coherence beyond 3-4 turns", "warning");
+  // BitNet command with subcommands
+  pi.registerCommand("bitnet", {
+    description: "BitNet server management",
+    getArgumentCompletions: (prefix: string) => {
+      const subcommands = ["--status", "--url"];
+      return subcommands
+        .filter(cmd => cmd.startsWith(prefix))
+        .map(cmd => ({ value: cmd, label: cmd }));
+    },
+    handler: async (args, ctx) => {
+      const argsArray = Array.isArray(args) ? args : [args].filter(Boolean);
+      
+      if (argsArray.length === 0 || argsArray[0] === "--status") {
+        await handleStatus(ctx);
+      } else if (argsArray[0] === "--url") {
+        if (argsArray[1]) {
+          await handleUrlSet(argsArray[1], ctx);
+        } else {
+          await handleUrlGet(ctx);
         }
-        
-        if (!isHealthy) {
-          ctx.ui.notify("💡 Tip: Make sure BitNet server is running at " + config.baseUrl, "info");
-          ctx.ui.notify("💡 Or set BITNET_BASE_URL to your server URL", "info");
-        }
-      } catch (error) {
-        ctx.ui.notify(`Error: ${error.message}`, "error");
-        ctx.ui.notify("💡 Make sure BitNet server is running and accessible", "info");
+      } else {
+        ctx.ui.notify(`Unknown subcommand: ${argsArray[0]}`, "error");
+        ctx.ui.notify("Usage: /bitnet --status | /bitnet --url [url]", "info");
       }
     },
   });
+
+  // Helper functions for the command
+  async function handleStatus(ctx: any) {
+    try {
+      const isHealthy = await checkBitNetHealth(config.baseUrl);
+      const models = await discoverBitNetModels(config.baseUrl);
+      
+      ctx.ui.notify(`BitNet server: ${isHealthy ? "Healthy" : "Unhealthy"}`, "info");
+      ctx.ui.notify(`Models: ${models.map(m => m.name).join(", ")}`, "info");
+      ctx.ui.notify(`URL: ${config.baseUrl}`, "info");
+      
+      // Show BitNet-specific warnings
+      if (models.length > 0) {
+        ctx.ui.notify("⚠️ BitNet has strict prompt limits (~1024 chars)", "warning");
+        ctx.ui.notify("⚠️ Small models may lose coherence beyond 3-4 turns", "warning");
+      }
+      
+      if (!isHealthy) {
+        ctx.ui.notify("💡 Tip: Make sure BitNet server is running at " + config.baseUrl, "info");
+        ctx.ui.notify("💡 Or set BITNET_BASE_URL to your server URL", "info");
+      }
+    } catch (error) {
+      ctx.ui.notify(`Error: ${error.message}`, "error");
+      ctx.ui.notify("💡 Make sure BitNet server is running and accessible", "info");
+    }
+  }
+
+  async function handleUrlGet(ctx: any) {
+    ctx.ui.notify(`Current BitNet URL: ${config.baseUrl}`, "info");
+    ctx.ui.notify("Set with: /bitnet --url <new-url>", "info");
+    ctx.ui.notify("Environment: BITNET_BASE_URL", "info");
+  }
+
+  async function handleUrlSet(url: string, ctx: any) {
+    if (!url || url.startsWith("--")) {
+      ctx.ui.notify("Please provide a valid URL", "error");
+      ctx.ui.notify("Usage: /bitnet --url http://localhost:8080", "info");
+      return;
+    }
+
+    // Validate URL format
+    try {
+      new URL(url);
+    } catch {
+      ctx.ui.notify(`Invalid URL: ${url}`, "error");
+      return;
+    }
+
+    config.baseUrl = url;
+    
+    // Update the provider
+    pi.registerProvider("bitnet", {
+      baseUrl: config.baseUrl,
+      apiKey: config.apiKey,
+      api: "openai-compat",
+      models: [],
+    });
+
+    ctx.ui.notify(`BitNet URL updated to: ${url}`, "success");
+    ctx.ui.notify("Use /bitnet --status to check the new server", "info");
+  }
 
   // Helper functions
   async function checkBitNetHealth(baseUrl: string): Promise<boolean> {
