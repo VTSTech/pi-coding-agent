@@ -58,12 +58,16 @@ async function discoverBitNetModels(baseUrl: string): Promise<any[]> {
       }
     }];
   } catch (error) {
-    console.error(`[bitnet] Model discovery failed:`, error);
+    // Return fallback model without crashing
     return [{
       name: "bitnet",
       contextWindow: 1024,
       maxTokens: 512,
-      details: { family: "bitnet", backend: "llama-cpp" }
+      details: { 
+        family: "bitnet", 
+        backend: "llama-cpp",
+        status: "server unavailable - using fallback"
+      }
     }];
   }
 }
