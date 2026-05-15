@@ -436,7 +436,9 @@ export default function (pi: ExtensionAPI) {
       console.log(`[bitnet] Discovered ${models.length} models`);
       
       // Only register provider if we have valid models (not fallback) and it's not already registered
-      if (models.length > 0 && models[0].id !== "bitnet" && !providerRegistered) {
+      // Check if the discovered model is actually a BitNet model (contains "bitnet" in ID)
+      const isBitNetModel = models.length > 0 && models[0].id.toLowerCase().includes("bitnet");
+      if (models.length > 0 && isBitNetModel && !providerRegistered) {
         pi.registerProvider("bitnet", {
           baseUrl: config.baseUrl,
           apiKey: config.apiKey || "bitnet",
