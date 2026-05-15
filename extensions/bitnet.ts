@@ -64,7 +64,7 @@ try {
  */
 async function generateBitNet(model: any, context: any, options: any) {
   try {
-    const baseUrl = model.baseUrl.replace(/\/$/, '');
+    const baseUrl = config.baseUrl.replace(/\/$/, '');
     const url = `${baseUrl}/completion`;
     
     // Convert messages to prompt for /completion endpoint
@@ -115,84 +115,82 @@ async function streamBitNet(model: any, context: any, options: any) {
   const { AssistantMessageEventStream } = await import("@earendil-works/pi-ai/utils/event-stream.js");
   const stream = new AssistantMessageEventStream();
   
-  // Validate model before proceeding
-  if (!model || !model.baseUrl || !model.id) {
-    stream.push({ type: "error", error: new Error("Invalid model configuration") });
-    return stream;
-  }
-  
-  // Check if server is available before making request
-  const { healthy } = await checkBitNetHealth(model.baseUrl);
-  if (!healthy) {
-    stream.push({ type: "error", error: new Error("BitNet server not available") });
-    return stream;
-  }
-  
-  setTimeout(async () => {
-    try {
-      const baseUrl = model.baseUrl.replace(/\/$/, '');
-      const url = `${baseUrl}/completion`; // Use native /completion endpoint
+  try {
+    const baseUrl = config.baseUrl.replace(/\/$/, '');
+    const url = `${baseUrl}/completion`; // Use native /completion endpoint
+    
+    // Convert messages to prompt for /completion endpoint
+    const prompt = messagesToPrompt(context.messages, model?.id || "bitnet");
+    
+    // Build request body for /completion endpoint
+    const body: any = {
+      prompt: prompt,
+      n_predict: Math.min(context.maxTokens || 2048, 1024), // BitNet has smaller context
+      temperature: context.temperature ?? 0.7,
+      stream: true,
+      repeat_penalty: 1.3, // BitNet needs repeat penalty to prevent loops
+      stop: ["\nUser: ", "\nAssistant:"] // Turn-bleed guards
+    };
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: options?.signal,
+    });
+    
+    if (!response.ok) {
+      stream.push({ type: "error", error: new Error(`HTTP ${response.status}`) });
+      return;
+    }
+    
+    if (!response.body) {
+      stream.push({ type: "error", error: new Error("No response body") });
+      return;
+    }
+    
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
       
-      // Convert messages to prompt for /completion endpoint
-      const prompt = messagesToPrompt(context.messages, model.id);
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || ''; // Keep incomplete line for next iteration
       
-      // Build request body for /completion endpoint
-      const body: any = {
-        prompt: prompt,
-        n_predict: Math.min(context.maxTokens || 2048, 1024), // BitNet has smaller context
-        temperature: context.temperature ?? 0.7,
-        stream: true,
-        repeat_penalty: 1.3, // BitNet needs repeat penalty to prevent loops
-        stop: ["\nUser: ", "\nAssistant:"] // Turn-bleed guards
-      };
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-        signal: options?.signal,
-      });
-      
-      if (!response.ok || !response.body) {
-        stream.push({ type: "error", error: new Error(`HTTP ${response.status}`) });
-        return;
-      }
-      
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // Keep incomplete line for next iteration
-        
-        for (const line of lines) {
-          if (line.startsWith('{')) {
-            try {
-              const data = JSON.parse(line);
-              if (data.content) {
-                stream.push({ type: "content", content: data.content });
-              }
-              if (data.stop) {
-                stream.push({ type: "finish", stopReason: "stop" });
-                break;
-              }
-            } catch (e) {
-              // Ignore JSON parsing errors for incomplete data
+      for (const line of lines) {
+        if (line.startsWith('{')) {
+          try {
+            const data = JSON.parse(line);
+            // llama.cpp streaming format: data.content contains the token
+            if (data.content) {
+              stream.push({ type: "content", content: data.content });
             }
+            // Check for stop condition - llama.cpp uses 'stop' or we check if content is empty and done
+            if (data.stop || (data.content === '' && data.done)) {
+              stream.push({ type: "finish", stopReason: "stop" });
+              return;
+            }
+            if (data.done) {
+              stream.push({ type: "finish", stopReason: "stop" });
+              return;
+            }
+          } catch (e) {
+            // Ignore JSON parsing errors for incomplete data
           }
         }
       }
-    } catch (error: any) {
-      stream.push({ type: "error", error: new Error(`BitNet request failed: ${error.message}`) });
     }
-  });
+    // If we exit the loop without explicit stop, push finish
+    stream.push({ type: "finish", stopReason: "stop" });
+  } catch (error: any) {
+    stream.push({ type: "error", error: new Error(`BitNet request failed: ${error.message}`) });
+  }
   
   return stream;
 }
@@ -411,6 +409,7 @@ export default function (pi: ExtensionAPI) {
         pi.registerProvider("bitnet", {
           baseUrl: config.baseUrl,
           apiKey: config.apiKey || "bitnet",
+          // Use openai-completions for non-streaming, streamSimple handles streaming
           api: "openai-completions",
           generate: generateBitNet,
           streamSimple: streamBitNet,
