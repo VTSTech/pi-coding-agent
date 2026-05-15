@@ -20,13 +20,9 @@ function loadConfig(): BitNetConfig {
     const models = readModelsJson();
     const provider = models.providers?.bitnet;
     if (provider) {
-      let apiKey = provider.apiKey || process.env.BITNET_API_KEY || "";
-      // Set default API key for local BitNet if not provided
-      if (!apiKey) apiKey = "bitnet";
-      
       return {
         baseUrl: provider.baseUrl || process.env.BITNET_BASE_URL || "http://localhost:8080",
-        apiKey: apiKey,
+        apiKey: provider.apiKey || process.env.BITNET_API_KEY || "",
         timeout: parseInt(process.env.BITNET_TIMEOUT || "30000"),
       };
     }
@@ -34,15 +30,15 @@ function loadConfig(): BitNetConfig {
     debugLog("bitnet", "Failed to load config from models.json", error);
   }
   
-  // Default config with placeholder API key
   return {
     baseUrl: process.env.BITNET_BASE_URL || "http://localhost:8080",
-    apiKey: process.env.BITNET_API_KEY || "bitnet",
+    apiKey: process.env.BITNET_API_KEY || "",
     timeout: parseInt(process.env.BITNET_TIMEOUT || "30000"),
   };
 }
 
 let config = loadConfig();
+let discoveredModel: any = null;
 
 // ── Helper Functions ───────────────────────────────────────────────────────
 
@@ -66,22 +62,30 @@ async function discoverBitNetModels(baseUrl: string): Promise<any[]> {
     });
     const props = await response.json();
     
+    // Extract actual model info from the response
     const modelPath = props.model_path || props.default_generation_settings?.model || "";
     const modelName = modelPath.split('/').pop()?.replace(/\.(gguf|bin)$/, '') || "bitnet";
+    const contextWindow = props.default_generation_settings?.n_ctx || 16384;
     
-    return [{
+    discoveredModel = {
       name: modelName,
-      contextWindow: 1024,
-      maxTokens: 512,
+      id: modelName,
+      contextWindow: contextWindow,
+      maxTokens: 2048,
       details: { 
         family: "bitnet", 
         backend: "llama-cpp",
         model_path: modelPath,
+        n_ctx: contextWindow
       }
-    }];
+    };
+    
+    return [discoveredModel];
   } catch (error) {
+    console.error(`[bitnet] Model discovery failed:`, error);
     return [{
       name: "bitnet",
+      id: "bitnet",
       contextWindow: 1024,
       maxTokens: 512,
       details: { 
@@ -118,19 +122,30 @@ export default function (pi: ExtensionAPI) {
   console.log(branding);
   console.log(`[bitnet] Loaded config from: ${config.baseUrl}`);
 
-  // Register BitNet provider
+  // Register BitNet provider with placeholder models (will be updated on discovery)
   pi.registerProvider("bitnet", {
     baseUrl: config.baseUrl,
-    apiKey: config.apiKey,
+    apiKey: config.apiKey || "bitnet",
     api: "openai-compat",
     models: [],
   });
 
-  // Discover models on startup
+  // Discover and update models on startup and reload
   pi.on("resources_discover", async () => {
     try {
       const models = await discoverBitNetModels(config.baseUrl);
       console.log(`[bitnet] Discovered ${models.length} models`);
+      
+      // Update the provider with discovered models
+      if (models.length > 0 && models[0].id !== "bitnet") {
+        pi.registerProvider("bitnet", {
+          baseUrl: config.baseUrl,
+          apiKey: config.apiKey || "bitnet",
+          api: "openai-compat",
+          models: models,
+        });
+        console.log(`[bitnet] Updated provider with model: ${models[0].name}`);
+      }
     } catch (error) {
       console.log(`[bitnet] Using fallback configuration`);
     }
@@ -162,15 +177,16 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (argsArray.length === 0 || argsArray[0] === "--status") {
-        // Status command
-        const { healthy, details } = await checkBitNetHealth(config.baseUrl);
+        // Status command - discover models first
         const models = await discoverBitNetModels(config.baseUrl);
+        const { healthy, details } = await checkBitNetHealth(config.baseUrl);
         
         // Show clear, meaningful status
         ctx.ui.notify(`BitNet Server Status: ${healthy ? "🟢 HEALTHY" : "🔴 UNHEALTHY"}`, healthy ? "success" : "error");
         ctx.ui.notify(`Server URL: ${config.baseUrl}`, "info");
         ctx.ui.notify(`Details: ${details || "OK"}`, "info");
-        ctx.ui.notify(`Discovered Models: ${models.map(m => m.name).join(", ") || "None"}`, "info");
+        ctx.ui.notify(`Loaded Model: ${models[0]?.name || "Unknown"}`, "info");
+        ctx.ui.notify(`Context Window: ${models[0]?.contextWindow || 1024} tokens`, "info");
         
         if (!healthy) {
           ctx.ui.notify("💡 Tip: Start your BitNet server or check the URL with /bitnet --url", "warning");
@@ -189,23 +205,21 @@ export default function (pi: ExtensionAPI) {
           const oldUrl = config.baseUrl;
           const oldApiKey = config.apiKey;
           config.baseUrl = argsArray[1];
-          // Keep the existing API key or use default
           if (!config.apiKey) config.apiKey = "bitnet";
           
           try {
-            // Update models.json with complete provider config
-            await readModifyWriteModelsJson((models) => {
-              models.providers["bitnet"] = {
+            // Discover models with new URL
+            const models = await discoverBitNetModels(config.baseUrl);
+            
+            // Update models.json with discovered config
+            await readModifyWriteModelsJson((modelsJson) => {
+              modelsJson.providers["bitnet"] = {
                 baseUrl: config.baseUrl,
                 api: "openai-compat",
                 apiKey: config.apiKey || "bitnet",
-                models: [{
-                  id: "bitnet",
-                  contextWindow: 1024,
-                  maxTokens: 512
-                }]
+                models: models
               };
-              return models;
+              return modelsJson;
             });
 
             // Update runtime provider
@@ -213,15 +227,12 @@ export default function (pi: ExtensionAPI) {
               baseUrl: config.baseUrl,
               apiKey: config.apiKey,
               api: "openai-compat",
-              models: [{
-                id: "bitnet",
-                contextWindow: 1024,
-                maxTokens: 512
-              }],
+              models: models,
             });
 
             ctx.ui.notify(`✅ BitNet URL updated to: ${argsArray[1]}`, "success");
             ctx.ui.notify(`🔄 Previous URL: ${oldUrl}`, "info");
+            ctx.ui.notify(`📦 Discovered model: ${models[0]?.name || "Unknown"}`, "info");
             
             // Verify the new URL
             const { healthy, details } = await checkBitNetHealth(config.baseUrl);
@@ -243,22 +254,19 @@ export default function (pi: ExtensionAPI) {
           ctx.ui.notify("Environment variables: BITNET_BASE_URL, BITNET_API_KEY", "info");
         }
       } else if (argsArray[0] === "--sync") {
-        // Sync command - add provider to models.json
+        // Sync command - discover and add provider to models.json
         try {
+          const models = await discoverBitNetModels(config.baseUrl);
           const finalApiKey = config.apiKey || "bitnet";
           
-          await readModifyWriteModelsJson((models) => {
-            models.providers["bitnet"] = {
+          await readModifyWriteModelsJson((modelsJson) => {
+            modelsJson.providers["bitnet"] = {
               baseUrl: config.baseUrl,
               api: "openai-compat",
               apiKey: finalApiKey,
-              models: [{
-                id: "bitnet",
-                contextWindow: 1024,
-                maxTokens: 512
-              }]
+              models: models
             };
-            return models;
+            return modelsJson;
           });
 
           // Update runtime provider
@@ -266,16 +274,13 @@ export default function (pi: ExtensionAPI) {
             baseUrl: config.baseUrl,
             apiKey: finalApiKey,
             api: "openai-compat",
-            models: [{
-              id: "bitnet",
-              contextWindow: 1024,
-              maxTokens: 512
-            }],
+            models: models,
           });
 
           ctx.ui.notify("✅ BitNet provider synced to models.json", "success");
           ctx.ui.notify(`URL: ${config.baseUrl}`, "info");
-          ctx.ui.notify(`API Key: ${finalApiKey}`, "info");
+          ctx.ui.notify(`Model: ${models[0]?.name || "Unknown"}`, "info");
+          ctx.ui.notify(`Context: ${models[0]?.contextWindow || 1024} tokens`, "info");
           ctx.ui.notify("💡 Configuration will persist after reload", "info");
         } catch (error) {
           ctx.ui.notify(`❌ Failed to sync: ${error.message}`, "error");
