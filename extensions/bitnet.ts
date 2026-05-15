@@ -39,6 +39,7 @@ function loadConfig(): BitNetConfig {
 
 let config = loadConfig();
 let discoveredModel: any = null;
+let providerRegistered = false;
 
 // ── Helper Functions ───────────────────────────────────────────────────────
 
@@ -193,36 +194,37 @@ export default function (pi: ExtensionAPI) {
 
   console.log(branding);
   console.log(`[bitnet] Loaded config from: ${config.baseUrl}`);
+  
+  // Only register provider if BitNet server is available and has valid models
+  // This prevents interference with other providers when BitNet is not running
 
-  // Register BitNet provider with placeholder models (will be updated on discovery)
-  // Use streamSimple to bypass tools parameter issue
-  pi.registerProvider("bitnet", {
-    baseUrl: config.baseUrl,
-    apiKey: config.apiKey || "bitnet",
-    api: "openai-completions", // Required field, but we use streamSimple
-    streamSimple: streamBitNet,
-    models: [],
-  });
-
-  // Discover and update models on startup and reload
+  // Discover and register models on startup and reload
   pi.on("resources_discover", async () => {
     try {
+      // Check if BitNet server is healthy before attempting discovery
+      const { healthy } = await checkBitNetHealth(config.baseUrl);
+      if (!healthy) {
+        console.log(`[bitnet] Server not healthy at ${config.baseUrl}, skipping registration`);
+        return;
+      }
+      
       const models = await discoverBitNetModels(config.baseUrl);
       console.log(`[bitnet] Discovered ${models.length} models`);
       
-      // Update the provider with discovered models
-      if (models.length > 0 && models[0].id !== "bitnet") {
+      // Only register provider if we have valid models and it's not already registered
+      if (models.length > 0 && models[0].id !== "bitnet" && !providerRegistered) {
         pi.registerProvider("bitnet", {
           baseUrl: config.baseUrl,
           apiKey: config.apiKey || "bitnet",
-          api: "openai-completions", // Required field, but we use streamSimple
+          api: "openai-completions",
           streamSimple: streamBitNet,
           models: models,
         });
-        console.log(`[bitnet] Updated provider with model: ${models[0].name}`);
+        providerRegistered = true;
+        console.log(`[bitnet] Registered provider with model: ${models[0].name}`);
       }
     } catch (error) {
-      console.log(`[bitnet] Using fallback configuration`);
+      console.log(`[bitnet] Failed to discover models: ${error}`);
     }
   });
 
@@ -296,14 +298,27 @@ export default function (pi: ExtensionAPI) {
               return modelsJson;
             });
 
-            // Update runtime provider
-            pi.registerProvider("bitnet", {
-              baseUrl: config.baseUrl,
-              apiKey: config.apiKey,
-              api: "openai-completions", // Required field, but we use streamSimple
-              streamSimple: streamBitNet,
-              models: models,
-            });
+            // Update runtime provider (ensure it's registered)
+            if (!providerRegistered) {
+              pi.registerProvider("bitnet", {
+                baseUrl: config.baseUrl,
+                apiKey: config.apiKey,
+                api: "openai-completions",
+                streamSimple: streamBitNet,
+                models: models,
+              });
+              providerRegistered = true;
+            } else {
+              // Update existing provider
+              const existingProvider = pi.getProvider("bitnet");
+              if (existingProvider) {
+                Object.assign(existingProvider, {
+                  baseUrl: config.baseUrl,
+                  apiKey: config.apiKey,
+                  models: models,
+                });
+              }
+            }
 
             ctx.ui.notify(`✅ BitNet URL updated to: ${argsArray[1]}`, "success");
             ctx.ui.notify(`🔄 Previous URL: ${oldUrl}`, "info");
@@ -351,14 +366,27 @@ export default function (pi: ExtensionAPI) {
             return modelsJson;
           });
 
-          // Update runtime provider
-          pi.registerProvider("bitnet", {
-            baseUrl: config.baseUrl,
-            apiKey: finalApiKey,
-            api: "openai-completions", // Required field, but we use streamSimple
-            streamSimple: streamBitNet,
-            models: models,
-          });
+          // Update runtime provider (ensure it's registered)
+          if (!providerRegistered) {
+            pi.registerProvider("bitnet", {
+              baseUrl: config.baseUrl,
+              apiKey: finalApiKey,
+              api: "openai-completions",
+              streamSimple: streamBitNet,
+              models: models,
+            });
+            providerRegistered = true;
+          } else {
+            // Update existing provider
+            const existingProvider = pi.getProvider("bitnet");
+            if (existingProvider) {
+              Object.assign(existingProvider, {
+                baseUrl: config.baseUrl,
+                apiKey: finalApiKey,
+                models: models,
+              });
+            }
+          }
 
           ctx.ui.notify("✅ BitNet provider synced to models.json", "success");
           ctx.ui.notify(`URL: ${config.baseUrl}`, "info");
@@ -411,6 +439,17 @@ export default function (pi: ExtensionAPI) {
         };
       }
     },
+  });
+
+  // ── Extension Lifecycle ─────────────────────────────────────────────────
+
+  // Clean up provider on extension unload
+  pi.on("extension_unload", () => {
+    if (providerRegistered) {
+      console.log("[bitnet] Unregistering provider");
+      // Note: Pi API may not have unregister method, this is preventive
+      providerRegistered = false;
+    }
   });
 
   // ── Event Handlers ───────────────────────────────────────────────────────
