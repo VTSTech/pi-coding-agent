@@ -120,13 +120,13 @@ async function generateBitNet(model: any, context: any, options: any) {
  * BitNet doesn't support OpenAI Chat Completions, so we use the native /completion endpoint.
  */
 function streamBitNet(model: any, context: any, options: any) {
-  // Import from pi-ai package
-  const { AssistantMessageEventStream } = await import("@earendil-works/pi-ai");
-  const stream = new AssistantMessageEventStream();
-  
-  // Start async work in IIFE - must return stream synchronously
+  // Import from pi-ai package and start async work in IIFE
+  // Must return stream synchronously, so we create the stream inside the IIFE
+  let stream: any;
   (async () => {
-  
+    const { AssistantMessageEventStream } = await import("@earendil-works/pi-ai");
+    stream = new AssistantMessageEventStream();
+    
   try {
     const baseUrl = config.baseUrl.replace(/\/$/, '');
     const url = `${baseUrl}/completion`; // Use native /completion endpoint
