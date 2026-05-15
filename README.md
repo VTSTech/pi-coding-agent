@@ -84,6 +84,7 @@ pi update
 | `@vtstech/pi-openrouter-sync` | OpenRouter → models.json sync |
 | `@vtstech/pi-react-fallback` | ReAct fallback for non-native tool models |
 | `@vtstech/pi-long-term-memory` | Persistent memory across sessions |
+| `@vtstech/pi-hex-edit` | Hex stream-based edit replacement for reliable file editing |
 
 ### Manual Install
 
@@ -428,6 +429,45 @@ Automatically loaded - no commands needed. When a model lacks native tool callin
 - `before_provider_request` - Prepends memory to the API request
 
 **Storage:** `.pi/agent/long-term-memory.json`
+
+### 🔧 Hex Edit (`hex-edit.ts`)
+
+**A robust edit replacement that uses hex streams for comparison and validation - solves the common issue where text-based matching fails.**
+
+```bash
+/hex-edit <file> <old-text> <new-text>     # Edit file using byte-level validation
+/hex-edit-show <file>                       # Show file with line numbers and hex preview
+/hex-edit-validate <file> <text>           # Validate that text exists in file
+/hex-edit-diff <file1> <file2>             # Show byte-level diff between files
+```
+
+**Features:**
+- **Byte-level precision** - Works directly with file bytes, not text matching
+- **Hash verification** - Computes SHA-256 and simple hashes for change validation
+- **Multiple match handling** - Finds all occurrences and reports byte positions
+- **Context display** - Shows surrounding context when validating/searching
+- **Unified diff** - Shows line-by-line differences between files
+
+**Why Hex Edit?**
+The built-in `edit` tool uses text-based matching which can fail due to:
+- Whitespace differences
+- Encoding issues
+- Special characters
+- Partial matches
+
+Hex Edit solves this by:
+1. Reading files as raw bytes
+2. Finding exact byte sequences
+3. Performing precise replacements
+4. Validating changes via hash comparison
+
+**Example:**
+```bash
+/hex-edit src/index.ts "const old = 1" "const newVar = 2"
+/hex-edit-validate src/index.ts "some text"
+/hex-edit-show src/index.ts
+/hex-edit-diff file1.ts file2.ts
+```
 
 ### 🔄 Ollama Sync (`ollama-sync.ts`)
 
