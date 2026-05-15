@@ -137,16 +137,28 @@ async function checkBitNetHealth(baseUrl: string): Promise<{ healthy: boolean; d
 
 async function discoverBitNetModels(baseUrl: string): Promise<any[]> {
   try {
+    console.log(`[bitnet] Attempting to discover models from: ${baseUrl}/props`);
     const response = await fetch(`${baseUrl}/props`, {
       method: "GET",
       signal: AbortSignal.timeout(10000),
     });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
     const props = await response.json();
+    console.log(`[bitnet] Received props response:`, JSON.stringify(props, null, 2));
     
     // Extract actual model info from the response
     const modelPath = props.model_path || props.default_generation_settings?.model || "";
-    const modelName = modelPath.split('/').pop()?.replace(/\.(gguf|bin)$/, '') || "bitnet";
+    // Handle both cases: full path string or just the model name
+    const modelName = modelPath ? 
+      modelPath.split('/').pop()?.replace(/\.(gguf|bin)$/, '') || "bitnet" : 
+      "bitnet";
     const contextWindow = props.default_generation_settings?.n_ctx || 16384;
+    
+    console.log(`[bitnet] Discovered model: ${modelName} from path: ${modelPath}`);
     
     discoveredModel = {
       name: modelName,
