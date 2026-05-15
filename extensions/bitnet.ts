@@ -62,6 +62,8 @@ export default async function (pi: ExtensionAPI) {
       console.log(`[bitnet] Discovered ${models.length} models`);
     } catch (error) {
       console.error(`[bitnet] Failed to discover models:`, error);
+      // Add a fallback model so the provider is still available
+      console.log(`[bitnet] Using fallback model - server may not be running`);
     }
   });
 
@@ -81,8 +83,14 @@ export default async function (pi: ExtensionAPI) {
           ctx.ui.notify("⚠️ BitNet has strict prompt limits (~1024 chars)", "warning");
           ctx.ui.notify("⚠️ Small models may lose coherence beyond 3-4 turns", "warning");
         }
+        
+        if (!isHealthy) {
+          ctx.ui.notify("💡 Tip: Make sure BitNet server is running at " + config.baseUrl, "info");
+          ctx.ui.notify("💡 Or set BITNET_BASE_URL to your server URL", "info");
+        }
       } catch (error) {
         ctx.ui.notify(`Error: ${error.message}`, "error");
+        ctx.ui.notify("💡 Make sure BitNet server is running and accessible", "info");
       }
     },
   });
@@ -138,11 +146,16 @@ export default async function (pi: ExtensionAPI) {
       }];
     } catch (error) {
       console.error(`[bitnet] Model discovery failed:`, error);
+      // Return fallback model without crashing
       return [{
         name: "bitnet",
         contextWindow: 1024,
         maxTokens: 512,
-        details: { family: "bitnet", backend: "llama-cpp" }
+        details: { 
+          family: "bitnet", 
+          backend: "llama-cpp",
+          status: "fallback - server may not be running"
+        }
       }];
     }
   }
@@ -275,4 +288,16 @@ export default async function (pi: ExtensionAPI) {
 
   console.log(`[bitnet] Extension loaded - BitNet support enabled`);
   console.log(`[bitnet] Server: ${config.baseUrl}`);
+  console.log(`[bitnet] Use /bitnet-status to check server availability`);
+  
+  // Check server availability on startup
+  try {
+    const isHealthy = await checkBitNetHealth(config.baseUrl);
+    if (!isHealthy) {
+      console.warn(`[bitnet] Server not available at ${config.baseUrl}`);
+      console.warn(`[bitnet] Start your BitNet server or set BITNET_BASE_URL`);
+    }
+  } catch (error) {
+    console.warn(`[bitnet] Cannot connect to server:`, error.message);
+  }
 }
