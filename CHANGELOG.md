@@ -5,6 +5,21 @@ All notable changes to the Pi Coding Agent Extensions (`@vtstech/pi-coding-agent
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.5] - 05-15-2026 7:49:41 PM
+
+### Added
+
+- **hex-edit: Hex stream-based edit replacement** (`extensions/hex-edit.ts`)
+  - Provides byte-level file editing with hash validation as a reliable alternative to the builtin `edit` tool
+  - `/hex-edit <file> <old> <new>` - Edit file using exact byte matching
+  - `/hex-edit-show <file>` - Display file with line numbers and hex preview
+  - `/hex-edit-validate <file> <text>` - Validate that text exists in file (shows byte positions)
+  - `/hex-edit-diff <file1> <file2>` - Show byte-level diff between two files
+  - Uses SHA-256 hashing for change verification
+  - Finds all occurrences of search text and reports positions
+  - Works with any file type (text or binary)
+  - Solves common `edit` tool failures due to whitespace, encoding, or special character issues
+  
 ## [1.3.4] - 05-14-2026 3:53:31 PM
 
 ### Added
