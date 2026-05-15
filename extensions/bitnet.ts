@@ -67,8 +67,12 @@ async function generateBitNet(model: any, context: any, options: any) {
     const baseUrl = config.baseUrl.replace(/\/$/, '');
     const url = `${baseUrl}/completion`;
     
+    console.log(`[bitnet] generateBitNet: baseUrl=${baseUrl}, url=${url}`);
+    console.log(`[bitnet] generateBitNet: model.id=${model?.id}, messages=${context?.messages?.length}`);
+    
     // Convert messages to prompt for /completion endpoint
     const prompt = messagesToPrompt(context.messages, model.id);
+    console.log(`[bitnet] generateBitNet: prompt="${prompt.substring(0, 100)}..."`);
     
     // Build request body for /completion endpoint
     const body: any = {
@@ -88,11 +92,14 @@ async function generateBitNet(model: any, context: any, options: any) {
       signal: options?.signal,
     });
     
+    console.log(`[bitnet] generateBitNet: response.status=${response.status}`);
+    
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
     
     const result = await response.json();
+    console.log(`[bitnet] generateBitNet: result.content="${result.content?.substring(0, 50)}..."`);
     return {
       content: result.content || "",
       toolCalls: [],
@@ -103,6 +110,7 @@ async function generateBitNet(model: any, context: any, options: any) {
       }
     };
   } catch (error: any) {
+    console.log(`[bitnet] generateBitNet ERROR: ${error.message}`);
     throw new Error(`BitNet request failed: ${error.message}`);
   }
 }
@@ -119,8 +127,12 @@ async function streamBitNet(model: any, context: any, options: any) {
     const baseUrl = config.baseUrl.replace(/\/$/, '');
     const url = `${baseUrl}/completion`; // Use native /completion endpoint
     
+    console.log(`[bitnet] streamBitNet: baseUrl=${baseUrl}, url=${url}`);
+    console.log(`[bitnet] streamBitNet: model.id=${model?.id}, messages=${context?.messages?.length}`);
+    
     // Convert messages to prompt for /completion endpoint
     const prompt = messagesToPrompt(context.messages, model?.id || "bitnet");
+    console.log(`[bitnet] streamBitNet: prompt="${prompt.substring(0, 100)}..."`);
     
     // Build request body for /completion endpoint
     const body: any = {
@@ -132,6 +144,8 @@ async function streamBitNet(model: any, context: any, options: any) {
       stop: ["\nUser: ", "\nAssistant:"] // Turn-bleed guards
     };
     
+    console.log(`[bitnet] streamBitNet: body=${JSON.stringify(body).substring(0, 200)}...`);
+    
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -141,12 +155,16 @@ async function streamBitNet(model: any, context: any, options: any) {
       signal: options?.signal,
     });
     
+    console.log(`[bitnet] streamBitNet: response.status=${response.status}`);
+    
     if (!response.ok) {
+      console.log(`[bitnet] streamBitNet: HTTP error ${response.status}`);
       stream.push({ type: "error", error: new Error(`HTTP ${response.status}`) });
       return;
     }
     
     if (!response.body) {
+      console.log(`[bitnet] streamBitNet: No response body`);
       stream.push({ type: "error", error: new Error("No response body") });
       return;
     }
@@ -155,9 +173,14 @@ async function streamBitNet(model: any, context: any, options: any) {
     const decoder = new TextDecoder();
     let buffer = '';
     
+    console.log(`[bitnet] streamBitNet: Starting stream read...`);
+    
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        console.log(`[bitnet] streamBitNet: Stream done`);
+        break;
+      }
       
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
@@ -167,6 +190,7 @@ async function streamBitNet(model: any, context: any, options: any) {
         if (line.startsWith('{')) {
           try {
             const data = JSON.parse(line);
+            console.log(`[bitnet] streamBitNet: Received data=${JSON.stringify(data).substring(0, 100)}`);
             // llama.cpp streaming format: data.content contains the token
             if (data.content) {
               stream.push({ type: "content", content: data.content });
@@ -187,8 +211,10 @@ async function streamBitNet(model: any, context: any, options: any) {
       }
     }
     // If we exit the loop without explicit stop, push finish
+    console.log(`[bitnet] streamBitNet: Pushing finish after loop`);
     stream.push({ type: "finish", stopReason: "stop" });
   } catch (error: any) {
+    console.log(`[bitnet] streamBitNet ERROR: ${error.message}`);
     stream.push({ type: "error", error: new Error(`BitNet request failed: ${error.message}`) });
   }
   
