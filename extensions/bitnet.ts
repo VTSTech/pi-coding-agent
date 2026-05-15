@@ -37,46 +37,119 @@ function loadConfig(): BitNetConfig {
   };
 }
 
-let config = loadConfig();
+// Initialize config with error handling to prevent module loading failure
+let config: BitNetConfig;
 let discoveredModel: any = null;
 let providerRegistered = false;
+
+try {
+  config = loadConfig();
+} catch (error) {
+  console.error("[bitnet] Failed to load config, using defaults:", error);
+  config = {
+    baseUrl: process.env.BITNET_BASE_URL || "http://localhost:8080",
+    apiKey: process.env.BITNET_API_KEY || "",
+    timeout: parseInt(process.env.BITNET_TIMEOUT || "30000"),
+  };
+}
 
 // ── Helper Functions ───────────────────────────────────────────────────────
 
 /**
- * Custom stream handler for BitNet that bypasses the tools parameter issue.
- * BitNet doesn't support the 'tools' parameter, so we handle the request directly.
+ * Custom stream handler for BitNet using native /completion endpoint.
+ * BitNet doesn't support OpenAI Chat Completions, so we use the native /completion endpoint.
+ */
+/**
+ * Generate a response from BitNet using /completion endpoint.
+ */
+async function generateBitNet(model: any, context: any, options: any) {
+  try {
+    const baseUrl = model.baseUrl.replace(/\/$/, '');
+    const url = `${baseUrl}/completion`;
+    
+    // Convert messages to prompt for /completion endpoint
+    const prompt = messagesToPrompt(context.messages, model.id);
+    
+    // Build request body for /completion endpoint
+    const body: any = {
+      prompt: prompt,
+      n_predict: Math.min(context.maxTokens || 2048, 1024), // BitNet has smaller context
+      temperature: context.temperature ?? 0.7,
+      repeat_penalty: 1.3, // BitNet needs repeat penalty to prevent loops
+      stop: ["\nUser: ", "\nAssistant:"] // Turn-bleed guards
+    };
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: options?.signal,
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    const result = await response.json();
+    return {
+      content: result.content || "",
+      toolCalls: [],
+      usage: {
+        promptTokens: result.tokens_evaluated || 0,
+        completionTokens: result.tokens_predicted || 0,
+        totalTokens: (result.tokens_evaluated || 0) + (result.tokens_predicted || 0)
+      }
+    };
+  } catch (error: any) {
+    throw new Error(`BitNet request failed: ${error.message}`);
+  }
+}
+
+/**
+ * Custom stream handler for BitNet using native /completion endpoint.
+ * BitNet doesn't support OpenAI Chat Completions, so we use the native /completion endpoint.
  */
 async function streamBitNet(model: any, context: any, options: any) {
   const { AssistantMessageEventStream } = await import("@earendil-works/pi-ai/utils/event-stream.js");
   const stream = new AssistantMessageEventStream();
   
+  // Validate model before proceeding
+  if (!model || !model.baseUrl || !model.id) {
+    stream.push({ type: "error", error: new Error("Invalid model configuration") });
+    return stream;
+  }
+  
+  // Check if server is available before making request
+  const { healthy } = await checkBitNetHealth(model.baseUrl);
+  if (!healthy) {
+    stream.push({ type: "error", error: new Error("BitNet server not available") });
+    return stream;
+  }
+  
   setTimeout(async () => {
     try {
       const baseUrl = model.baseUrl.replace(/\/$/, '');
-      const url = `${baseUrl}/v1/chat/completions`;
+      const url = `${baseUrl}/completion`; // Use native /completion endpoint
       
-      // Extract only the last message for BitNet (more efficient)
-      const messages = context.messages.slice(-10).map((msg: any) => ({
-        role: msg.role,
-        content: typeof msg.content === 'string' ? msg.content : 
-                 msg.content?.map((b: any) => b.type === 'text' ? b.text : '').join('')
-      }));
+      // Convert messages to prompt for /completion endpoint
+      const prompt = messagesToPrompt(context.messages, model.id);
       
-      // Build request body WITHOUT tools parameter - BitNet doesn't support tools
+      // Build request body for /completion endpoint
       const body: any = {
-        model: model.id,
-        messages: messages,
-        max_tokens: Math.min(context.maxTokens || 2048, 1024), // BitNet has smaller context
+        prompt: prompt,
+        n_predict: Math.min(context.maxTokens || 2048, 1024), // BitNet has smaller context
         temperature: context.temperature ?? 0.7,
-        stream: true, // Enable streaming for better performance
+        stream: true,
+        repeat_penalty: 1.3, // BitNet needs repeat penalty to prevent loops
+        stop: ["\nUser: ", "\nAssistant:"] // Turn-bleed guards
       };
       
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${model.apiKey || 'bitnet'}`,
         },
         body: JSON.stringify(body),
         signal: options?.signal,
@@ -100,14 +173,15 @@ async function streamBitNet(model: any, context: any, options: any) {
         buffer = lines.pop() || ''; // Keep incomplete line for next iteration
         
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
+          if (line.startsWith('{')) {
             try {
-              const data = JSON.parse(line.slice(6));
-              if (data.choices?.[0]?.delta?.content) {
-                stream.push({ type: "content", content: data.choices[0].delta.content });
+              const data = JSON.parse(line);
+              if (data.content) {
+                stream.push({ type: "content", content: data.content });
               }
-              if (data.choices?.[0]?.finish_reason) {
-                stream.push({ type: "finish", stopReason: data.choices[0].finish_reason });
+              if (data.stop) {
+                stream.push({ type: "finish", stopReason: "stop" });
+                break;
               }
             } catch (e) {
               // Ignore JSON parsing errors for incomplete data
@@ -121,6 +195,71 @@ async function streamBitNet(model: any, context: any, options: any) {
   });
   
   return stream;
+}
+
+/**
+ * Convert messages to prompt for /completion endpoint.
+ */
+function messagesToPrompt(messages: any[], modelId: string): string {
+  const parts: string[] = [];
+  const BITNET_PROMPT_BUDGET = 1024;
+  
+  // Add system message
+  for (const msg of messages) {
+    if (msg.role === "system") {
+      let content = msg.content;
+      // Sanitize for BitNet
+      content = content
+        .replace(/```[\s\S]*?```/g, '')
+        .replace(/\|.*\|/g, '')
+        .replace(/^[-]+$/\n?/gm, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/#+\s+/g, '')
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/_([^_]+)_/g, '$1')
+        .trim();
+      
+      // Truncate to fit budget
+      if (content.length > BITNET_PROMPT_BUDGET - 100) {
+        content = content.substring(0, BITNET_PROMPT_BUDGET - 100);
+      }
+      parts.push(content);
+      break;
+    }
+  }
+  
+  // Add conversation history (newest first, limited by budget)
+  let currentLength = parts.join('\n').length;
+  const remainingBudget = BITNET_PROMPT_BUDGET - currentLength - 100; // Reserve for suffix
+  
+  const conversationParts: string[] = [];
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role === "system") continue;
+    
+    const role = msg.role;
+    let content = msg.content;
+    
+    if (role === "user") {
+      content = `\nUser: ${content}`;
+    } else if (role === "assistant") {
+      content = `\nAssistant: ${content}`;
+    } else if (role === "tool") {
+      content = `\nTool Result: ${content}`;
+    }
+    
+    if (currentLength + content.length <= remainingBudget) {
+      conversationParts.unshift(content);
+      currentLength += content.length;
+    } else {
+      break;
+    }
+  }
+  
+  parts.push(...conversationParts);
+  parts.push('\nAssistant:'); // Start the assistant response
+  
+  return parts.join('');
 }
 
 async function checkBitNetHealth(baseUrl: string): Promise<{ healthy: boolean; details?: string }> {
@@ -217,6 +356,18 @@ export default function (pi: ExtensionAPI) {
   
   // Only register provider if BitNet server is available and has valid models
   // This prevents interference with other providers when BitNet is not running
+  
+  // Initial health check - don't register provider if server is not available
+  setTimeout(async () => {
+    try {
+      const { healthy } = await checkBitNetHealth(config.baseUrl);
+      if (!healthy) {
+        console.log(`[bitnet] Server not available at startup, skipping registration`);
+      }
+    } catch (error) {
+      console.log(`[bitnet] Initial health check failed: ${error}`);
+    }
+  }, 1000); // Delay to allow other extensions to load first
 
   // Discover and register models on startup and reload
   pi.on("resources_discover", async () => {
@@ -225,18 +376,25 @@ export default function (pi: ExtensionAPI) {
       const { healthy } = await checkBitNetHealth(config.baseUrl);
       if (!healthy) {
         console.log(`[bitnet] Server not healthy at ${config.baseUrl}, skipping registration`);
+        // Unregister provider if it was previously registered but server is now down
+        if (providerRegistered) {
+          console.log(`[bitnet] Server became unavailable, unregistering provider`);
+          providerRegistered = false;
+          // Note: Pi API may not have unregister method, but we prevent re-registration
+        }
         return;
       }
       
       const models = await discoverBitNetModels(config.baseUrl);
       console.log(`[bitnet] Discovered ${models.length} models`);
       
-      // Only register provider if we have valid models and it's not already registered
+      // Only register provider if we have valid models (not fallback) and it's not already registered
       if (models.length > 0 && models[0].id !== "bitnet" && !providerRegistered) {
         pi.registerProvider("bitnet", {
           baseUrl: config.baseUrl,
           apiKey: config.apiKey || "bitnet",
           api: "openai-completions",
+          generate: generateBitNet,
           streamSimple: streamBitNet,
           models: models,
           compat: {
@@ -245,7 +403,9 @@ export default function (pi: ExtensionAPI) {
             supportsReasoningEffort: false,
             supportsUsageInStreaming: false,
             supportsEmptyTools: false,
-            supportsTools: false  // Explicitly disable tools support
+            supportsTools: false,  // BitNet doesn't support native tools
+            supportsStreaming: true,
+            supportsStreamingTools: false
           }
         });
         providerRegistered = true;
@@ -253,6 +413,8 @@ export default function (pi: ExtensionAPI) {
       }
     } catch (error) {
       console.log(`[bitnet] Failed to discover models: ${error}`);
+      // Ensure provider is not registered if discovery fails
+      providerRegistered = false;
     }
   });
 
@@ -327,7 +489,9 @@ export default function (pi: ExtensionAPI) {
                   supportsReasoningEffort: false,
                   supportsUsageInStreaming: false,
                   supportsEmptyTools: false,
-                  supportsTools: false  // Explicitly disable tools support
+                  supportsTools: false,  // BitNet doesn't support native tools
+                  supportsStreaming: true,
+                  supportsStreamingTools: false
                 },
                 models: models
               };
@@ -348,7 +512,9 @@ export default function (pi: ExtensionAPI) {
                   supportsReasoningEffort: false,
                   supportsUsageInStreaming: false,
                   supportsEmptyTools: false,
-                  supportsTools: false  // Explicitly disable tools support
+                  supportsTools: false,  // BitNet doesn't support native tools
+                  supportsStreaming: true,
+                  supportsStreamingTools: false
                 }
               });
               providerRegistered = true;
@@ -395,7 +561,9 @@ export default function (pi: ExtensionAPI) {
                 supportsReasoningEffort: false,
                 supportsUsageInStreaming: false,
                 supportsEmptyTools: false,
-                supportsTools: false  // Explicitly disable tools support
+                supportsTools: false,  // BitNet doesn't support native tools
+                supportsStreaming: true,
+                supportsStreamingTools: false
               },
               models: models
             };
@@ -416,7 +584,9 @@ export default function (pi: ExtensionAPI) {
                 supportsReasoningEffort: false,
                 supportsUsageInStreaming: false,
                 supportsEmptyTools: false,
-                supportsTools: false  // Explicitly disable tools support
+                supportsTools: false,  // BitNet doesn't support native tools
+                supportsStreaming: true,
+                supportsStreamingTools: false
               }
             });
             providerRegistered = true;
@@ -496,6 +666,13 @@ export default function (pi: ExtensionAPI) {
       if (!currentModel.toLowerCase().includes("bitnet") && 
           !currentModel.toLowerCase().includes("0.5b") &&
           !currentModel.toLowerCase().includes("1b")) {
+        return;
+      }
+
+      // Only optimize if BitNet server is available
+      const { healthy } = await checkBitNetHealth(config.baseUrl);
+      if (!healthy) {
+        debugLog("bitnet", "BitNet server not available, skipping prompt optimization");
         return;
       }
 
