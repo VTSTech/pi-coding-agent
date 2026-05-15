@@ -20,9 +20,13 @@ function loadConfig(): BitNetConfig {
     const models = readModelsJson();
     const provider = models.providers?.bitnet;
     if (provider) {
+      let apiKey = provider.apiKey || process.env.BITNET_API_KEY || "";
+      // Set default API key for local BitNet if not provided
+      if (!apiKey) apiKey = "bitnet";
+      
       return {
         baseUrl: provider.baseUrl || process.env.BITNET_BASE_URL || "http://localhost:8080",
-        apiKey: provider.apiKey || process.env.BITNET_API_KEY,
+        apiKey: apiKey,
         timeout: parseInt(process.env.BITNET_TIMEOUT || "30000"),
       };
     }
@@ -30,9 +34,10 @@ function loadConfig(): BitNetConfig {
     debugLog("bitnet", "Failed to load config from models.json", error);
   }
   
+  // Default config with placeholder API key
   return {
     baseUrl: process.env.BITNET_BASE_URL || "http://localhost:8080",
-    apiKey: process.env.BITNET_API_KEY,
+    apiKey: process.env.BITNET_API_KEY || "bitnet",
     timeout: parseInt(process.env.BITNET_TIMEOUT || "30000"),
   };
 }
@@ -182,7 +187,10 @@ export default function (pi: ExtensionAPI) {
           }
 
           const oldUrl = config.baseUrl;
+          const oldApiKey = config.apiKey;
           config.baseUrl = argsArray[1];
+          // Keep the existing API key or use default
+          if (!config.apiKey) config.apiKey = "bitnet";
           
           try {
             // Update models.json with complete provider config
@@ -190,7 +198,7 @@ export default function (pi: ExtensionAPI) {
               models.providers["bitnet"] = {
                 baseUrl: config.baseUrl,
                 api: "openai-compat",
-                apiKey: config.apiKey || "",
+                apiKey: config.apiKey || "bitnet",
                 models: [{
                   id: "bitnet",
                   contextWindow: 1024,
@@ -224,6 +232,7 @@ export default function (pi: ExtensionAPI) {
             }
           } catch (error) {
             config.baseUrl = oldUrl;
+            config.apiKey = oldApiKey;
             ctx.ui.notify(`❌ Failed to update URL: ${error.message}`, "error");
             ctx.ui.notify(`🔄 Reverted to: ${oldUrl}`, "info");
           }
@@ -236,11 +245,13 @@ export default function (pi: ExtensionAPI) {
       } else if (argsArray[0] === "--sync") {
         // Sync command - add provider to models.json
         try {
+          const finalApiKey = config.apiKey || "bitnet";
+          
           await readModifyWriteModelsJson((models) => {
             models.providers["bitnet"] = {
               baseUrl: config.baseUrl,
               api: "openai-compat",
-              apiKey: config.apiKey || "",
+              apiKey: finalApiKey,
               models: [{
                 id: "bitnet",
                 contextWindow: 1024,
@@ -253,7 +264,7 @@ export default function (pi: ExtensionAPI) {
           // Update runtime provider
           pi.registerProvider("bitnet", {
             baseUrl: config.baseUrl,
-            apiKey: config.apiKey,
+            apiKey: finalApiKey,
             api: "openai-compat",
             models: [{
               id: "bitnet",
@@ -264,6 +275,7 @@ export default function (pi: ExtensionAPI) {
 
           ctx.ui.notify("✅ BitNet provider synced to models.json", "success");
           ctx.ui.notify(`URL: ${config.baseUrl}`, "info");
+          ctx.ui.notify(`API Key: ${finalApiKey}`, "info");
           ctx.ui.notify("💡 Configuration will persist after reload", "info");
         } catch (error) {
           ctx.ui.notify(`❌ Failed to sync: ${error.message}`, "error");
