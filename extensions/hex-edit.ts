@@ -18,6 +18,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as crypto from "node:crypto";
 import { section, ok, info, fail, warn } from "../shared/format";
 
 // ============================================================================
@@ -39,7 +40,6 @@ const branding = [
 
 /** Compute SHA-256 hash of content */
 function sha256(content: string | Buffer): string {
-  const crypto = require("crypto");
   const hash = crypto.createHash("sha256");
   hash.update(content);
   return hash.digest("hex");
