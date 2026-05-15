@@ -199,6 +199,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerProvider("bitnet", {
     baseUrl: config.baseUrl,
     apiKey: config.apiKey || "bitnet",
+    api: "openai-completions", // Required field, but we use streamSimple
     streamSimple: streamBitNet,
     models: [],
   });
@@ -214,6 +215,7 @@ export default function (pi: ExtensionAPI) {
         pi.registerProvider("bitnet", {
           baseUrl: config.baseUrl,
           apiKey: config.apiKey || "bitnet",
+          api: "openai-completions", // Required field, but we use streamSimple
           streamSimple: streamBitNet,
           models: models,
         });
@@ -298,6 +300,7 @@ export default function (pi: ExtensionAPI) {
             pi.registerProvider("bitnet", {
               baseUrl: config.baseUrl,
               apiKey: config.apiKey,
+              api: "openai-completions", // Required field, but we use streamSimple
               streamSimple: streamBitNet,
               models: models,
             });
@@ -352,6 +355,7 @@ export default function (pi: ExtensionAPI) {
           pi.registerProvider("bitnet", {
             baseUrl: config.baseUrl,
             apiKey: finalApiKey,
+            api: "openai-completions", // Required field, but we use streamSimple
             streamSimple: streamBitNet,
             models: models,
           });
