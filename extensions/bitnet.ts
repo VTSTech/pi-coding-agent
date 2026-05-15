@@ -576,6 +576,7 @@ export default function (pi: ExtensionAPI) {
               baseUrl: config.baseUrl,
               apiKey: finalApiKey,
               api: "openai-completions",
+              generate: generateBitNet,
               streamSimple: streamBitNet,
               models: models,
               compat: {
