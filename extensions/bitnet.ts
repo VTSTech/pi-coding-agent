@@ -352,17 +352,8 @@ export default function (pi: ExtensionAPI) {
                 }
               });
               providerRegistered = true;
-            } else {
-              // Update existing provider
-              const existingProvider = pi.getProvider("bitnet");
-              if (existingProvider) {
-                Object.assign(existingProvider, {
-                  baseUrl: config.baseUrl,
-                  apiKey: config.apiKey,
-                  models: models,
-                });
-              }
             }
+            // Note: Provider update is handled through models.json, no need to modify runtime
 
             ctx.ui.notify(`✅ BitNet URL updated to: ${argsArray[1]}`, "success");
             ctx.ui.notify(`🔄 Previous URL: ${oldUrl}`, "info");
@@ -429,17 +420,8 @@ export default function (pi: ExtensionAPI) {
               }
             });
             providerRegistered = true;
-          } else {
-            // Update existing provider
-            const existingProvider = pi.getProvider("bitnet");
-            if (existingProvider) {
-              Object.assign(existingProvider, {
-                baseUrl: config.baseUrl,
-                apiKey: finalApiKey,
-                models: models,
-              });
-            }
           }
+          // Note: Provider update is handled through models.json, no need to modify runtime
 
           ctx.ui.notify("✅ BitNet provider synced to models.json", "success");
           ctx.ui.notify(`URL: ${config.baseUrl}`, "info");
