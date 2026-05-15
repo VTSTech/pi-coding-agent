@@ -204,20 +204,21 @@ function messagesToPrompt(messages: any[], modelId: string): string {
   const parts: string[] = [];
   const BITNET_PROMPT_BUDGET = 1024;
   
+  // Determine if this is actually a BitNet model (degraded tokenizer)
+  // vs other models running on BitNet server
+  const isActualBitNet = modelId.toLowerCase().includes("bitnet") || 
+                        modelId.toLowerCase().includes("0.5b") || 
+                        modelId.toLowerCase().includes("1b");
+  
   // Add system message
   for (const msg of messages) {
     if (msg.role === "system") {
       let content = msg.content;
-      // Sanitize for BitNet
-      content = content
-        .replace(/```[\s\S]*?```/g, '')
-        .replace(/\|.*\|/g, '')
-        .replace(/^[-]+$/gm, '')
-        .replace(/\n{3,}/g, '\n\n')
-        .replace(/#+\s+/g, '')
-        .replace(/\*\*([^*]+)\*\*/g, '$1')
-        .replace(/_([^_]+)_/g, '$1')
-        .trim();
+      
+      if (isActualBitNet) {
+        // Sanitize for BitNet's degraded tokenizer
+        content = sanitizeForBitnet(content);
+      }
       
       // Truncate to fit budget
       if (content.length > BITNET_PROMPT_BUDGET - 100) {
@@ -233,26 +234,43 @@ function messagesToPrompt(messages: any[], modelId: string): string {
   const remainingBudget = BITNET_PROMPT_BUDGET - currentLength - 100; // Reserve for suffix
   
   const conversationParts: string[] = [];
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    if (msg.role === "system") continue;
-    
+  
+  // Collect non-system messages
+  const nonSystemMessages = messages.filter(msg => msg.role !== "system");
+  
+  // Process messages in reverse order (newest first)
+  for (let i = nonSystemMessages.length - 1; i >= 0; i--) {
+    const msg = nonSystemMessages[i];
     const role = msg.role;
     let content = msg.content;
     
-    if (role === "user") {
-      content = `\nUser: ${content}`;
-    } else if (role === "assistant") {
-      content = `\nAssistant: ${content}`;
-    } else if (role === "tool") {
-      content = `\nTool Result: ${content}`;
-    }
-    
-    if (currentLength + content.length <= remainingBudget) {
-      conversationParts.unshift(content);
-      currentLength += content.length;
+    if (isActualBitNet) {
+      // Apply budget constraints for actual BitNet models
+      if (currentLength + content.length <= remainingBudget) {
+        if (role === "user") {
+          content = `\nUser: ${content}`;
+        } else if (role === "assistant") {
+          content = `\nAssistant: ${content}`;
+        } else if (role === "tool") {
+          content = `\nTool Result: ${content}`;
+        }
+        
+        conversationParts.unshift(content);
+        currentLength += content.length;
+      } else {
+        break; // Budget exhausted
+      }
     } else {
-      break;
+      // For non-BitNet models, add all content without budget constraints
+      if (role === "user") {
+        content = `\nUser: ${content}`;
+      } else if (role === "assistant") {
+        content = `\nAssistant: ${content}`;
+      } else if (role === "tool") {
+        content = `\nTool Result: ${content}`;
+      }
+      
+      conversationParts.unshift(content);
     }
   }
   
