@@ -234,13 +234,17 @@ export default async function (pi: ExtensionAPI) {
     
     // Start periodic status updates
     updateInterval = setInterval(async () => {
-      if (currentCtx && currentCtx.hasUI()) {
+      if (currentCtx) {
         try {
           const isHealthy = await checkBitNetHealth(config.baseUrl);
           const status = isHealthy ? "🟢 Healthy" : "🔴 Unhealthy";
-          currentCtx.ui.setStatus("bitnet", status);
+          if (currentCtx.ui && currentCtx.ui.setStatus) {
+            currentCtx.ui.setStatus("bitnet", status);
+          }
         } catch {
-          currentCtx.ui.setStatus("bitnet", "🔴 Disconnected");
+          if (currentCtx.ui && currentCtx.ui.setStatus) {
+            currentCtx.ui.setStatus("bitnet", "🔴 Disconnected");
+          }
         }
       }
     }, 5000);
@@ -256,7 +260,7 @@ export default async function (pi: ExtensionAPI) {
     currentCtx = null;
     
     // Clear status
-    if (ctx && ctx.ui) {
+    if (ctx && ctx.ui && ctx.ui.setStatus) {
       ctx.ui.setStatus("bitnet", "");
     }
   });
