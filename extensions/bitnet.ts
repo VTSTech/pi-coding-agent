@@ -333,7 +333,7 @@ function sanitizeForBitnet(text: string): string {
   return text
     .replace(/```[\s\S]*?```/g, '')
     .replace(/\|.*\|/g, '')
-    .replace(/^[-]+$\n?/gm, '')
+    .replace(/^[-]+$/gm, '')
     .replace(/\n{3,}/g, '\n\n')
     .replace(/#+\s+/g, '')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
