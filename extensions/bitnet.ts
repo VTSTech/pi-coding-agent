@@ -56,18 +56,20 @@ async function streamBitNet(model: any, context: any, options: any) {
       const baseUrl = model.baseUrl.replace(/\/$/, '');
       const url = `${baseUrl}/v1/chat/completions`;
       
-      const messages = context.messages.map((msg: any) => ({
+      // Extract only the last message for BitNet (more efficient)
+      const messages = context.messages.slice(-10).map((msg: any) => ({
         role: msg.role,
         content: typeof msg.content === 'string' ? msg.content : 
                  msg.content?.map((b: any) => b.type === 'text' ? b.text : '').join('')
       }));
       
-      // Build request body WITHOUT tools parameter
+      // Build request body WITHOUT tools parameter - BitNet doesn't support tools
       const body: any = {
         model: model.id,
         messages: messages,
-        max_tokens: context.maxTokens || 2048,
+        max_tokens: Math.min(context.maxTokens || 2048, 1024), // BitNet has smaller context
         temperature: context.temperature ?? 0.7,
+        stream: true, // Enable streaming for better performance
       };
       
       const response = await fetch(url, {
@@ -87,13 +89,17 @@ async function streamBitNet(model: any, context: any, options: any) {
       
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
+      let buffer = '';
       
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         
-        const text = decoder.decode(value, { stream: true });
-        for (const line of text.split('\n')) {
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line for next iteration
+        
+        for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
@@ -103,12 +109,14 @@ async function streamBitNet(model: any, context: any, options: any) {
               if (data.choices?.[0]?.finish_reason) {
                 stream.push({ type: "finish", stopReason: data.choices[0].finish_reason });
               }
-            } catch {}
+            } catch (e) {
+              // Ignore JSON parsing errors for incomplete data
+            }
           }
         }
       }
     } catch (error: any) {
-      stream.push({ type: "error", error });
+      stream.push({ type: "error", error: new Error(`BitNet request failed: ${error.message}`) });
     }
   });
   
@@ -219,6 +227,14 @@ export default function (pi: ExtensionAPI) {
           api: "openai-completions",
           streamSimple: streamBitNet,
           models: models,
+          compat: {
+            supportsStore: false,
+            supportsDeveloperRole: false,
+            supportsReasoningEffort: false,
+            supportsUsageInStreaming: false,
+            supportsEmptyTools: false,
+            supportsTools: false  // Explicitly disable tools support
+          }
         });
         providerRegistered = true;
         console.log(`[bitnet] Registered provider with model: ${models[0].name}`);
@@ -293,6 +309,14 @@ export default function (pi: ExtensionAPI) {
               modelsJson.providers["bitnet"] = {
                 baseUrl: config.baseUrl,
                 apiKey: config.apiKey || "bitnet",
+                compat: {
+                  supportsStore: false,
+                  supportsDeveloperRole: false,
+                  supportsReasoningEffort: false,
+                  supportsUsageInStreaming: false,
+                  supportsEmptyTools: false,
+                  supportsTools: false  // Explicitly disable tools support
+                },
                 models: models
               };
               return modelsJson;
@@ -306,6 +330,14 @@ export default function (pi: ExtensionAPI) {
                 api: "openai-completions",
                 streamSimple: streamBitNet,
                 models: models,
+                compat: {
+                  supportsStore: false,
+                  supportsDeveloperRole: false,
+                  supportsReasoningEffort: false,
+                  supportsUsageInStreaming: false,
+                  supportsEmptyTools: false,
+                  supportsTools: false  // Explicitly disable tools support
+                }
               });
               providerRegistered = true;
             } else {
@@ -359,7 +391,8 @@ export default function (pi: ExtensionAPI) {
                 supportsDeveloperRole: false,
                 supportsReasoningEffort: false,
                 supportsUsageInStreaming: false,
-                supportsEmptyTools: false
+                supportsEmptyTools: false,
+                supportsTools: false  // Explicitly disable tools support
               },
               models: models
             };
@@ -374,6 +407,14 @@ export default function (pi: ExtensionAPI) {
               api: "openai-completions",
               streamSimple: streamBitNet,
               models: models,
+              compat: {
+                supportsStore: false,
+                supportsDeveloperRole: false,
+                supportsReasoningEffort: false,
+                supportsUsageInStreaming: false,
+                supportsEmptyTools: false,
+                supportsTools: false  // Explicitly disable tools support
+              }
             });
             providerRegistered = true;
           } else {
