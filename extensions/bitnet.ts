@@ -42,6 +42,78 @@ let discoveredModel: any = null;
 
 // ── Helper Functions ───────────────────────────────────────────────────────
 
+/**
+ * Custom stream handler for BitNet that bypasses the tools parameter issue.
+ * BitNet doesn't support the 'tools' parameter, so we handle the request directly.
+ */
+async function streamBitNet(model: any, context: any, options: any) {
+  const { AssistantMessageEventStream } = await import("@earendil-works/pi-ai/utils/event-stream.js");
+  const stream = new AssistantMessageEventStream();
+  
+  setTimeout(async () => {
+    try {
+      const baseUrl = model.baseUrl.replace(/\/$/, '');
+      const url = `${baseUrl}/v1/chat/completions`;
+      
+      const messages = context.messages.map((msg: any) => ({
+        role: msg.role,
+        content: typeof msg.content === 'string' ? msg.content : 
+                 msg.content?.map((b: any) => b.type === 'text' ? b.text : '').join('')
+      }));
+      
+      // Build request body WITHOUT tools parameter
+      const body: any = {
+        model: model.id,
+        messages: messages,
+        max_tokens: context.maxTokens || 2048,
+        temperature: context.temperature ?? 0.7,
+      };
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${model.apiKey || 'bitnet'}`,
+        },
+        body: JSON.stringify(body),
+        signal: options?.signal,
+      });
+      
+      if (!response.ok || !response.body) {
+        stream.push({ type: "error", error: new Error(`HTTP ${response.status}`) });
+        return;
+      }
+      
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const text = decoder.decode(value, { stream: true });
+        for (const line of text.split('\n')) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.choices?.[0]?.delta?.content) {
+                stream.push({ type: "content", content: data.choices[0].delta.content });
+              }
+              if (data.choices?.[0]?.finish_reason) {
+                stream.push({ type: "finish", stopReason: data.choices[0].finish_reason });
+              }
+            } catch {}
+          }
+        }
+      }
+    } catch (error: any) {
+      stream.push({ type: "error", error });
+    }
+  });
+  
+  return stream;
+}
+
 async function checkBitNetHealth(baseUrl: string): Promise<{ healthy: boolean; details?: string }> {
   try {
     const response = await fetch(`${baseUrl}/health`, {
@@ -123,10 +195,11 @@ export default function (pi: ExtensionAPI) {
   console.log(`[bitnet] Loaded config from: ${config.baseUrl}`);
 
   // Register BitNet provider with placeholder models (will be updated on discovery)
+  // Use streamSimple to bypass tools parameter issue
   pi.registerProvider("bitnet", {
     baseUrl: config.baseUrl,
     apiKey: config.apiKey || "bitnet",
-    api: "openai-compat",
+    streamSimple: streamBitNet,
     models: [],
   });
 
@@ -141,7 +214,7 @@ export default function (pi: ExtensionAPI) {
         pi.registerProvider("bitnet", {
           baseUrl: config.baseUrl,
           apiKey: config.apiKey || "bitnet",
-          api: "openai-compat",
+          streamSimple: streamBitNet,
           models: models,
         });
         console.log(`[bitnet] Updated provider with model: ${models[0].name}`);
@@ -215,7 +288,6 @@ export default function (pi: ExtensionAPI) {
             await readModifyWriteModelsJson((modelsJson) => {
               modelsJson.providers["bitnet"] = {
                 baseUrl: config.baseUrl,
-                api: "openai-compat",
                 apiKey: config.apiKey || "bitnet",
                 models: models
               };
@@ -226,7 +298,7 @@ export default function (pi: ExtensionAPI) {
             pi.registerProvider("bitnet", {
               baseUrl: config.baseUrl,
               apiKey: config.apiKey,
-              api: "openai-compat",
+              streamSimple: streamBitNet,
               models: models,
             });
 
@@ -262,8 +334,15 @@ export default function (pi: ExtensionAPI) {
           await readModifyWriteModelsJson((modelsJson) => {
             modelsJson.providers["bitnet"] = {
               baseUrl: config.baseUrl,
-              api: "openai-compat",
+              api: "openai-completions",
               apiKey: finalApiKey,
+              compat: {
+                supportsStore: false,
+                supportsDeveloperRole: false,
+                supportsReasoningEffort: false,
+                supportsUsageInStreaming: false,
+                supportsEmptyTools: false
+              },
               models: models
             };
             return modelsJson;
@@ -273,7 +352,7 @@ export default function (pi: ExtensionAPI) {
           pi.registerProvider("bitnet", {
             baseUrl: config.baseUrl,
             apiKey: finalApiKey,
-            api: "openai-compat",
+            streamSimple: streamBitNet,
             models: models,
           });
 
