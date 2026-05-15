@@ -1,7 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import * as path from "node:path";
-import os from "node:os";
 
 // ── Shared imports ─────────────────────────────────────────────────────────
 import { EXTENSION_VERSION, readModelsJson, readModifyWriteModelsJson } from "../shared/ollama";
@@ -118,7 +116,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("bitnet", {
     description: "BitNet server management",
     getArgumentCompletions: (prefix: string) => {
-      const subcommands = ["--status", "--url"];
+      const subcommands = ["--status", "--url", "--sync"];
       return subcommands
         .filter(cmd => cmd.startsWith(prefix))
         .map(cmd => ({ value: cmd, label: cmd }));
@@ -201,9 +199,35 @@ export default function (pi: ExtensionAPI) {
           ctx.ui.notify(`Current BitNet URL: ${config.baseUrl}`, "info");
           ctx.ui.notify("Environment: BITNET_BASE_URL", "info");
         }
+      } else if (argsArray[0] === "--sync") {
+        // Sync command - add provider to models.json
+        try {
+          await readModifyWriteModelsJson((models) => {
+            if (!models.providers["bitnet"]) {
+              models.providers["bitnet"] = {};
+            }
+            models.providers["bitnet"].baseUrl = config.baseUrl;
+            models.providers["bitnet"].api = "openai-compat";
+            models.providers["bitnet"].apiKey = config.apiKey;
+            return models;
+          });
+
+          // Update runtime provider
+          pi.registerProvider("bitnet", {
+            baseUrl: config.baseUrl,
+            apiKey: config.apiKey,
+            api: "openai-compat",
+            models: [],
+          });
+
+          ctx.ui.notify("✅ BitNet provider synced to models.json", "success");
+          ctx.ui.notify(`URL: ${config.baseUrl}`, "info");
+        } catch (error) {
+          ctx.ui.notify(`❌ Failed to sync: ${error.message}`, "error");
+        }
       } else {
         ctx.ui.notify(`Unknown subcommand: ${argsArray[0]}`, "error");
-        ctx.ui.notify("Usage: /bitnet --status | /bitnet --url [url]", "info");
+        ctx.ui.notify("Usage: /bitnet --status | /bitnet --url [url] | /bitnet --sync", "info");
       }
     },
   });
