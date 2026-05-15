@@ -77,7 +77,25 @@ export default async function (pi: ExtensionAPI) {
         .map(cmd => ({ value: cmd, label: cmd }));
     },
     handler: async (args, ctx) => {
-      const argsArray = Array.isArray(args) ? args : [args].filter(Boolean);
+      // Debug: show what we received
+      console.log(`[bitnet] Received args:`, args);
+      
+      // Handle both array and string arguments
+      let argsArray: string[] = [];
+      if (Array.isArray(args)) {
+        argsArray = args.filter(Boolean);
+      } else if (args && typeof args === 'string') {
+        // Parse string arguments (handles "--url http://..." case)
+        if (args.startsWith('--url ')) {
+          argsArray = ['--url', args.substring(6).trim()];
+        } else if (args === '--url') {
+          argsArray = ['--url'];
+        } else {
+          argsArray = [args];
+        }
+      }
+      
+      console.log(`[bitnet] Parsed args:`, argsArray);
       
       if (argsArray.length === 0 || argsArray[0] === "--status") {
         await handleStatus(ctx);
