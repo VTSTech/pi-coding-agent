@@ -5,6 +5,46 @@ All notable changes to the Pi Coding Agent Extensions (`@vtstech/pi-coding-agent
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.6] - 05-15-2026 8:52:52 PM
+
+### Added
+
+- **hex-edit: LLM-callable tools** (`extensions/hex-edit.ts`, `individual-packages/pi-hex-edit/`)
+  - Added `hex_edit` tool - Edit file using hex stream validation for reliable byte-level editing
+  - Added `hex_edit_show` tool - Display file with line numbers and hex preview
+  - Added `hex_edit_validate` tool - Validate text exists in file and show byte positions
+  - Added `hex_edit_diff` tool - Show byte-level diff between two files
+  - All tools provide detailed output including file sizes, hashes, and change metrics
+  - Enhanced error handling with clear messages for missing files and text not found
+  - Tools now available as LLM-callable functions in addition to existing slash commands
+  - Added comprehensive README.md with usage examples and technical documentation
+  - Released as separate npm package `@vtstech/pi-hex-edit` for easy installation
+  - Supports both text and binary files with byte-level precision
+  - Maintains backward compatibility with existing slash commands
+
+### Changed
+
+- **hex-edit: Enhanced tool capabilities** (`extensions/hex-edit.ts`)
+  - All hex-edit tools now use Typebox for parameter validation
+  - Improved error reporting with structured error responses
+  - Added streaming support for progress updates during long operations
+  - Enhanced hash verification with both SHA-256 and simple hash for performance
+  - Better context display in validation results with ±20 byte context
+  - Optimized diff output to show first 50 lines for readability
+  - Added proper tool labels and descriptions for better LLM understanding
+  - Maintained exact byte-level precision for all operations
+
+### Fixed
+
+- **hex-edit: Tool parameter validation** (`extensions/hex-edit.ts`)
+  - Fixed parameter validation issues with Typebox schemas
+  - Resolved tool call formatting problems for LLM usage
+  - Improved error handling for edge cases in file operations
+  - Fixed hash calculation consistency across different operation types
+  - Enhanced position reporting in validation results
+  - Resolved file path resolution issues for relative paths
+  - Fixed encoding consistency between text and byte operations
+
 ## [1.3.5] - 05-15-2026 7:49:41 PM
 
 ### Added
