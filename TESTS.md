@@ -129,7 +129,7 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
    ❌ poolside/laguna-m.1:free is WEAK — limited capabilities for agent use
 ```
 
-Experimental BitNet Results (Bitnet works for /model-test, but not for Pi in general. errors on tool param)
+Experimental BitNet Results (Bitnet works for /model-test, but not for Pi in general. errors on tools param)
 
 ```
    ⚡ Pi Model Benchmark v1.3.3                                                                                      
