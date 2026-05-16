@@ -20,6 +20,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { section, ok, info, fail, warn } from "../shared/format";
+import { Type } from "typebox";
 
 // ============================================================================
 // Constants
@@ -140,6 +141,121 @@ function showFileWithHex(filePath: string): string[] {
 // ============================================================================
 
 export default function (pi: ExtensionAPI) {
+  // Register LLM-callable tools
+  
+  pi.registerTool({
+    name: "hex_edit",
+    label: "Hex Edit",
+    description: "Edit file using hex stream validation for reliable byte-level editing",
+    parameters: Type.Object({
+      file: Type.String({ description: "Path to the file to edit" }),
+      oldText: Type.String({ description: "Exact text to replace" }),
+      newText: Type.String({ description: "Replacement text" }),
+    }),
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      try {
+        const filePath = path.resolve(params.file);
+        
+        if (!fs.existsSync(filePath)) {
+          return {
+            content: [{ type: "text", text: `Error: File not found: ${filePath}` }],
+            details: { error: "File not found" },
+            isError: true,
+          };
+        }
+        
+        const originalContent = fs.readFileSync(filePath);
+        const oldBytes = Buffer.from(params.oldText, "utf-8");
+        const newBytes = Buffer.from(params.newText, "utf-8");
+        const positions = findAllOccurrences(originalContent, oldBytes);
+        
+        if (positions.length === 0) {
+          return {
+            content: [{ type: "text", text: `Error: Old text not found in file` }],
+            details: { error: "Text not found" },
+            isError: true,
+          };
+        }
+        
+        if (positions.length > 1) {
+          onUpdate?.({
+            content: [{ type: "text", text: `Warning: ${positions.length} occurrences found. Using first at position ${positions[0]}` }],
+          });
+        }
+        
+        const newContent = replaceAtPosition(originalContent, positions[0], oldBytes, newBytes);
+        fs.writeFileSync(filePath, newContent);
+        
+        const changeSize = newContent.length - originalContent.length;
+        
+        return {
+          content: [{
+            type: "text", 
+            text: `Successfully edited ${filePath}\n` +
+                  `Old size: ${originalContent.length} bytes\n` +
+                  `New size: ${newContent.length} bytes\n` +
+                  `Change: ${changeSize > 0 ? "+" : ""}${changeSize} bytes\n` +
+                  `Hash: ${simpleHash(newContent)}\n` +
+                  `Note: Run /reload to refresh the file in Pi's view`
+          }],
+          details: {
+            file: filePath,
+            oldSize: originalContent.length,
+            newSize: newContent.length,
+            change: changeSize,
+            hash: simpleHash(newContent),
+            positions: positions.length,
+          },
+        };
+      } catch (e) {
+        return {
+          content: [{ type: "text", text: `Edit failed: ${e instanceof Error ? e.message : String(e)}` }],
+          details: { error: e instanceof Error ? e.message : String(e) },
+          isError: true,
+        };
+      }
+    },
+  });
+  
+  pi.registerTool({
+    name: "hex_edit_show",
+    label: "Hex Edit Show",
+    description: "Show file content with line numbers and hex preview",
+    parameters: Type.Object({
+      file: Type.String({ description: "Path to the file to show" }),
+    }),
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      try {
+        const filePath = path.resolve(params.file);
+        
+        if (!fs.existsSync(filePath)) {
+          return {
+            content: [{ type: "text", text: `Error: File not found: ${filePath}` }],
+            details: { error: "File not found" },
+            isError: true,
+          };
+        }
+        
+        const lines = [
+          branding,
+          section("FILE CONTENT"),
+          ...showFileWithHex(filePath),
+        ];
+        
+        return {
+          content: [{ type: "text", text: lines.join("\n") }],
+          details: { file: filePath, size: fs.statSync(filePath).size },
+        };
+      } catch (e) {
+        return {
+          content: [{ type: "text", text: `Failed to read file: ${e instanceof Error ? e.message : String(e)}` }],
+          details: { error: e instanceof Error ? e.message : String(e) },
+          isError: true,
+        };
+      }
+    },
+  });
+  
   pi.registerCommand("hex-edit", {
     description: "Edit file using hex stream validation for reliability",
     handler: async (args, ctx) => {
@@ -242,7 +358,141 @@ export default function (pi: ExtensionAPI) {
       }
     },
   });
-
+  
+  pi.registerTool({
+    name: "hex_edit_validate",
+    label: "Hex Edit Validate",
+    description: "Validate that old text exists in file and show positions",
+    parameters: Type.Object({
+      file: Type.String({ description: "Path to the file to validate" }),
+      searchText: Type.String({ description: "Text to search for in the file" }),
+    }),
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      try {
+        const filePath = path.resolve(params.file);
+        
+        if (!fs.existsSync(filePath)) {
+          return {
+            content: [{ type: "text", text: `Error: File not found: ${filePath}` }],
+            details: { error: "File not found" },
+            isError: true,
+          };
+        }
+        
+        const content = fs.readFileSync(filePath);
+        const searchBytes = Buffer.from(params.searchText, "utf-8");
+        const positions = findAllOccurrences(content, searchBytes);
+        
+        const resultLines = [
+          branding,
+          section("VALIDATION RESULT"),
+          info(`File: ${filePath}`),
+          info(`Search: "${params.searchText}"`),
+          "",
+        ];
+        
+        if (positions.length === 0) {
+          resultLines.push(fail("Text not found in file"));
+        } else {
+          resultLines.push(ok(`Found ${positions.length} occurrence(s)`));
+          positions.forEach(pos => {
+            const contextStart = Math.max(0, pos - 20);
+            const contextEnd = Math.min(content.length, pos + params.searchText.length + 20);
+            const context = content.subarray(contextStart, contextEnd).toString("utf-8");
+            resultLines.push(info(`  Position ${pos}: ...${context}...`));
+          });
+        }
+        
+        return {
+          content: [{ type: "text", text: resultLines.join("\n") }],
+          details: {
+            file: filePath,
+            search: params.searchText,
+            positions: positions,
+            found: positions.length > 0,
+          },
+        };
+      } catch (e) {
+        return {
+          content: [{ type: "text", text: `Validation failed: ${e instanceof Error ? e.message : String(e)}` }],
+          details: { error: e instanceof Error ? e.message : String(e) },
+          isError: true,
+        };
+      }
+    },
+  });
+  
+  pi.registerTool({
+    name: "hex_edit_diff",
+    label: "Hex Edit Diff",
+    description: "Show byte-level diff between two files",
+    parameters: Type.Object({
+      file1: Type.String({ description: "Path to the first file" }),
+      file2: Type.String({ description: "Path to the second file" }),
+    }),
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      try {
+        const file1 = path.resolve(params.file1);
+        const file2 = path.resolve(params.file2);
+        
+        if (!fs.existsSync(file1)) {
+          return {
+            content: [{ type: "text", text: `Error: File not found: ${file1}` }],
+            details: { error: "File not found" },
+            isError: true,
+          };
+        }
+        
+        if (!fs.existsSync(file2)) {
+          return {
+            content: [{ type: "text", text: `Error: File not found: ${file2}` }],
+            details: { error: "File not found" },
+            isError: true,
+          };
+        }
+        
+        const buf1 = fs.readFileSync(file1);
+        const buf2 = fs.readFileSync(file2);
+        
+        const resultLines = [
+          branding,
+          section("BYTE DIFF"),
+          info(`File 1: ${file1} (${buf1.length} bytes, hash: ${simpleHash(buf1)})`),
+          info(`File 2: ${file2} (${buf2.length} bytes, hash: ${simpleHash(buf2)})`),
+          "",
+        ];
+        
+        if (buf1.equals(buf2)) {
+          resultLines.push(ok("Files are identical"));
+        } else {
+          resultLines.push(info("Differences:"));
+          resultLines.push("");
+          resultLines.push(...byteDiff(buf1, buf2).slice(0, 50));
+        }
+        
+        return {
+          content: [{ type: "text", text: resultLines.join("\n") }],
+          details: {
+            file1: file1,
+            file2: file2,
+            size1: buf1.length,
+            size2: buf2.length,
+            identical: buf1.equals(buf2),
+            hash1: simpleHash(buf1),
+            hash2: simpleHash(buf2),
+          },
+        };
+      } catch (e) {
+        return {
+          content: [{ type: "text", text: `Diff failed: ${e instanceof Error ? e.message : String(e)}` }],
+          details: { error: e instanceof Error ? e.message : String(e) },
+          isError: true,
+        };
+      }
+    },
+  });
+  
+  // Keep slash commands for user convenience
   pi.registerCommand("hex-edit-validate", {
     description: "Validate that old text exists in file",
     handler: async (args, ctx) => {
