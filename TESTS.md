@@ -128,3 +128,69 @@ Benchmarks run with `/model-test` on AMD Ryzen 5 2400G (4 cores, 15GB RAM) via r
  ── RECOMMENDATION ──────────────────────────────────────────                                                        
    ❌ poolside/laguna-m.1:free is WEAK — limited capabilities for agent use
 ```
+
+Experimental BitNet Results (Bitnet works for /model-test, but not for Pi in general. errors on tool param)
+
+```
+   ⚡ Pi Model Benchmark v1.3.3                                                                                      
+   Written by VTSTech                                                                                                
+   GitHub: https://github.com/VTSTech                                                                                
+   Website: www.vts-tech.org (http://www.vts-tech.org)                                                               
+                                                                                                                     
+ ── MODEL: bitnet-b1.58-2B-4T ───────────────────────────────                                                        
+   ℹ️  Provider: bitnet (builtin)                                                                                    
+                                                                                                                     
+ ── REASONING TEST (EXTENDED) ───────────────────────────────                                                        
+   ℹ️  Testing 20 reasoning puzzles...                                                                               
+   ❌ ❌ snail_wall (logic): ERROR - expected "8", got "?"                                                           
+   ✅ ✅ math_sequence (math): STRONG - expected "162", got "162" [ (expected: 162, got: 162)]                       
+   ⚠️  ❌ spatial_directions (spatial): WEAK - expected "south", got "?" [ (expected: south, got: ?)]                
+   ⚠️  ❌ commonsense (commonsense): WEAK - expected "the other side", got "?" [ (expected: the other side, got: ?)] 
+   ❌ ❌ code_simplify (code): FAIL - expected "15", got "0" [ (expected: 15, got: 0)]                               
+   ✅ ✅ bat_and_ball (counterint): STRONG - expected "5", got "5" [ (expected: 5, got: 5)]                          
+   ✅ ✅ scale_weight (counterint): STRONG - expected "400", got "400" [ (expected: 400, got: 400)]                  
+   ✅ ✅ syllogism (logic): STRONG - expected "warm-blooded", got "warm-blooded" [ (expected: warm-blooded, got:     
+ warm-blooded)]                                                                                                      
+   ✅ ✅ if_then_chain (logic): STRONG - expected "grass grows", got "grass grows" [ (expected: grass grows, got:    
+ grass grows)]                                                                                                       
+   ⚠️  ❌ cause_effect (causal): WEAK - expected "grows", got "?" [ (expected: grows, got: ?)]                       
+   ✅ ✅ relative_quantities (comparative): STRONG - expected "15", got "15" [ (expected: 15, got: 15)]              
+   ❌ ❌ analogy_1 (analogy): FAIL - expected "room", got "?" [ (expected: room, got: ?)]                            
+   ⚠️  ❌ analogy_2 (analogy): WEAK - expected "boot", got "?" [ (expected: boot, got: ?)]                           
+   ✅ ✅ physics_1 (commonsense): STRONG - expected "bowling ball", got "bowling ball" [ (expected: bowling ball,    
+ got: bowling ball)]                                                                                                 
+   ✅ ✅ physics_2 (commonsense): STRONG - expected "hot", got "hot" [ (expected: hot, got: hot)]                    
+   ⚠️  ❌ objects_1 (commonsense): WEAK - expected "scissors", got "?" [ (expected: scissors, got: ?)]               
+   ✅ ✅ social_1 (commonsense): STRONG - expected "polite", got "polite" [ (expected: polite, got: polite)]         
+   ⚠️  ❌ animals_1 (commonsense): WEAK - expected "water", got "?" [ (expected: water, got: ?)]                     
+   ✅ ✅ gk_1 (commonsense): STRONG - expected "mars", got "mars" [ (expected: mars, got: mars)]                     
+   ✅ ✅ gk_2 (commonsense): STRONG - expected "366", got "366" [ (expected: 366, got: 366)]                         
+   ✅ Average score: MODERATE                                                                                        
+                                                                                                                     
+ ── INSTRUCTION FOLLOWING TEST (EXTENDED) ───────────────────                                                        
+   ℹ️  Testing multi-step JSON schema compliance...                                                                  
+   ℹ️  Time: 16.9s                                                                                                   
+   ✅ JSON output valid with correct values (STRONG)                                                                 
+   ℹ️  Output: {"name":"AI                                                                                           
+ Assistant","can_count":true,"sum":42,"language":"English","colors":["red","blue","green"],"timestamp":"2023-10-05T1 
+ 4:48:00.123456"}                                                                                                    
+                                                                                                                     
+ ── TOOL USAGE TEST (EXTENDED) ──────────────────────────────                                                        
+   ℹ️  Testing chained tool calls...                                                                                 
+   ℹ️  Time: 0ms                                                                                                     
+   ❌ Tool calls: none (ERROR)                                                                                       
+   ℹ️  Response: OpenAI API returned 500: {"error":{"code":500,"message":"Unsupported param:                         
+ tools","type":"server_error"}}                                                                                      
+                                                                                                                     
+ ── SUMMARY ─────────────────────────────────────────────────                                                        
+   ✅ Reasoning: MODERATE                                                                                            
+   ✅ Instructions: STRONG                                                                                           
+   ❌ Tool Usage: ERROR                                                                                              
+   ℹ️  Total time: 6.9m                                                                                              
+   ℹ️  Score: 2/3 tests passed                                                                                       
+                                                                                                                     
+   ℹ️  Detailed: Reasoning 11/20 tests passed, Instructions 1/1, Tool Usage 0/1                                      
+                                                                                                                     
+ ── RECOMMENDATION ──────────────────────────────────────────                                                        
+   ❌ bitnet-b1.58-2B-4T is WEAK — limited capabilities for agent use 
+```
