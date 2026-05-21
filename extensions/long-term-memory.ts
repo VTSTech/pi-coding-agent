@@ -345,13 +345,13 @@ export default function (pi: ExtensionAPI) {
           }
 
           // Parse content and tags
-          const lastSpace = rest.lastIndexOf(" ");
+          const lastSpaceIndex = rest.lastIndexOf(" ");
           let content: string;
           let tags: string[] = [];
 
-          if (lastSpace > 0 && rest.substring(lastSpace + 1).includes(",")) {
-            content = rest.substring(0, lastSpace);
-            tags = rest.substring(lastSpace + 1).split(",").map((t) => t.trim()).filter(Boolean);
+          if (lastSpaceIndex > 0 && rest.substring(lastSpaceIndex + 1).includes(",")) {
+            content = rest.substring(0, lastSpaceIndex);
+            tags = rest.substring(lastSpaceIndex + 1).split(",").map((t) => t.trim()).filter(Boolean);
           } else {
             content = rest;
           }
@@ -405,19 +405,19 @@ export default function (pi: ExtensionAPI) {
           }
           
           // Parse content and tags
-          const lastSpace = rest.lastIndexOf(" ");
+          const lastSpaceIndex = rest.lastIndexOf(" ");
           let id: string;
           let newContent: string;
           let tags: string[] = [];
           
-          if (lastSpace > 0 && rest.substring(lastSpace + 1).includes(",")) {
+          if (lastSpaceIndex > 0 && rest.substring(lastSpaceIndex + 1).includes(",")) {
             // Tags are provided
             const contentAndId = rest.substring(0, lastSpace);
             const spaceInContent = contentAndId.lastIndexOf(" ");
             if (spaceInContent > 0) {
               id = contentAndId.substring(0, spaceInContent);
               newContent = contentAndId.substring(spaceInContent + 1);
-              tags = rest.substring(lastSpace + 1).split(",").map((t) => t.trim()).filter(Boolean);
+              tags = rest.substring(lastSpaceIndex + 1).split(",").map((t) => t.trim()).filter(Boolean);
             } else {
               id = contentAndId;
               newContent = "";

@@ -56,6 +56,10 @@ function simpleHash(content: string | Buffer): number {
   return h >>> 0;
 }
 
+function bytesToHex(buffer: Buffer): string {
+  return buffer.toString("hex").match(/.{1,2}/g)?.join(" ") || "";
+}
+
 /** Find all occurrences of a string in a buffer */
 function findAllOccurrences(haystack: Buffer, needle: Buffer): number[] {
   const indices: number[] = [];
@@ -188,15 +192,20 @@ export default function (pi: ExtensionAPI) {
         
         const changeSize = newContent.length - originalContent.length;
         
-        return {
-          content: [{
-            type: "text", 
-            text: `Successfully edited ${filePath}\n` +
+        let resultText = `Successfully edited ${filePath}\n` +
                   `Old size: ${originalContent.length} bytes\n` +
                   `New size: ${newContent.length} bytes\n` +
                   `Change: ${changeSize > 0 ? "+" : ""}${changeSize} bytes\n` +
-                  `Hash: ${simpleHash(newContent)}\n` +
-                  `Note: Run /reload to refresh the file in Pi's view`
+                  `Hash: ${simpleHash(newContent)}`;
+                  
+        if (Math.abs(changeSize) < 32) {
+          resultText += `\n\nHex stream:\n${bytesToHex(newContent)}`;
+        }
+        
+        return {
+          content: [{
+            type: "text", 
+            text: resultText
           }],
           details: {
             file: filePath,
