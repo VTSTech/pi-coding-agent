@@ -304,28 +304,14 @@ export default function (pi: ExtensionAPI) {
 
   // Register memory command
   pi.registerCommand("memory", {
-    description: "Manage long-term memory (add, delete, replace, list, clear, meta, backups, help)",
+    description: "Manage long-term memory (add, delete, replace, list, clear, meta, backups)",
     handler: async (args, ctx) => {
       const parts = args?.split(/\s+/) || [];
       const command = parts[0];
       const rest = parts.slice(1).join(" ");
 
       switch (command) {
-        case "help":
-          ctx.ui.notify(
-            "Memory commands:\n" +
-            "  /memory add <text> [tags]        - Add a memory item\n" +
-            "  /memory delete <id|content>     - Delete memory by ID or content\n" +
-            "  /memory replace <id> <content>   - Replace memory content by ID\n" +
-            "  /memory list                     - List all memories with IDs\n" +
-            "  /memory clear                    - Clear all memories\n" +
-            "  /memory clear-meta               - Clear metadata\n" +
-            "  /memory meta                     - Show memory metadata\n" +
-            "  /memory backups                  - List available memory backups\n" +
-            "  /memory help                     - Show this help",
-            "info"
-          );
-          break;
+
 
         case "meta":
           const metaText = formatMetadataForContext(memoryStore.metadata);
@@ -450,7 +436,7 @@ export default function (pi: ExtensionAPI) {
 
         default:
           ctx.ui.notify(
-            "Memory commands: /memory add <text>, /memory delete <id|content>, /memory replace <id> <new-content>, /memory list, /memory clear, /memory meta, /memory help",
+            "Memory commands: /memory add <text>, /memory delete <id|content>, /memory replace <id> <new-content>, /memory list, /memory clear, /memory meta, /memory backups",
             "info"
           );
       }
