@@ -306,7 +306,7 @@ export default function (pi: ExtensionAPI) {
 
           const list = memoryStore.memories
             .sort((a, b) => b.lastAccessed - a.lastAccessed)
-            .map((m) => `${m.id.substring(0, 6)}: ${m.content.substring(0, 60)}${m.content.length > 60 ? "..." : ""} [${m.tags.join(", ")}]`)
+            .map((m) => `${m.id}: ${m.content.substring(0, 60)}${m.content.length > 60 ? "..." : ""} [${m.tags.join(", ")}]`)
             .join("\n");
 
           ctx.ui.notify(`Memories:\n${list}`, "info");
@@ -435,7 +435,7 @@ export default function (pi: ExtensionAPI) {
                 type: "text",
                 text: memoryStore.memories
                   .sort((a, b) => b.lastAccessed - a.lastAccessed)
-                  .map((m) => `- ${m.content} [${m.tags.join(", ")}]`)
+                  .map((m) => `${m.id}: ${m.content.substring(0, 80)}${m.content.length > 80 ? "..." : ""} [${m.tags.join(", ")}]`)
                   .join("\n"),
               },
             ],
