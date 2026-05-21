@@ -257,6 +257,26 @@ function listMemoryBackups(pi: ExtensionAPI): Array<{filename: string, size: num
   }
 }
 
+function searchMemories(store: MemoryStore, query: string): MemoryItem[] {
+  const results: MemoryItem[] = [];
+  
+  // Search in tags
+  store.memories.forEach(memory => {
+    if (memory.tags.some(tag => tag.toLowerCase().includes(query.toLowerCase()))) {
+      results.push(memory);
+    }
+  });
+  
+  // Search in content (if no tag matches found or to get both)
+  store.memories.forEach(memory => {
+    if (memory.content.toLowerCase().includes(query.toLowerCase()) && !results.includes(memory)) {
+      results.push(memory);
+    }
+  });
+  
+  return results;
+}
+
 function summarizeMemory(memories: MemoryItem[], targetTokens: number): MemoryItem[] {
   // Sort by importance and last accessed
   const sorted = [...memories].sort((a, b) => {
@@ -304,7 +324,7 @@ export default function (pi: ExtensionAPI) {
 
   // Register memory command
   pi.registerCommand("memory", {
-    description: "Manage long-term memory (add, delete, replace, list, clear, meta, backups)",
+    description: "Manage long-term memory (add, delete, replace, list, search, clear, meta, backups)",
     handler: async (args, ctx) => {
       const parts = args?.split(/\s+/) || [];
       const command = parts[0];
@@ -380,20 +400,41 @@ export default function (pi: ExtensionAPI) {
 
         case "replace":
           if (!rest) {
-            ctx.ui.notify("Usage: /memory replace <id> <new-content>", "warning");
+            ctx.ui.notify("Usage: /memory replace <id> <new-content> [comma-separated-tags]", "warning");
             return;
           }
           
-          const parts = rest.split(" ", 2);
-          if (parts.length < 2) {
-            ctx.ui.notify("Usage: /memory replace <id> <new-content>", "warning");
-            return;
+          // Parse content and tags
+          const lastSpace = rest.lastIndexOf(" ");
+          let id: string;
+          let newContent: string;
+          let tags: string[] = [];
+          
+          if (lastSpace > 0 && rest.substring(lastSpace + 1).includes(",")) {
+            // Tags are provided
+            const contentAndId = rest.substring(0, lastSpace);
+            const spaceInContent = contentAndId.lastIndexOf(" ");
+            if (spaceInContent > 0) {
+              id = contentAndId.substring(0, spaceInContent);
+              newContent = contentAndId.substring(spaceInContent + 1);
+              tags = rest.substring(lastSpace + 1).split(",").map((t) => t.trim()).filter(Boolean);
+            } else {
+              id = contentAndId;
+              newContent = "";
+              tags = rest.substring(lastSpace + 1).split(",").map((t) => t.trim()).filter(Boolean);
+            }
+          } else {
+            // No tags, just ID and content
+            const parts = rest.split(" ", 2);
+            if (parts.length < 2) {
+              ctx.ui.notify("Usage: /memory replace <id> <new-content> [comma-separated-tags]", "warning");
+              return;
+            }
+            id = parts[0];
+            newContent = parts[1];
           }
           
-          const id = parts[0];
-          const newContent = parts[1];
-          
-          const replaced = replaceMemory(memoryStore, id, newContent);
+          const replaced = replaceMemory(memoryStore, id, newContent, tags.length > 0 ? tags : undefined);
           if (replaced) {
             saveMemory(pi, memoryStore);
             ctx.ui.notify("Memory content replaced.", "success");
@@ -434,9 +475,26 @@ export default function (pi: ExtensionAPI) {
           }
           break;
 
+        case "search":
+          if (!rest) {
+            ctx.ui.notify("Usage: /memory search <tag|text>", "warning");
+            return;
+          }
+          
+          const searchResults = searchMemories(memoryStore, rest);
+          if (searchResults.length === 0) {
+            ctx.ui.notify("No matching memories found.", "info");
+          } else {
+            const searchText = searchResults
+              .map((m) => `${m.id}: ${m.content.substring(0, 80)}${m.content.length > 80 ? "..." : ""} [${m.tags.join(", ")}]`)
+              .join("\n");
+            ctx.ui.notify(`Search results for "${rest}":\n${searchText}`, "info");
+          }
+          break;
+
         default:
           ctx.ui.notify(
-            "Memory commands: /memory add <text>, /memory delete <id|content>, /memory replace <id> <new-content>, /memory list, /memory clear, /memory meta, /memory backups",
+            "Memory commands: /memory add <text>, /memory delete <id|content>, /memory replace <id> <new-content>, /memory list, /memory search <tag|text>, /memory clear, /memory meta, /memory backups",
             "info"
           );
       }
@@ -449,7 +507,7 @@ export default function (pi: ExtensionAPI) {
     label: "Memory",
     description: "Access long-term memory storage",
     parameters: Type.Object({
-      action: Type.String({ description: "Action: get, add, delete, replace, list, clear, clear-meta, meta" }),
+      action: Type.String({ description: "Action: get, add, delete, replace, list, search, clear, clear-meta, meta" }),
       content: Type.Optional(Type.String({ description: "Content for add action" })),
       tags: Type.Optional(Type.String({ description: "Comma-separated tags" })),
     }),
@@ -491,6 +549,24 @@ export default function (pi: ExtensionAPI) {
           };
         }
 
+        case "search": {
+          const searchResults = searchMemories(memoryStore, params.content || "");
+          if (searchResults.length === 0) {
+            return {
+              content: [{ type: "text", text: "No matching memories found." }],
+              details: {},
+            };
+          } else {
+            const searchText = searchResults
+              .map((m) => `${m.id}: ${m.content.substring(0, 80)}${m.content.length > 80 ? "..." : ""} [${m.tags.join(", ")}]`)
+              .join("\n");
+            return {
+              content: [{ type: "text", text: `Search results for "${params.content || ""}":\n${searchText}` }],
+              details: { count: searchResults.length },
+            };
+          }
+        }
+
         case "list":
           return {
             content: [
@@ -524,7 +600,8 @@ export default function (pi: ExtensionAPI) {
         case "replace": {
           const id = params.content || "";
           const newContent = params.tags || "";
-          const replaced = replaceMemory(memoryStore, id, newContent);
+          const memoryTags = params.tags ? params.tags.split(",").map((t) => t.trim()).filter(Boolean) : undefined;
+          const replaced = replaceMemory(memoryStore, id, newContent, memoryTags);
           if (replaced) {
             saveMemory(pi, memoryStore);
             return {
@@ -604,10 +681,13 @@ export default function (pi: ExtensionAPI) {
     return deleted;
   }
 
-  function replaceMemory(store: MemoryStore, id: string, newContent: string): boolean {
+  function replaceMemory(store: MemoryStore, id: string, newContent: string, newTags?: string[]): boolean {
     const memory = store.memories.find(m => m.id === id);
     if (memory) {
       memory.content = newContent;
+      if (newTags) {
+        memory.tags = newTags;
+      }
       memory.lastAccessed = Date.now();
       return true;
     }
