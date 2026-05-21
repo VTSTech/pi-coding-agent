@@ -27,8 +27,9 @@ pi install "npm:@vtstech/pi-long-term-memory"
 /memory clear          - Clear memories (preserves metadata)
 /memory clear-meta     - Reset metadata
 /memory meta           - Show metadata
+/memory backups        - List available memory backups
 /memory-gate           - Toggle memory creation gate
-/memory help           - Show help
+/memory --help         - Show help
 ```
 
 ## AI-Driven Memory

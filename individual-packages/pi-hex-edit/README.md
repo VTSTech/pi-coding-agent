@@ -15,6 +15,12 @@ A robust hex stream-based edit replacement for Pi Coding Agent that provides rel
 - **Detailed Output**: Displays file sizes, byte changes, and exact positions
 - **Error Handling**: Clear error messages for missing files and text not found
 - **Binary File Support**: Perfect for both text and binary file editing
+- **Typebox Validation**: All tools now use Typebox for robust parameter validation
+- **Streaming Support**: Progress updates during long operations
+- **Enhanced Hash Verification**: Both SHA-256 and simple hash for performance
+- **Better Context Display**: ±20 byte context in validation results
+- **Optimized Diff Output**: Shows first 50 lines for readability
+- **Proper Tool Labels**: Clear descriptions for better LLM understanding
 
 ## Installation
 

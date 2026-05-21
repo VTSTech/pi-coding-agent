@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Pi Version](https://img.shields.io/badge/Pi-v0.66%2B-green.svg)](https://github.com/badlogic/pi-mono)
 [![Pi Package](https://img.shields.io/badge/Install-pi%20install%20git-blue.svg)](#installation)
-[![Version](https://img.shields.io/badge/Version-v1.3.6-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-v1.3.7-orange.svg)](CHANGELOG.md)
 
 <p>
   <a href="https://github.com/VTSTech"><strong>VTSTech</strong></a> •
@@ -112,7 +112,7 @@ This repo is a standard Pi package. The `package.json` contains a `pi` manifest 
 ```json
 {
   "name": "@vtstech/pi-coding-agent-extensions",
-  "version": "1.3.6",
+  "version": "1.3.7",
   "keywords": ["pi-package"],
   "pi": {
     "extensions": ["./extensions"],
@@ -412,8 +412,9 @@ Automatically loaded - no commands needed. When a model lacks native tool callin
 /memory list           - List all memories
 /memory clear          - Clear memories (preserves metadata)
 /memory meta           - Show metadata
+/memory backups        - List available memory backups
 /memory-gate           - Toggle memory creation gate
-/memory help           - Show help
+/memory --help         - Show help
 ```
 
 **Features:**
