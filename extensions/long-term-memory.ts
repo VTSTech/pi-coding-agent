@@ -492,9 +492,31 @@ export default function (pi: ExtensionAPI) {
           }
           break;
 
+        case "stats":
+          const totalMemories = memoryStore.memories.length;
+          const totalContent = memoryStore.memories.reduce((sum, m) => sum + m.content.length, 0);
+          const totalTokens = Math.ceil(totalContent / 4); // Rough token estimate
+          const avgTokensPerMemory = totalMemories > 0 ? Math.round(totalTokens / totalMemories) : 0;
+          
+          const formattedMemory = formatMemoryForContext(memoryStore.memories);
+          const formattedTokens = Math.ceil(formattedMemory.length / 4);
+          
+          ctx.ui.notify(
+            `Memory Statistics:\n` +
+            `• Total memories: ${totalMemories}\n` +
+            `• Total content characters: ${totalContent.toLocaleString()}\n` +
+            `• Total estimated tokens: ${totalTokens.toLocaleString()}\n` +
+            `• Average tokens per memory: ${avgTokensPerMemory.toLocaleString()}\n` +
+            `• Formatted context tokens: ${formattedTokens.toLocaleString()}\n` +
+            `• Memory gate: ${memoryStore.metadata.memoryGateEnabled ? "enabled" : "disabled"}\n` +
+            `• Last compacted: ${memoryStore.lastCompacted ? new Date(memoryStore.lastCompacted).toLocaleString() : "never"}`,
+            "info"
+          );
+          break;
+
         default:
           ctx.ui.notify(
-            "Memory commands: /memory add <text>, /memory delete <id|content>, /memory replace <id> <new-content>, /memory list, /memory search <tag|text>, /memory clear, /memory meta, /memory backups",
+            "Memory commands: /memory add <text>, /memory delete <id|content>, /memory replace <id> <new-content>, /memory list, /memory search <tag|text>, /memory stats, /memory clear, /memory meta, /memory backups",
             "info"
           );
       }
@@ -565,6 +587,38 @@ export default function (pi: ExtensionAPI) {
               details: { count: searchResults.length },
             };
           }
+        }
+
+        case "stats": {
+          const totalMemories = memoryStore.memories.length;
+          const totalContent = memoryStore.memories.reduce((sum, m) => sum + m.content.length, 0);
+          const totalTokens = Math.ceil(totalContent / 4); // Rough token estimate
+          const avgTokensPerMemory = totalMemories > 0 ? Math.round(totalTokens / totalMemories) : 0;
+          
+          const formattedMemory = formatMemoryForContext(memoryStore.memories);
+          const formattedTokens = Math.ceil(formattedMemory.length / 4);
+          
+          return {
+            content: [{ type: "text", text: 
+              `Memory Statistics:\n` +
+              `• Total memories: ${totalMemories}\n` +
+              `• Total content characters: ${totalContent.toLocaleString()}\n` +
+              `• Total estimated tokens: ${totalTokens.toLocaleString()}\n` +
+              `• Average tokens per memory: ${avgTokensPerMemory.toLocaleString()}\n` +
+              `• Formatted context tokens: ${formattedTokens.toLocaleString()}\n` +
+              `• Memory gate: ${memoryStore.metadata.memoryGateEnabled ? "enabled" : "disabled"}\n` +
+              `• Last compacted: ${memoryStore.lastCompacted ? new Date(memoryStore.lastCompacted).toLocaleString() : "never"}`
+            }],
+            details: { 
+              totalMemories,
+              totalContent,
+              totalTokens,
+              avgTokensPerMemory,
+              formattedTokens,
+              memoryGateEnabled: memoryStore.metadata.memoryGateEnabled,
+              lastCompacted: memoryStore.lastCompacted
+            },
+          };
         }
 
         case "list":
