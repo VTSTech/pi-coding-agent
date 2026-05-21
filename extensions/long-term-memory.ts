@@ -313,7 +313,16 @@ export default function (pi: ExtensionAPI) {
       switch (command) {
         case "help":
           ctx.ui.notify(
-            "Memory commands: /memory add <text>, /memory delete <id|content>, /memory replace <id> <content>, /memory list, /memory clear, /memory clear-meta, /memory meta, /memory backups, /memory help",
+            "Memory commands:\n" +
+            "  /memory add <text> [tags]        - Add a memory item\n" +
+            "  /memory delete <id|content>     - Delete memory by ID or content\n" +
+            "  /memory replace <id> <content>   - Replace memory content by ID\n" +
+            "  /memory list                     - List all memories with IDs\n" +
+            "  /memory clear                    - Clear all memories\n" +
+            "  /memory clear-meta               - Clear metadata\n" +
+            "  /memory meta                     - Show memory metadata\n" +
+            "  /memory backups                  - List available memory backups\n" +
+            "  /memory help                     - Show this help",
             "info"
           );
           break;
