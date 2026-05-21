@@ -345,7 +345,7 @@ export default function (pi: ExtensionAPI) {
           }
 
           // Parse content and tags
-          const lastSpaceIndex = rest.lastIndexOf(" ");
+          const replaceLastSpaceIndex = rest.lastIndexOf(" ");
           let content: string;
           let tags: string[] = [];
 
