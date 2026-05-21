@@ -408,11 +408,11 @@ export default function (pi: ExtensionAPI) {
           const lastSpaceIndex = rest.lastIndexOf(" ");
           let id: string;
           let newContent: string;
-          let tags: string[] = [];
+          let replaceTags: string[] = [];
           
           if (lastSpaceIndex > 0 && rest.substring(lastSpaceIndex + 1).includes(",")) {
             // Tags are provided
-            const contentAndId = rest.substring(0, lastSpace);
+            const contentAndId = rest.substring(0, lastSpaceIndex);
             const spaceInContent = contentAndId.lastIndexOf(" ");
             if (spaceInContent > 0) {
               id = contentAndId.substring(0, spaceInContent);
@@ -421,7 +421,7 @@ export default function (pi: ExtensionAPI) {
             } else {
               id = contentAndId;
               newContent = "";
-              tags = rest.substring(lastSpace + 1).split(",").map((t) => t.trim()).filter(Boolean);
+              tags = rest.substring(lastSpaceIndex + 1).split(",").map((t) => t.trim()).filter(Boolean);
             }
           } else {
             // No tags, just ID and content
@@ -434,7 +434,7 @@ export default function (pi: ExtensionAPI) {
             newContent = parts[1];
           }
           
-          const replaced = replaceMemory(memoryStore, id, newContent, tags.length > 0 ? tags : undefined);
+          const replaced = replaceMemory(memoryStore, id, newContent, replaceTags.length > 0 ? replaceTags : undefined);
           if (replaced) {
             saveMemory(pi, memoryStore);
             ctx.ui.notify("Memory content replaced.", "success");
