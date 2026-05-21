@@ -199,7 +199,23 @@ export default function (pi: ExtensionAPI) {
                   `Hash: ${simpleHash(newContent)}`;
                   
         if (Math.abs(changeSize) < 32) {
-          resultText += `\n\nHex stream:\n${bytesToHex(newContent)}`;
+          // Show hex stream of only the changed bytes
+          if (positions.length === 1) {
+            // Single change - show hex around that position
+            const pos = positions[0];
+            const start = Math.max(0, pos - 16);
+            const end = Math.min(originalContent.length, pos + 16);
+            const contextBytes = originalContent.subarray(start, end);
+            resultText += `\n\nHex context around change:\n${bytesToHex(contextBytes)}`;
+            resultText += `\n^ Change at position ${pos}`;
+          } else {
+            // Multiple changes - show hex of each change
+            resultText += `\n\nChanged bytes:`;
+            positions.forEach(pos => {
+              const byte = originalContent[pos];
+              resultText += `\n  Position ${pos}: 0x${byte.toString(16).padStart(2, '0')}`;
+            });
+          }
         }
         
         return {
