@@ -19,6 +19,8 @@
  *   pi (extension auto-loads from .pi/extensions/)
  *   /memory help        - Show available commands
  *   /memory add <text>  - Add a memory item
+ *   /memory delete <id|content> - Delete memory by ID or content
+ *   /memory replace <id> <new-content> - Replace memory content by ID
  *   /memory list        - List all memories
  *   /memory clear       - Clear all memories
  *   /memory meta        - Show memory metadata
@@ -246,7 +248,7 @@ export default function (pi: ExtensionAPI) {
 
   // Register memory command
   pi.registerCommand("memory", {
-    description: "Manage long-term memory (add, list, clear, meta, help)",
+    description: "Manage long-term memory (add, delete, replace, list, clear, meta, help)",
     handler: async (args, ctx) => {
       const parts = args?.split(/\s+/) || [];
       const command = parts[0];
@@ -310,6 +312,45 @@ export default function (pi: ExtensionAPI) {
           ctx.ui.notify(`Memories:\n${list}`, "info");
           break;
 
+        case "delete":
+          if (!rest) {
+            ctx.ui.notify("Usage: /memory delete <id> or /memory delete <content-text>", "warning");
+            return;
+          }
+          
+          const deleted = deleteMemory(memoryStore, rest);
+          if (deleted.length > 0) {
+            saveMemory(pi, memoryStore);
+            ctx.ui.notify(`Deleted ${deleted.length} memory item(s).`, "success");
+          } else {
+            ctx.ui.notify("No matching memory found.", "warning");
+          }
+          break;
+
+        case "replace":
+          if (!rest) {
+            ctx.ui.notify("Usage: /memory replace <id> <new-content>", "warning");
+            return;
+          }
+          
+          const parts = rest.split(" ", 2);
+          if (parts.length < 2) {
+            ctx.ui.notify("Usage: /memory replace <id> <new-content>", "warning");
+            return;
+          }
+          
+          const id = parts[0];
+          const newContent = parts[1];
+          
+          const replaced = replaceMemory(memoryStore, id, newContent);
+          if (replaced) {
+            saveMemory(pi, memoryStore);
+            ctx.ui.notify("Memory content replaced.", "success");
+          } else {
+            ctx.ui.notify("Memory with specified ID not found.", "warning");
+          }
+          break;
+
         case "clear":
           memoryStore.memories = [];
           saveMemory(pi, memoryStore);
@@ -332,7 +373,7 @@ export default function (pi: ExtensionAPI) {
 
         default:
           ctx.ui.notify(
-            "Memory commands: /memory add <text>, /memory list, /memory clear, /memory meta, /memory help",
+            "Memory commands: /memory add <text>, /memory delete <id|content>, /memory replace <id> <new-content>, /memory list, /memory clear, /memory meta, /memory help",
             "info"
           );
       }
@@ -345,7 +386,7 @@ export default function (pi: ExtensionAPI) {
     label: "Memory",
     description: "Access long-term memory storage",
     parameters: Type.Object({
-      action: Type.String({ description: "Action: get, add, list, clear, clear-meta, meta" }),
+      action: Type.String({ description: "Action: get, add, delete, replace, list, clear, clear-meta, meta" }),
       content: Type.Optional(Type.String({ description: "Content for add action" })),
       tags: Type.Optional(Type.String({ description: "Comma-separated tags" })),
     }),
@@ -401,6 +442,40 @@ export default function (pi: ExtensionAPI) {
             details: { count: memoryStore.memories.length },
           };
 
+        case "delete": {
+          const deleted = deleteMemory(memoryStore, params.content || "");
+          if (deleted.length > 0) {
+            saveMemory(pi, memoryStore);
+            return {
+              content: [{ type: "text", text: `Deleted ${deleted.length} memory item(s).` }],
+              details: { deleted: deleted.map(d => d.id) },
+            };
+          } else {
+            return {
+              content: [{ type: "text", text: "No matching memory found." }],
+              isError: true,
+            };
+          }
+        }
+
+        case "replace": {
+          const id = params.content || "";
+          const newContent = params.tags || "";
+          const replaced = replaceMemory(memoryStore, id, newContent);
+          if (replaced) {
+            saveMemory(pi, memoryStore);
+            return {
+              content: [{ type: "text", text: "Memory content replaced." }],
+              details: { replaced: id },
+            };
+          } else {
+            return {
+              content: [{ type: "text", text: "Memory with specified ID not found." }],
+              isError: true,
+            };
+          }
+        }
+
         case "clear":
           memoryStore.memories = [];
           saveMemory(pi, memoryStore);
@@ -438,6 +513,43 @@ export default function (pi: ExtensionAPI) {
       }
     },
   });
+
+  // Helper functions for delete and replace operations
+  function deleteMemory(store: MemoryStore, query: string): MemoryItem[] {
+    const deleted: MemoryItem[] = [];
+    
+    // Try to match by ID first
+    const idMatchIndex = store.memories.findIndex(m => m.id === query);
+    if (idMatchIndex !== -1) {
+      deleted.push(store.memories.splice(idMatchIndex, 1)[0]);
+      return deleted;
+    }
+    
+    // If no ID match, search by content
+    const contentMatchIndices: number[] = [];
+    store.memories.forEach((mem, index) => {
+      if (mem.content.includes(query)) {
+        contentMatchIndices.push(index);
+      }
+    });
+    
+    // Delete content matches (in reverse order to maintain indices)
+    for (let i = contentMatchIndices.length - 1; i >= 0; i--) {
+      deleted.push(store.memories.splice(contentMatchIndices[i], 1)[0]);
+    }
+    
+    return deleted;
+  }
+
+  function replaceMemory(store: MemoryStore, id: string, newContent: string): boolean {
+    const memory = store.memories.find(m => m.id === id);
+    if (memory) {
+      memory.content = newContent;
+      memory.lastAccessed = Date.now();
+      return true;
+    }
+    return false;
+  }
 
   // Track if memory has been injected to avoid duplicates
   let memoryInjected = false;
