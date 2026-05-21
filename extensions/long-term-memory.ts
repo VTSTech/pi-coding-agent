@@ -29,7 +29,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { join } from "path";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from "fs";
 import { debugLog } from "../shared/debug";
 
 // Memory file path (in .pi/agent/ directory)
@@ -201,6 +201,62 @@ function generateId(): string {
   return Math.random().toString(36).substring(2, 10);
 }
 
+function saveMemoryBackup(pi: ExtensionAPI, memories: MemoryItem[], originalCount: number): void {
+  try {
+    const agentDir = (pi as any).agentDir || ".pi/agent";
+    const backupDir = join(agentDir, "memory-backups");
+    
+    // Create backup directory if it doesn't exist
+    if (!existsSync(backupDir)) {
+      mkdirSync(backupDir, { recursive: true });
+    }
+    
+    // Create backup filename with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const backupFile = join(backupDir, `memory-backup-${timestamp}.json`);
+    
+    // Copy current memory file
+    const memoryFile = join(agentDir, "long-term-memory.json");
+    if (existsSync(memoryFile)) {
+      const memoryData = readFileSync(memoryFile, "utf8");
+      writeFileSync(backupFile, memoryData, "utf8");
+      console.log(`Memory backup saved: ${backupFile}`);
+    }
+  } catch (error) {
+    console.error("Failed to save memory backup:", error);
+  }
+}
+
+function listMemoryBackups(pi: ExtensionAPI): Array<{filename: string, size: number, timestamp: string}> {
+  try {
+    const agentDir = (pi as any).agentDir || ".pi/agent";
+    const backupDir = join(agentDir, "memory-backups");
+    
+    if (!existsSync(backupDir)) {
+      return [];
+    }
+    
+    const files = existsSync(backupDir) ? readdirSync(backupDir) : [];
+    const backups = files
+      .filter(file => file.startsWith("memory-backup-") && file.endsWith(".json"))
+      .map(file => {
+        const filePath = join(backupDir, file);
+        const stats = statSync(filePath);
+        return {
+          filename: file,
+          size: stats.size,
+          timestamp: stats.mtime.toISOString()
+        };
+      })
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    
+    return backups;
+  } catch (error) {
+    console.error("Failed to list memory backups:", error);
+    return [];
+  }
+}
+
 function summarizeMemory(memories: MemoryItem[], targetTokens: number): MemoryItem[] {
   // Sort by importance and last accessed
   const sorted = [...memories].sort((a, b) => {
@@ -248,7 +304,7 @@ export default function (pi: ExtensionAPI) {
 
   // Register memory command
   pi.registerCommand("memory", {
-    description: "Manage long-term memory (add, delete, replace, list, clear, meta, help)",
+    description: "Manage long-term memory (add, delete, replace, list, clear, meta, backups, help)",
     handler: async (args, ctx) => {
       const parts = args?.split(/\s+/) || [];
       const command = parts[0];
@@ -257,7 +313,7 @@ export default function (pi: ExtensionAPI) {
       switch (command) {
         case "help":
           ctx.ui.notify(
-            "Memory commands: /memory add <text>, /memory list, /memory clear, /memory clear-meta, /memory meta, /memory help",
+            "Memory commands: /memory add <text>, /memory delete <id|content>, /memory replace <id> <content>, /memory list, /memory clear, /memory clear-meta, /memory meta, /memory backups, /memory help",
             "info"
           );
           break;
@@ -369,6 +425,18 @@ export default function (pi: ExtensionAPI) {
           };
           saveMemory(pi, memoryStore);
           ctx.ui.notify("Metadata reset. Please restart to set new values.", "success");
+          break;
+
+        case "backups":
+          const backupList = listMemoryBackups(pi);
+          if (backupList.length === 0) {
+            ctx.ui.notify("No memory backups found.", "info");
+          } else {
+            const backupText = backupList
+              .map((backup, index) => `${index + 1}. ${backup.filename} (${backup.size} bytes, ${backup.timestamp})`)
+              .join("\n");
+            ctx.ui.notify(`Memory backups:\n${backupText}`, "info");
+          }
           break;
 
         default:
@@ -629,15 +697,23 @@ export default function (pi: ExtensionAPI) {
     const memoryTokens = estimateTokens(memoryText);
 
     if (memoryTokens > MAX_MEMORY_TOKENS * 0.8) {
+      // Backup pre-compacted memories
+      const backupMemories = [...memoryStore.memories];
+      
       // Compact memory - keep most important
       const targetTokens = Math.floor(MAX_MEMORY_TOKENS * 0.6);
       const compacted = summarizeMemory(memoryStore.memories, targetTokens);
+      const previousCount = memoryStore.memories.length;
       memoryStore.memories = compacted;
       memoryStore.lastCompacted = now;
+      
+      // Save backup to file
+      saveMemoryBackup(pi, backupMemories, previousCount);
+      
       saveMemory(pi, memoryStore);
 
       ctx.ui?.notify?.(
-        `Memory compacted: ${memoryStore.memories.length} items, ~${estimateTokens(formatMemoryForContext(memoryStore.memories))} tokens`,
+        `Memory compacted: ${previousCount} → ${memoryStore.memories.length} items (~${estimateTokens(formatMemoryForContext(memoryStore.memories))} tokens). Backup saved.`,
         "info"
       );
     }
