@@ -5,6 +5,62 @@ All notable changes to the Pi Coding Agent Extensions (`@vtstech/pi-coding-agent
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.7] - 05-21-2026 2:49:09 PM
+
+### Added
+
+- **memory: LLM-callable tools** (`extensions/long-term-memory.ts`, `individual-packages/pi-long-term-memory/`)
+  - Added `memory` tool - Access long-term memory storage with get, add, delete, replace, list, search, clear, clear-meta, meta actions
+  - Added `create_memory` tool - Request to create long-term memory (subject to user gate)
+  - All tools support tag-based organization and importance scoring
+  - Tools now available as LLM-callable functions in addition to existing slash commands
+  - Added comprehensive documentation and examples for memory operations
+  - Released as separate npm package `@vtstech/pi-long-term-memory` for easy installation
+  - Maintains backward compatibility with existing `/memory` commands
+
+- **memory: Backup functionality** (`extensions/long-term-memory.ts`)
+  - Added automatic backup of pre-compacted memories to memory-backups directory
+  - Backup files use timestamp format: memory-backup-YYYY-MM-DDTHH-MM-SS.json
+  - Added `/memory backups` command to list available backups
+  - Simplified backup mechanism - copies entire memory JSON file
+  - Added listMemoryBackups() function with file stats
+  - Updated help text to include new backups command
+  - Resolves issue where memories could be lost during compaction without recovery option
+
+### Changed
+
+- **memory: Enhanced tool capabilities** (`extensions/long-term-memory.ts`)
+  - All memory tools now use Typebox for parameter validation
+  - Improved error reporting with structured error responses
+  - Enhanced memory search with flexible query matching
+  - Better context display in memory retrieval operations
+  - Added proper tool labels and descriptions for better LLM understanding
+  - Maintained backward compatibility with existing slash command functionality
+  - Removed dedicated `/memory help` command in favor of standard `--help` flag
+  - Updated command descriptions to exclude help reference
+  - Updated help text with detailed command descriptions and usage examples
+
+### Fixed
+
+- **memory: Tool parameter validation** (`extensions/long-term-memory.ts`)
+  - Fixed parameter validation issues with Typebox schemas
+  - Resolved tool call formatting problems for LLM usage
+  - Improved error handling for edge cases in memory operations
+  - Fixed memory retrieval consistency across different operation types
+  - Enhanced position reporting in search results
+  - Resolved file path resolution issues for memory storage
+  - Fixed encoding consistency between text and byte operations
+
+- **hex-edit: Enhanced tool capabilities** (`extensions/hex-edit.ts`)
+  - All hex-edit tools now use Typebox for parameter validation
+  - Improved error reporting with structured error responses
+  - Added streaming support for progress updates during long operations
+  - Enhanced hash verification with both SHA-256 and simple hash for performance
+  - Better context display in validation results with ±20 byte context
+  - Optimized diff output to show first 50 lines for readability
+  - Added proper tool labels and descriptions for better LLM understanding
+  - Maintained exact byte-level precision for all operations
+
 ## [1.3.6] - 05-15-2026 8:52:52 PM
 
 ### Added
