@@ -409,6 +409,8 @@ Automatically loaded - no commands needed. When a model lacks native tool callin
 
 ```bash
 /memory add <text>     - Add memory (with optional tags)
+/memory delete <id|content> - Delete memory by ID or content
+/memory replace <id> <new-content> [comma-separated-tags] - Replace memory content by ID
 /memory list           - List all memories
 /memory clear          - Clear memories (preserves metadata)
 /memory clear-meta     - Reset metadata
@@ -418,6 +420,33 @@ Automatically loaded - no commands needed. When a model lacks native tool callin
 /memory-gate           - Toggle memory creation gate
 /memory --help         - Show help
 ```
+
+### Memory Management
+
+**Delete Operations:**
+- `/memory delete <id>` - Delete specific memory by ID
+- `/memory delete <content>` - Delete any memory containing the specified text
+
+**Replace Operations:**
+- `/memory replace <id> <new-content>` - Replace memory content by ID
+- `/memory replace <id> <new-content> tag1,tag2` - Replace content and update tags
+
+### Memory Statistics
+
+The `/memory stats` command provides detailed metrics:
+- Total memories count
+- Total content characters
+- Estimated tokens (rough calculation)
+- Average tokens per memory
+- Formatted context tokens
+- Memory gate status
+- Last compaction timestamp
+
+### Enhanced Features
+- **User-Prompted Metadata**: Primary User, Environment, and Framework fields are now prompted on first run
+- **Backup System**: Automatic backup of pre-compacted memories to memory-backups directory
+- **Enhanced Error Handling**: Comprehensive debugging and error handling throughout memory operations
+- **Memory Injection Hooks**: Proper timing ensures memory is loaded and displayed before AI responses
 
 **Features:**
 - **Persistent Storage**: Memories survive across sessions and restarts

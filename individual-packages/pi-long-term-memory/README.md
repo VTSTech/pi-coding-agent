@@ -23,6 +23,8 @@ pi install "npm:@vtstech/pi-long-term-memory"
 
 ```
 /memory add <text>     - Add memory (with optional tags)
+/memory delete <id|content> - Delete memory by ID or content
+/memory replace <id> <new-content> [comma-separated-tags] - Replace memory content by ID
 /memory list           - List all memories
 /memory clear          - Clear memories (preserves metadata)
 /memory clear-meta     - Reset metadata
@@ -32,6 +34,16 @@ pi install "npm:@vtstech/pi-long-term-memory"
 /memory-gate           - Toggle memory creation gate
 /memory --help         - Show help
 ```
+
+## Memory Management
+
+**Delete Operations:**
+- `/memory delete <id>` - Delete specific memory by ID
+- `/memory delete <content>` - Delete any memory containing the specified text
+
+**Replace Operations:**
+- `/memory replace <id> <new-content>` - Replace memory content by ID
+- `/memory replace <id> <new-content> tag1,tag2` - Replace content and update tags
 
 ## Memory Statistics
 
