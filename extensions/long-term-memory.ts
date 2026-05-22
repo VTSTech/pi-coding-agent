@@ -65,9 +65,10 @@ interface MemoryStore {
 }
 
 function getMemoryPath(pi: ExtensionAPI): string {
-  // Use the agent directory for storing memory
-  const agentDir = (pi as any).agentDir || ".pi/agent";
-  return join(agentDir, MEMORY_FILE);
+  // Use the user's home directory for persistent memory storage
+  const os = require("os");
+  const homeDir = os.homedir();
+  return join(homeDir, ".pi", "agent", MEMORY_FILE);
 }
 
 function loadMemory(pi: ExtensionAPI): MemoryStore {
@@ -121,10 +122,11 @@ function loadMemory(pi: ExtensionAPI): MemoryStore {
 
 function saveMemory(pi: ExtensionAPI, store: MemoryStore): void {
   try {
-    const path = getMemoryPath(pi);
-    const dir = path.substring(0, path.lastIndexOf("/"));
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true });
+    const { homedir } = require("os");
+    const agentDir = join(homedir(), ".pi", "agent");
+    const path = join(agentDir, MEMORY_FILE);
+    if (!existsSync(agentDir)) {
+      mkdirSync(agentDir, { recursive: true });
     }
     store.metadata.lastUpdated = Date.now();
     writeFileSync(path, JSON.stringify(store, null, 2), "utf8");
@@ -224,8 +226,8 @@ function generateId(): string {
 
 function saveMemoryBackup(pi: ExtensionAPI, memories: MemoryItem[], originalCount: number): void {
   try {
-    const agentDir = (pi as any).agentDir || ".pi/agent";
-    const backupDir = join(agentDir, "memory-backups");
+    const { homedir } = require("os");
+    const backupDir = join(homedir(), ".pi", "agent", "memory-backups");
     
     // Create backup directory if it doesn't exist
     if (!existsSync(backupDir)) {
@@ -237,7 +239,7 @@ function saveMemoryBackup(pi: ExtensionAPI, memories: MemoryItem[], originalCoun
     const backupFile = join(backupDir, `memory-backup-${timestamp}.json`);
     
     // Copy current memory file
-    const memoryFile = join(agentDir, "long-term-memory.json");
+    const memoryFile = join(homedir(), ".pi", "agent", "long-term-memory.json");
     if (existsSync(memoryFile)) {
       const memoryData = readFileSync(memoryFile, "utf8");
       writeFileSync(backupFile, memoryData, "utf8");
@@ -250,8 +252,8 @@ function saveMemoryBackup(pi: ExtensionAPI, memories: MemoryItem[], originalCoun
 
 function listMemoryBackups(pi: ExtensionAPI): Array<{filename: string, size: number, timestamp: string}> {
   try {
-    const agentDir = (pi as any).agentDir || ".pi/agent";
-    const backupDir = join(agentDir, "memory-backups");
+    const { homedir } = require("os");
+    const backupDir = join(homedir(), ".pi", "agent", "memory-backups");
     
     if (!existsSync(backupDir)) {
       return [];
