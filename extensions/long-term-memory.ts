@@ -366,13 +366,17 @@ export default function (pi: ExtensionAPI) {
           }
 
           // Parse content and tags
-          const lastSpaceIndex = rest.lastIndexOf(" ");
           let content: string;
           let tags: string[] = [];
 
-          if (lastSpaceIndex > 0 && rest.substring(lastSpaceIndex + 1).includes(",")) {
-            content = rest.substring(0, lastSpaceIndex);
-            tags = rest.substring(lastSpaceIndex + 1).split(",").map((t) => t.trim()).filter(Boolean);
+          if (rest.includes(" ")) {
+            const addSpaceIdx = rest.lastIndexOf(" ");
+            if (addSpaceIdx > 0 && rest.substring(addSpaceIdx + 1).includes(",")) {
+              content = rest.substring(0, addSpaceIdx);
+              tags = rest.substring(addSpaceIdx + 1).split(",").map((t) => t.trim()).filter(Boolean);
+            } else {
+              content = rest;
+            }
           } else {
             content = rest;
           }
@@ -426,33 +430,38 @@ export default function (pi: ExtensionAPI) {
           }
 
           // Parse content and tags
-          const lastSpaceIndex = rest.lastIndexOf(" ");
           let id: string;
           let newContent: string;
           let replaceTags: string[] = [];
 
-          if (lastSpaceIndex > 0 && rest.substring(lastSpaceIndex + 1).includes(",")) {
-            // Tags are provided
-            const contentAndId = rest.substring(0, lastSpaceIndex);
-            const spaceInContent = contentAndId.lastIndexOf(" ");
-            if (spaceInContent > 0) {
-              id = contentAndId.substring(0, spaceInContent);
-              newContent = contentAndId.substring(spaceInContent + 1);
-              replaceTags = rest.substring(lastSpaceIndex + 1).split(",").map((t) => t.trim()).filter(Boolean);
+          if (rest.includes(" ")) {
+            const spaceIdx = rest.lastIndexOf(" ");
+            if (spaceIdx > 0 && rest.substring(spaceIdx + 1).includes(",")) {
+              // Tags are provided
+              const contentAndId = rest.substring(0, spaceIdx);
+              const contentSpace = contentAndId.lastIndexOf(" ");
+              if (contentSpace > 0) {
+                id = contentAndId.substring(0, contentSpace);
+                newContent = contentAndId.substring(contentSpace + 1);
+                replaceTags = rest.substring(spaceIdx + 1).split(",").map((t) => t.trim()).filter(Boolean);
+              } else {
+                id = contentAndId;
+                newContent = "";
+                replaceTags = rest.substring(spaceIdx + 1).split(",").map((t) => t.trim()).filter(Boolean);
+              }
             } else {
-              id = contentAndId;
-              newContent = "";
-              replaceTags = rest.substring(lastSpaceIndex + 1).split(",").map((t) => t.trim()).filter(Boolean);
+              // No tags, just ID and content
+              const parts = rest.split(" ", 2);
+              if (parts.length < 2) {
+                ctx.ui.notify("Usage: /memory replace <id> <new-content> [comma-separated-tags]", "warning");
+                return;
+              }
+              id = parts[0];
+              newContent = parts[1];
             }
           } else {
-            // No tags, just ID and content
-            const parts = rest.split(" ", 2);
-            if (parts.length < 2) {
-              ctx.ui.notify("Usage: /memory replace <id> <new-content> [comma-separated-tags]", "warning");
-              return;
-            }
-            id = parts[0];
-            newContent = parts[1];
+            ctx.ui.notify("Usage: /memory replace <id> <new-content> [comma-separated-tags]", "warning");
+            return;
           }
 
           const replaced = replaceMemory(memoryStore, id, newContent, replaceTags.length > 0 ? replaceTags : undefined);
