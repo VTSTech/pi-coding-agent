@@ -72,14 +72,11 @@ function getMemoryPath(pi: ExtensionAPI): string {
 }
 
 function loadMemory(pi: ExtensionAPI): MemoryStore {
-  console.log("LTM: loadMemory called, checking path...");
   try {
     const path = getMemoryPath(pi);
-    console.log("LTM: Memory path:", path);
     if (existsSync(path)) {
       const data = readFileSync(path, "utf8");
       const store = JSON.parse(data) as MemoryStore;
-      console.log("LTM: Loaded existing store with", store.memories?.length || 0, "memories");
       // Ensure metadata exists (migration from older versions)
       if (!store.metadata) {
         console.log("LTM: No metadata, creating new");
@@ -93,7 +90,6 @@ function loadMemory(pi: ExtensionAPI): MemoryStore {
           memoryGateEnabled: true,
         };
       } else {
-        console.log("LTM: Metadata exists:", JSON.stringify(store.metadata));
         // Migration: add missing fields
         if (!store.metadata.memoryGateEnabled) {
           store.metadata.memoryGateEnabled = true;
@@ -108,9 +104,8 @@ function loadMemory(pi: ExtensionAPI): MemoryStore {
     console.error("Failed to load memory:", error);
   }
 
-  console.log("LTM: No existing file, creating fresh store");
   // Auto-populate with detected values on first run
-  // NOTE: We leave these undefined so the pre_session_start hook will prompt the user
+  // NOTE: We leave these undefined so the session_start hook will prompt the user
   return {
     memories: [],
     metadata: {
@@ -168,53 +163,47 @@ function detectEnvironment(): string | undefined {
 }
 
 async function promptForMetadata(ctx: any, metadata: MemoryMetadata): Promise<MemoryMetadata> {
-  console.log("LTM: promptForMetadata called with:", JSON.stringify(metadata));
   const updates: Partial<MemoryMetadata> = {};
 
   if (!metadata.primaryUser) {
     const defaultUser = detectPrimaryUser();
-    console.log("LTM: Prompting for primaryUser, default:", defaultUser);
     try {
       const user = await ctx.ui.input(
         "Primary User",
         `Enter the primary user name for this memory${defaultUser ? ` [${defaultUser}]` : ''}`
       );
-      console.log("LTM: User entered for primaryUser:", user);
       if (user) updates.primaryUser = user;
       else if (defaultUser) updates.primaryUser = defaultUser;
     } catch (e) {
-      console.log("LTM: Error getting primaryUser:", e);
+      // User cancelled or error - continue with defaults
     }
   }
 
   if (!metadata.environment) {
     const defaultEnv = detectEnvironment();
-    console.log("LTM: Prompting for environment, default:", defaultEnv);
     try {
       const env = await ctx.ui.input(
         "Environment",
         `Enter the environment (e.g., G! Colab, Ubuntu 22.04)${defaultEnv ? ` [${defaultEnv}]` : ''}`
       );
-      console.log("LTM: User entered for environment:", env);
       if (env) updates.environment = env;
       else if (defaultEnv) updates.environment = defaultEnv;
     } catch (e) {
-      console.log("LTM: Error getting environment:", e);
+      // User cancelled or error - continue with defaults
     }
   }
 
   if (!metadata.framework) {
-    console.log("LTM: Prompting for framework");
     try {
       const framework = await ctx.ui.input(
         "Framework",
         "Enter the framework (e.g., Pi Coding Agent) [Pi Coding Agent]"
       );
-      console.log("LTM: User entered for framework:", framework);
       if (framework) updates.framework = framework;
       else updates.framework = "Pi Coding Agent";
     } catch (e) {
-      console.log("LTM: Error getting framework:", e);
+      // User cancelled or error - use default
+      updates.framework = "Pi Coding Agent";
     }
   }
 
@@ -815,16 +804,11 @@ export default function (pi: ExtensionAPI) {
 
   // Hook into session_start to prompt for metadata and display memory BEFORE any response
   pi.on("session_start", async (_event, ctx) => {
-    console.log("LTM: session_start EVENT FIRED!");
     // Ensure metadata is complete
     const needsMetadata = !memoryStore.metadata.primaryUser || !memoryStore.metadata.environment || !memoryStore.metadata.framework;
-    console.log("LTM: session_start - needsMetadata:", needsMetadata);
-    console.log("LTM: metadata state:", JSON.stringify(memoryStore.metadata));
     if (needsMetadata) {
-      console.log("LTM: Calling promptForMetadata...");
       try {
         const updatedMetadata = await promptForMetadata(ctx, memoryStore.metadata);
-        console.log("LTM: promptForMetadata returned:", updatedMetadata);
         memoryStore.metadata = updatedMetadata;
       } catch (e) {
         // User cancelled or error - continue with defaults
