@@ -13,7 +13,7 @@
  * - Memory management commands (/memory)
  * - Automatic summarization to stay within token limits
  * - Tag-based organization
- * - Predefined metadata fields (Primary User, Environment, Created/Updated timestamps)
+ * - Predefined metadata fields (Primary User, Environment, Framework, Created/Updated timestamps)
  *
  * Usage:
  *   pi (extension auto-loads from .pi/extensions/)
@@ -51,6 +51,7 @@ interface MemoryItem {
 interface MemoryMetadata {
   primaryUser?: string;
   environment?: string;
+  framework?: string;
   createdAt: number;
   lastUpdated: number;
   version: string;
@@ -78,16 +79,22 @@ function loadMemory(pi: ExtensionAPI): MemoryStore {
       // Ensure metadata exists (migration from older versions)
       if (!store.metadata) {
         store.metadata = {
-          primaryUser: detectPrimaryUser(),
-          environment: detectEnvironment(),
+          primaryUser: undefined, // Prompt user instead of auto-detecting
+          environment: undefined, // Prompt user instead of auto-detecting
+          framework: undefined,   // Prompt user for this as well
           createdAt: store.lastCompacted || Date.now(),
           lastUpdated: Date.now(),
           version: "1.2.7",
           memoryGateEnabled: true,
         };
-      } else if (!store.metadata.memoryGateEnabled) {
-        // Migration: add memoryGateEnabled if missing
-        store.metadata.memoryGateEnabled = true;
+      } else {
+        // Migration: add missing fields
+        if (!store.metadata.memoryGateEnabled) {
+          store.metadata.memoryGateEnabled = true;
+        }
+        if (!store.metadata.framework) {
+          store.metadata.framework = undefined;
+        }
       }
       return store;
     }
@@ -96,11 +103,13 @@ function loadMemory(pi: ExtensionAPI): MemoryStore {
   }
 
   // Auto-populate with detected values on first run
+  // NOTE: We leave these undefined so the pre_session_start hook will prompt the user
   return {
     memories: [],
     metadata: {
-      primaryUser: detectPrimaryUser(),
-      environment: detectEnvironment(),
+      primaryUser: undefined, // Prompt user instead of auto-detecting
+      environment: undefined, // Prompt user instead of auto-detecting
+      framework: undefined,   // Prompt user for this as well
       createdAt: Date.now(),
       lastUpdated: Date.now(),
       version: "1.2.7",
@@ -167,10 +176,19 @@ async function promptForMetadata(ctx: any, metadata: MemoryMetadata): Promise<Me
     const defaultEnv = detectEnvironment();
     const env = await ctx.ui.input(
       "Environment",
-      "Enter the environment (e.g., development, production):",
+      "Enter the environment (e.g., development, production, G! Colab, Ubuntu 22.04):",
       defaultEnv || ""
     );
     if (env) updates.environment = env;
+  }
+
+  if (!metadata.framework) {
+    const framework = await ctx.ui.input(
+      "Framework",
+      "Enter the framework (e.g., Pi Coding Agent):",
+      "Pi Coding Agent"
+    );
+    if (framework) updates.framework = framework;
   }
 
   return { ...metadata, ...updates };
@@ -184,6 +202,9 @@ function formatMetadataForContext(metadata: MemoryMetadata): string {
   }
   if (metadata.environment) {
     lines.push(`Environment: ${metadata.environment}`);
+  }
+  if (metadata.framework) {
+    lines.push(`Framework: ${metadata.framework}`);
   }
 
   lines.push(`Created: ${formatDate(metadata.createdAt)}`);
@@ -345,7 +366,7 @@ export default function (pi: ExtensionAPI) {
           }
 
           // Parse content and tags
-          const replaceLastSpaceIndex = rest.lastIndexOf(" ");
+          const lastSpaceIndex = rest.lastIndexOf(" ");
           let content: string;
           let tags: string[] = [];
 
@@ -403,13 +424,13 @@ export default function (pi: ExtensionAPI) {
             ctx.ui.notify("Usage: /memory replace <id> <new-content> [comma-separated-tags]", "warning");
             return;
           }
-          
+
           // Parse content and tags
           const lastSpaceIndex = rest.lastIndexOf(" ");
           let id: string;
           let newContent: string;
           let replaceTags: string[] = [];
-          
+
           if (lastSpaceIndex > 0 && rest.substring(lastSpaceIndex + 1).includes(",")) {
             // Tags are provided
             const contentAndId = rest.substring(0, lastSpaceIndex);
@@ -417,11 +438,11 @@ export default function (pi: ExtensionAPI) {
             if (spaceInContent > 0) {
               id = contentAndId.substring(0, spaceInContent);
               newContent = contentAndId.substring(spaceInContent + 1);
-              tags = rest.substring(lastSpaceIndex + 1).split(",").map((t) => t.trim()).filter(Boolean);
+              replaceTags = rest.substring(lastSpaceIndex + 1).split(",").map((t) => t.trim()).filter(Boolean);
             } else {
               id = contentAndId;
               newContent = "";
-              tags = rest.substring(lastSpaceIndex + 1).split(",").map((t) => t.trim()).filter(Boolean);
+              replaceTags = rest.substring(lastSpaceIndex + 1).split(",").map((t) => t.trim()).filter(Boolean);
             }
           } else {
             // No tags, just ID and content
@@ -433,7 +454,7 @@ export default function (pi: ExtensionAPI) {
             id = parts[0];
             newContent = parts[1];
           }
-          
+
           const replaced = replaceMemory(memoryStore, id, newContent, replaceTags.length > 0 ? replaceTags : undefined);
           if (replaced) {
             saveMemory(pi, memoryStore);
@@ -450,10 +471,11 @@ export default function (pi: ExtensionAPI) {
           break;
 
         case "clear-meta":
-          // Reset metadata but keep the file
+          // Reset metadata but keep the file - leave undefined so user will be prompted again
           memoryStore.metadata = {
-            primaryUser: detectPrimaryUser(),
-            environment: detectEnvironment(),
+            primaryUser: undefined,
+            environment: undefined,
+            framework: undefined,
             createdAt: Date.now(),
             lastUpdated: Date.now(),
             version: memoryStore.metadata.version,
@@ -680,8 +702,9 @@ export default function (pi: ExtensionAPI) {
 
         case "clear-meta":
           memoryStore.metadata = {
-            primaryUser: detectPrimaryUser(),
-            environment: detectEnvironment(),
+            primaryUser: undefined,
+            environment: undefined,
+            framework: undefined,
             createdAt: Date.now(),
             lastUpdated: Date.now(),
             version: memoryStore.metadata.version,
@@ -755,7 +778,7 @@ export default function (pi: ExtensionAPI) {
   // This runs before the AI generates its first response
   pi.on("pre_session_start", async (_event, ctx) => {
     // Ensure metadata is complete
-    const needsMetadata = !memoryStore.metadata.primaryUser || !memoryStore.metadata.environment;
+    const needsMetadata = !memoryStore.metadata.primaryUser || !memoryStore.metadata.environment || !memoryStore.metadata.framework;
     if (needsMetadata) {
       try {
         const updatedMetadata = await promptForMetadata(ctx, memoryStore.metadata);
@@ -848,7 +871,7 @@ export default function (pi: ExtensionAPI) {
     }
 
     // Inject memory into the messages array (prepend to system prompt)
-    if (memoryStore.memories.length > 0 || memoryStore.metadata.primaryUser || memoryStore.metadata.environment) {
+    if (memoryStore.memories.length > 0 || memoryStore.metadata.primaryUser || memoryStore.metadata.environment || memoryStore.metadata.framework) {
       const memoryContent = formatMemoryForContext(memoryStore.memories);
       const metaContent = formatMetadataForContext(memoryStore.metadata);
       const fullContent = metaContent + "\n\n" + memoryContent;
