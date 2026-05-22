@@ -21,6 +21,7 @@ A robust hex stream-based edit replacement for Pi Coding Agent that provides rel
 - **Better Context Display**: ±20 byte context in validation results
 - **Optimized Diff Output**: Shows first 50 lines for readability
 - **Proper Tool Labels**: Clear descriptions for better LLM understanding
+- **Fallback for Edit Failures**: Use when the built-in `edit` tool fails due to encoding, whitespace, or special character issues
 
 ## Installation
 
@@ -149,6 +150,13 @@ Show byte-level diff between two files.
 - **Line ending differences** between platforms (CRLF vs LF)
 - **Partial matches** causing unintended replacements
 - **Binary file corruption** when using text-based editors
+
+### When to Use Hex Edit
+Use `/hex-edit` as a reliable fallback when the built-in `edit` tool fails:
+- **Encoding issues** - Special characters, Unicode, non-ASCII text
+- **Whitespace problems** - Invisible characters, different line endings
+- **Partial matches** - When text-based matching finds wrong content
+- **Binary files** - Images, executables, archives, and other non-text files
 
 ### Hex Edit Solutions
 - **Byte-level precision** - Works exactly on the bytes you specify

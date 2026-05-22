@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Pi Version](https://img.shields.io/badge/Pi-v0.66%2B-green.svg)](https://github.com/badlogic/pi-mono)
 [![Pi Package](https://img.shields.io/badge/Install-pi%20install%20git-blue.svg)](#installation)
-[![Version](https://img.shields.io/badge/Version-v1.3.7-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-v1.3.8-orange.svg)](CHANGELOG.md)
 
 <p>
   <a href="https://github.com/VTSTech"><strong>VTSTech</strong></a> •
@@ -112,7 +112,7 @@ This repo is a standard Pi package. The `package.json` contains a `pi` manifest 
 ```json
 {
   "name": "@vtstech/pi-coding-agent-extensions",
-  "version": "1.3.7",
+  "version": "1.3.8",
   "keywords": ["pi-package"],
   "pi": {
     "extensions": ["./extensions"],
@@ -405,14 +405,16 @@ Automatically loaded - no commands needed. When a model lacks native tool callin
 
 ### 💾 Long-Term Memory (`long-term-memory.ts`)
 
-**Persistent memory across sessions with automatic injection and AI-driven creation.**
+**Persistent memory across sessions with automatic injection, AI-driven creation, and enhanced statistics.**
 
 ```bash
 /memory add <text>     - Add memory (with optional tags)
 /memory list           - List all memories
 /memory clear          - Clear memories (preserves metadata)
+/memory clear-meta     - Reset metadata
 /memory meta           - Show metadata
 /memory backups        - List available memory backups
+/memory stats          - Show comprehensive memory statistics
 /memory-gate           - Toggle memory creation gate
 /memory --help         - Show help
 ```
@@ -421,9 +423,13 @@ Automatically loaded - no commands needed. When a model lacks native tool callin
 - **Persistent Storage**: Memories survive across sessions and restarts
 - **Auto-Injection**: Memory automatically injected at session start, BEFORE the AI generates its first response
 - **AI-Driven Creation**: AI can request memories via `create_memory` tool
+- **Enhanced Metadata**: User-prompted Primary User, Environment, and Framework fields
 - **Memory Gate**: Confirm before creating memories (enabled by default)
 - **Tag Organization**: Organize memories with tags
 - **Token Management**: ~4k token window with auto-summarization
+- **Memory Statistics**: `/memory stats` command shows detailed metrics including total memories, content characters, estimated tokens, averages, and memory gate status
+- **Backup System**: Automatic backup of pre-compacted memories to memory-backups directory
+- **Enhanced Error Handling**: Comprehensive debugging and error handling throughout memory operations
 
 **Memory Injection Hooks:**
 - `pre_session_start` - Ensures metadata is complete
@@ -434,7 +440,7 @@ Automatically loaded - no commands needed. When a model lacks native tool callin
 
 ### 🔧 Hex Edit (`hex-edit.ts`)
 
-**A robust edit replacement that uses hex streams for comparison and validation - solves the common issue where text-based matching fails.**
+**A robust hex stream-based edit replacement that provides reliable, byte-level file editing with validation and transparency.**
 
 ```bash
 /hex-edit <file> <old-text> <new-text>     # Edit file using byte-level validation
@@ -444,11 +450,19 @@ Automatically loaded - no commands needed. When a model lacks native tool callin
 ```
 
 **Features:**
-- **Byte-level precision** - Works directly with file bytes, not text matching
-- **Hash verification** - Computes SHA-256 and simple hashes for change validation
-- **Multiple match handling** - Finds all occurrences and reports byte positions
-- **Context display** - Shows surrounding context when validating/searching
-- **Unified diff** - Shows line-by-line differences between files
+- **Hex Stream Validation**: Uses byte-level comparison instead of text matching for maximum reliability
+- **LLM-callable Tools**: Tools that Pi can directly call for file operations
+- **Hash Verification**: Shows SHA-256 hashes before and after edits for verification
+- **Multiple Occurrence Handling**: Warns when multiple matches found and uses the first occurrence
+- **Detailed Output**: Displays file sizes, byte changes, and exact positions
+- **Error Handling**: Clear error messages for missing files and text not found
+- **Binary File Support**: Perfect for both text and binary file editing
+- **Typebox Validation**: All tools now use Typebox for robust parameter validation
+- **Streaming Support**: Progress updates during long operations
+- **Enhanced Hash Verification**: Both SHA-256 and simple hash for performance
+- **Better Context Display**: ±20 byte context in validation results
+- **Optimized Diff Output**: Shows first 50 lines for readability
+- **Proper Tool Labels**: Clear descriptions for better LLM understanding
 
 **Why Hex Edit?**
 The built-in `edit` tool uses text-based matching which can fail due to:
@@ -456,6 +470,12 @@ The built-in `edit` tool uses text-based matching which can fail due to:
 - Encoding issues
 - Special characters
 - Partial matches
+
+When the built-in `edit` tool fails, use `/hex-edit` as a reliable fallback:
+- `/hex-edit <file> <old-text> <new-text>` - Byte-level replacement
+- `/hex-edit-validate <file> <text>` - Check if text exists
+- `/hex-edit-show <file>` - View file with hex preview
+- `/hex-edit-diff <file1> <file2>` - Compare files
 
 Hex Edit solves this by:
 1. Reading files as raw bytes

@@ -78,6 +78,9 @@ Scored: **STRONG** / MODERATE / WEAK / FAIL
 - Tool support cache (`~/.pi/agent/cache/tool_support.json`) with TTL and size limits
 - Enhanced JSON repair for truncated output (trailing commas, malformed Unicode, structural completion)
 - Tab-completion for model names
+- **Enhanced error handling** - Improved debugging and error messages throughout the extension
+- **Better timeout management** - Configurable timeouts with improved retry logic
+- **Enhanced JSON repair** - Better handling of truncated and malformed JSON output
 
 ## Configuration
 

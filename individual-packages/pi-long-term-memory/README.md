@@ -28,9 +28,27 @@ pi install "npm:@vtstech/pi-long-term-memory"
 /memory clear-meta     - Reset metadata
 /memory meta           - Show metadata
 /memory backups        - List available memory backups
+/memory stats          - Show comprehensive memory statistics
 /memory-gate           - Toggle memory creation gate
 /memory --help         - Show help
 ```
+
+## Memory Statistics
+
+The `/memory stats` command provides detailed metrics:
+- Total memories count
+- Total content characters
+- Estimated tokens (rough calculation)
+- Average tokens per memory
+- Formatted context tokens
+- Memory gate status
+- Last compaction timestamp
+
+## Enhanced Features
+- **User-Prompted Metadata**: Primary User, Environment, and Framework fields are now prompted on first run
+- **Backup System**: Automatic backup of pre-compacted memories to memory-backups directory
+- **Enhanced Error Handling**: Comprehensive debugging and error handling throughout memory operations
+- **Memory Injection Hooks**: Proper timing ensures memory is loaded and displayed before AI responses
 
 ## AI-Driven Memory
 
@@ -63,9 +81,12 @@ Memory operates within a ~4k token window with automatic summarization:
 
 ## Metadata
 
-Auto-detected on first run:
-- **Primary User**: From `USER`/`USERNAME`/`LOGNAME`
-- **Environment**: From `NODE_ENV`/`ENVIRONMENT`
+User-prompted on first run:
+- **Primary User**: Prompted for user name
+- **Environment**: Prompted for environment (e.g., development, production, G! Colab)
+- **Framework**: Prompted for framework name (defaults to "Pi Coding Agent")
+
+The system ensures metadata is complete before memory injection.
 
 ## Storage
 

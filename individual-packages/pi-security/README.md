@@ -22,6 +22,8 @@ pi install "npm:@vtstech/pi-security"
 - **Full-word command scanning** — all words in a command are checked against CRITICAL_COMMANDS (catches `sudo chmod`, `exec dd`, etc.)
 - **Audit logging** — JSON-lines audit log at `~/.pi/agent/audit.log` with security mode recorded per entry, buffered writes (path exported as `AUDIT_LOG_PATH`)
 - **DNS rebinding protection** — opt-in `resolveAndCheckHostname()` resolves hostnames via DNS and blocks loopback/private/cloud-metadata IPs
+- **Enhanced error handling** - Improved debugging and error messages throughout the extension
+- **Better audit log management** - Enhanced rate limiting and buffering for audit entries
 
 ## Commands
 

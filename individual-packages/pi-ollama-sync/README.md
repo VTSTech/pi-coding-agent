@@ -30,7 +30,10 @@ pi install "npm:@vtstech/pi-ollama-sync"
 - Auto-detects reasoning-capable models (deepseek-r1, qwq, qwen3, o1, o3, think, reason)
 - Merges with existing per-model settings
 - Per-model metadata in sync report (parameter size, quantization level, model family)
+- Enhanced context length detection via `/api/show` endpoint
+- VRAM estimation for better resource planning
 - Registered as both `/ollama-sync` slash command and `ollama_sync` tool
+- **Enhanced error handling** - Improved debugging and error messages throughout the extension
 
 ## Links
 

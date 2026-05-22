@@ -12,6 +12,8 @@ SoulSpec extension for Pi Coding Agent - Load and manage AI agent personas with 
 - **CLI Commands**: Commands for soul management with partial matching support
 - **Embodied Agent Support**: Hardware constraints and safety configurations
 - **Smart Error Handling**: Helpful suggestions when no exact match is found
+- **Enhanced Error Handling**: Improved debugging and error messages throughout the extension
+- **Better Tab Completion**: Enhanced partial matching works seamlessly with shell tab completion
 
 ## Installation
 

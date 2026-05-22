@@ -35,6 +35,7 @@ pi install "npm:@vtstech/pi-api"
 - Batch thinking toggle — set `reasoning: true/false` across all models at once
 - Compat flag management — get/set `supportsDeveloperRole`, `thinkingFormat`, `maxTokensField`, etc.
 - Tab-completion for sub-commands
+- **Enhanced error handling** - Improved debugging and error messages throughout the extension
 
 ## Links
 

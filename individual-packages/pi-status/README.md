@@ -28,6 +28,13 @@ CtxMax:41k RespMax:16.4k Resp 2m3s CPU 12% RAM 2.2G/15.1G SEC:MAX Prompt: 2840 c
 CtxMax:128k RespMax:16.4k Resp 1m22s SEC:BASIC Prompt: 2840 chr 393 tok pi:0.66.1
 ```
 
+## Enhanced Features
+- **Fast 1-second tool timer** - Real-time active tool tracking with elapsed time
+- **Improved error handling** - Better debugging and error messages throughout the extension
+- **Enhanced session management** - Proper cleanup of intervals and timers on session shutdown
+- **Better memory management** - Unref() timers to prevent preventing process exit
+- **Optimized metrics polling** - Session-gated polling to avoid unnecessary CPU usage
+
 ## Status Slots
 
 Slots are updated every 5 seconds (1 second for active tool timing). Render order is deterministic — all slots are managed through `flushStatus()`.

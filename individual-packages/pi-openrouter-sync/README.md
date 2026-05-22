@@ -24,6 +24,13 @@ pi install "npm:@vtstech/pi-openrouter-sync
 
 - `openrouter_sync` — LLM-callable tool for adding OpenRouter models
 
+## Features
+- Strips query parameters and fragments from URLs before extracting model name
+- Creates `openrouter` provider in models.json if missing (inherits baseUrl/api from built-in provider registry)
+- Appends models, never removes existing entries
+- Reorders providers so openrouter sits above ollama
+- **Enhanced error handling** - Improved debugging and error messages throughout the extension
+
 ## Author
 
 VTSTech — https://www.vts-tech.org
