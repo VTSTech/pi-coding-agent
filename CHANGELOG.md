@@ -5,6 +5,54 @@ All notable changes to the Pi Coding Agent Extensions (`@vtstech/pi-coding-agent
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.8] - 05-22-2026 1:10:24 PM
+
+### Fixed
+
+- **memory: Enhanced debugging and error handling** (`extensions/long-term-memory.ts`)
+  - Added comprehensive console logging throughout memory operations for better debugging
+  - Enhanced error handling in metadata prompting with try/catch blocks and detailed error logging
+  - Improved user experience with default value suggestions and clearer prompts
+  - Fixed metadata persistence issues by ensuring metadata is saved after prompting
+  - Enhanced session_start hook to properly handle metadata completion and memory injection
+  - Added fallback logic for when user input is cancelled or fails
+
+- **memory: Memory path resolution improvements** (`extensions/long-term-memory.ts`)
+  - Fixed memory file path resolution to use user's home directory instead of agent directory
+  - Updated getMemoryPath(), saveMemory(), saveMemoryBackup(), and listMemoryBackups() to use homedir() consistently
+  - Ensures memory files are stored in ~/.pi/agent/ for better persistence across different Pi installations
+  - Fixed directory creation to use proper home directory path
+
+- **memory: Enhanced metadata handling** (`extensions/long-term-memory.ts`)
+  - Changed from auto-detection to user prompting for Primary User, Environment, and Framework fields
+  - Added framework field to MemoryMetadata interface for better categorization
+  - Enhanced promptForMetadata() with better default value suggestions and error handling
+  - Updated formatMetadataForContext() to include framework information
+  - Fixed clear-meta to reset fields to undefined so users will be prompted again
+  - Enhanced pre_session_start hook to check for framework field in addition to user and environment
+
+- **memory: Command parsing improvements** (`extensions/long-term-memory.ts`)
+  - Enhanced /memory add command parsing to better handle content and tag separation
+  - Improved /memory replace command parsing with better space detection and tag handling
+  - Added robust error handling for malformed command inputs
+  - Enhanced user feedback with clearer usage messages for complex commands
+  - Fixed edge cases in tag parsing and content extraction
+
+- **memory: Added statistics command** (`extensions/long-term-memory.ts`)
+  - Added `/memory stats` command to display comprehensive memory statistics
+  - Shows total memories, content characters, estimated tokens, averages, and memory gate status
+  - Added stats case to both slash command and tool implementations
+  - Enhanced memory tracking with detailed metrics and formatting
+
+### Changed
+
+- **memory: User experience improvements** (`extensions/long-term-memory.ts`)
+  - Enhanced metadata prompting with clearer instructions and default value suggestions
+  - Improved error messages and user feedback throughout memory operations
+  - Added comprehensive logging for debugging memory-related issues
+  - Enhanced session start hook to ensure memory is properly loaded and displayed
+  - Improved backup functionality with better file path handling
+
 ## [1.3.7] - 05-21-2026 2:49:09 PM
 
 ### Added
