@@ -182,6 +182,15 @@ function performHexEdit(
   oldText: string,
   newText: string
 ): { success: boolean; result: string; details: Record<string, unknown> } {
+  // Safety check for undefined values
+  if (oldText === undefined || oldText === null) {
+    return {
+      success: false,
+      result: "Error: oldText is undefined or null",
+      details: { error: "Invalid parameters" },
+    };
+  }
+  
   const resolvedPath = path.resolve(filePath);
   
   if (!fs.existsSync(resolvedPath)) {
@@ -260,16 +269,19 @@ export default function (pi: ExtensionAPI) {
     pi.on("tool_call", async (event, ctx) => {
       if (isToolCallEventType("edit", event)) {
         // Store the edit params so we can retry if it fails
-        pendingEdits.set(event.toolCallId, {
-          path: event.input.path,
-          oldText: event.input.oldText,
-          newText: event.input.newText,
-        });
+        // Check that we have valid input before storing
+        if (event.input.path && event.input.oldText && event.input.newText) {
+          pendingEdits.set(event.toolCallId, {
+            path: event.input.path,
+            oldText: event.input.oldText,
+            newText: event.input.newText,
+          });
+        }
       }
     });
     
     pi.on("tool_result", async (event, ctx) => {
-      // Check if this was an edit that failed
+      // Check if this was an edit we were tracking
       if (pendingEdits.has(event.toolCallId)) {
         const edit = pendingEdits.get(event.toolCallId)!;
         pendingEdits.delete(event.toolCallId);
@@ -286,6 +298,7 @@ export default function (pi: ExtensionAPI) {
             isError: !result.success,
           };
         }
+        // If it succeeded, do nothing - let the original result through
       }
     });
   }
