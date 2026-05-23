@@ -25,8 +25,20 @@ import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "path";
 import * as crypto from "node:crypto";
-import { section, ok, info, fail, warn } from "../shared/format";
 import { Type } from "typebox";
+
+// ============================================================================
+// Local Format Utilities (self-contained for portability)
+// ============================================================================
+
+function section(title: string): string {
+  return `\n── ${title} ${"─".repeat(Math.max(1, 60 - title.length - 4))}`;
+}
+
+function ok(msg: string): string { return `  ✅ ${msg}`; }
+function fail(msg: string): string { return `  ❌ ${msg}`; }
+function warn(msg: string): string { return `  ⚠️  ${msg}`; }
+function info(msg: string): string { return `  ℹ️  ${msg}`; }
 
 // ============================================================================
 // Configuration
@@ -275,44 +287,8 @@ export default function (pi: ExtensionAPI) {
       }
     });
   }
-
-  // Register LLM-callable tools
   
-  // When OVERWRITE_BUILTIN_EDIT is true, register a replacement "edit" tool
-  // Otherwise register "hex_edit" as a separate tool
-  const editToolName = OVERWRITE_BUILTIN_EDIT ? "edit" : "hex_edit";
-  
-  pi.registerTool({
-    name: editToolName,
-    label: "Edit",
-    description: "Edit file using hex stream validation for reliable byte-level editing. " +
-                 "Uses binary comparison instead of text matching for accurate edits.",
-    parameters: Type.Object({
-      file: Type.String({ description: "Path to the file to edit" }),
-      oldText: Type.String({ description: "Exact text to replace" }),
-      newText: Type.String({ description: "Replacement text" }),
-    }),
-    promptSnippet: "Edit files with hex validation for precise byte-level changes",
-    promptGuidelines: ["Use edit tool when the user wants to modify file contents."],
-    async execute(toolCallId, params, signal, onUpdate, ctx) {
-      const result = performHexEdit(params.file, params.oldText, params.newText);
-      
-      if (result.success) {
-        return {
-          content: [{ type: "text", text: result.result }],
-          details: result.details,
-        };
-      } else {
-        return {
-          content: [{ type: "text", text: result.result }],
-          details: result.details,
-          isError: true,
-        };
-      }
-    },
-  });
-  
-  // When not overwriting, also register the original hex_edit for reference
+  // When NOT overwriting builtin edit, register hex_edit as a separate tool
   if (!OVERWRITE_BUILTIN_EDIT) {
     pi.registerTool({
       name: "hex_edit",
