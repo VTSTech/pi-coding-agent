@@ -7,6 +7,11 @@
  *   - Uses byte-level diff for precise change detection
  *   - Validates edits by comparing expected vs actual bytes
  *
+ * CONFIGURATION:
+ *   Set OVERWRITE_BUILTIN_EDIT=true to intercept the builtin 'edit' tool
+ *   and handle it with hex-edit's byte-level validation.
+ *   Default: false (registers hex_edit as a separate tool alongside builtin edit)
+ *
  * Commands:
  *   /hex-edit <file> <old> <new>     — Edit file using hex validation
  *   /hex-edit-show <file>           — Show file with line numbers and hex preview
@@ -16,11 +21,23 @@
  * Written by VTSTech — https://www.vts-tech.org
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
-import * as path from "node:path";
+import * as path from "path";
 import * as crypto from "node:crypto";
 import { section, ok, info, fail, warn } from "../shared/format";
 import { Type } from "typebox";
+
+// ============================================================================
+// Configuration
+// ============================================================================
+
+/**
+ * Set to true to intercept builtin 'edit' tool calls and handle them with
+ * hex-edit's byte-level validation. When false, both 'edit' and 'hex_edit'
+ * tools are available.
+ */
+const OVERWRITE_BUILTIN_EDIT = true;
 
 // ============================================================================
 // Constants
@@ -141,104 +158,254 @@ function showFileWithHex(filePath: string): string[] {
 }
 
 // ============================================================================
+// Core Edit Logic (Reusable)
+// ============================================================================
+
+/**
+ * Perform a hex-level edit on a file.
+ * Returns the result object for both tool and command usage.
+ */
+function performHexEdit(
+  filePath: string,
+  oldText: string,
+  newText: string
+): { success: boolean; result: string; details: Record<string, unknown> } {
+  const resolvedPath = path.resolve(filePath);
+  
+  if (!fs.existsSync(resolvedPath)) {
+    return {
+      success: false,
+      result: `Error: File not found: ${resolvedPath}`,
+      details: { error: "File not found" },
+    };
+  }
+  
+  const originalContent = fs.readFileSync(resolvedPath);
+  const oldBytes = Buffer.from(oldText, "utf-8");
+  const newBytes = Buffer.from(newText, "utf-8");
+  const positions = findAllOccurrences(originalContent, oldBytes);
+  
+  if (positions.length === 0) {
+    return {
+      success: false,
+      result: `Error: Old text not found in file`,
+      details: { error: "Text not found" },
+    };
+  }
+  
+  const newContent = replaceAtPosition(originalContent, positions[0], oldBytes, newBytes);
+  fs.writeFileSync(resolvedPath, newContent);
+  
+  const changeSize = newContent.length - originalContent.length;
+  
+  let resultText = `Successfully edited ${resolvedPath}\n` +
+                   `Old size: ${originalContent.length} bytes\n` +
+                   `New size: ${newContent.length} bytes\n` +
+                   `Change: ${changeSize > 0 ? "+" : ""}${changeSize} bytes\n` +
+                   `Hash: ${simpleHash(newContent)}`;
+  
+  if (Math.abs(changeSize) < 32) {
+    if (positions.length === 1) {
+      const pos = positions[0];
+      const start = Math.max(0, pos - 16);
+      const end = Math.min(originalContent.length, pos + 16);
+      const contextBytes = originalContent.subarray(start, end);
+      resultText += `\n\nHex context around change:\n${bytesToHex(contextBytes)}`;
+      resultText += `\n^ Change at position ${pos}`;
+    } else {
+      resultText += `\n\nChanged bytes:`;
+      positions.forEach(pos => {
+        const byte = originalContent[pos];
+        resultText += `\n  Position ${pos}: 0x${byte.toString(16).padStart(2, '0')}`;
+      });
+    }
+  }
+  
+  return {
+    success: true,
+    result: resultText,
+    details: {
+      file: resolvedPath,
+      oldSize: originalContent.length,
+      newSize: newContent.length,
+      change: changeSize,
+      hash: simpleHash(newContent),
+      positions: positions.length,
+    },
+  };
+}
+
+// ============================================================================
 // Extension
 // ============================================================================
 
 export default function (pi: ExtensionAPI) {
+  // When overwriting builtin edit, intercept and block edit tool calls,
+  // then use tool_result event to provide our hex-edit result instead
+  if (OVERWRITE_BUILTIN_EDIT) {
+    // Track blocked edit calls that we'll handle ourselves
+    const blockedEdits = new Map<string, { filePath: string; oldText: string; newText: string }>();
+    
+    pi.on("tool_call", async (event, ctx) => {
+      if (isToolCallEventType("edit", event)) {
+        // Store the edit info so we can handle it in tool_result
+        blockedEdits.set(event.toolCallId, {
+          filePath: event.input.path,
+          oldText: event.input.oldText,
+          newText: event.input.newText,
+        });
+        // Block the builtin edit - we'll provide the result ourselves
+        return { block: true };
+      }
+    });
+    
+    pi.on("tool_result", async (event, ctx) => {
+      // If this was a blocked edit, provide our hex-edit result
+      if (blockedEdits.has(event.toolCallId)) {
+        const edit = blockedEdits.get(event.toolCallId)!;
+        blockedEdits.delete(event.toolCallId);
+        
+        const result = performHexEdit(edit.filePath, edit.oldText, edit.newText);
+        
+        return {
+          content: [{ type: "text", text: result.result }],
+          details: result.details,
+          isError: !result.success,
+        };
+      }
+    });
+  }
+
   // Register LLM-callable tools
   
+  // When OVERWRITE_BUILTIN_EDIT is true, register a replacement "edit" tool
+  // Otherwise register "hex_edit" as a separate tool
+  const editToolName = OVERWRITE_BUILTIN_EDIT ? "edit" : "hex_edit";
+  
   pi.registerTool({
-    name: "hex_edit",
-    label: "Hex Edit",
-    description: "Edit file using hex stream validation for reliable byte-level editing",
+    name: editToolName,
+    label: "Edit",
+    description: "Edit file using hex stream validation for reliable byte-level editing. " +
+                 "Uses binary comparison instead of text matching for accurate edits.",
     parameters: Type.Object({
       file: Type.String({ description: "Path to the file to edit" }),
       oldText: Type.String({ description: "Exact text to replace" }),
       newText: Type.String({ description: "Replacement text" }),
     }),
+    promptSnippet: "Edit files with hex validation for precise byte-level changes",
+    promptGuidelines: ["Use edit tool when the user wants to modify file contents."],
     async execute(toolCallId, params, signal, onUpdate, ctx) {
-      try {
-        const filePath = path.resolve(params.file);
-        
-        if (!fs.existsSync(filePath)) {
-          return {
-            content: [{ type: "text", text: `Error: File not found: ${filePath}` }],
-            details: { error: "File not found" },
-            isError: true,
-          };
-        }
-        
-        const originalContent = fs.readFileSync(filePath);
-        const oldBytes = Buffer.from(params.oldText, "utf-8");
-        const newBytes = Buffer.from(params.newText, "utf-8");
-        const positions = findAllOccurrences(originalContent, oldBytes);
-        
-        if (positions.length === 0) {
-          return {
-            content: [{ type: "text", text: `Error: Old text not found in file` }],
-            details: { error: "Text not found" },
-            isError: true,
-          };
-        }
-        
-        if (positions.length > 1) {
-          onUpdate?.({
-            content: [{ type: "text", text: `Warning: ${positions.length} occurrences found. Using first at position ${positions[0]}` }],
-          });
-        }
-        
-        const newContent = replaceAtPosition(originalContent, positions[0], oldBytes, newBytes);
-        fs.writeFileSync(filePath, newContent);
-        
-        const changeSize = newContent.length - originalContent.length;
-        
-        let resultText = `Successfully edited ${filePath}\n` +
-                  `Old size: ${originalContent.length} bytes\n` +
-                  `New size: ${newContent.length} bytes\n` +
-                  `Change: ${changeSize > 0 ? "+" : ""}${changeSize} bytes\n` +
-                  `Hash: ${simpleHash(newContent)}`;
-                  
-        if (Math.abs(changeSize) < 32) {
-          // Show hex stream of only the changed bytes
-          if (positions.length === 1) {
-            // Single change - show hex around that position
-            const pos = positions[0];
-            const start = Math.max(0, pos - 16);
-            const end = Math.min(originalContent.length, pos + 16);
-            const contextBytes = originalContent.subarray(start, end);
-            resultText += `\n\nHex context around change:\n${bytesToHex(contextBytes)}`;
-            resultText += `\n^ Change at position ${pos}`;
-          } else {
-            // Multiple changes - show hex of each change
-            resultText += `\n\nChanged bytes:`;
-            positions.forEach(pos => {
-              const byte = originalContent[pos];
-              resultText += `\n  Position ${pos}: 0x${byte.toString(16).padStart(2, '0')}`;
-            });
-          }
-        }
-        
+      const result = performHexEdit(params.file, params.oldText, params.newText);
+      
+      if (result.success) {
         return {
-          content: [{
-            type: "text", 
-            text: resultText
-          }],
-          details: {
-            file: filePath,
-            oldSize: originalContent.length,
-            newSize: newContent.length,
-            change: changeSize,
-            hash: simpleHash(newContent),
-            positions: positions.length,
-          },
+          content: [{ type: "text", text: result.result }],
+          details: result.details,
         };
-      } catch (e) {
+      } else {
         return {
-          content: [{ type: "text", text: `Edit failed: ${e instanceof Error ? e.message : String(e)}` }],
-          details: { error: e instanceof Error ? e.message : String(e) },
+          content: [{ type: "text", text: result.result }],
+          details: result.details,
           isError: true,
         };
       }
+    },
+  });
+  
+  // When not overwriting, also register the original hex_edit for reference
+  if (!OVERWRITE_BUILTIN_EDIT) {
+    pi.registerTool({
+      name: "hex_edit",
+      label: "Hex Edit",
+      description: "Edit file using hex stream validation for reliable byte-level editing",
+      parameters: Type.Object({
+        file: Type.String({ description: "Path to the file to edit" }),
+        oldText: Type.String({ description: "Exact text to replace" }),
+        newText: Type.String({ description: "Replacement text" }),
+      }),
+      async execute(toolCallId, params, signal, onUpdate, ctx) {
+        const result = performHexEdit(params.file, params.oldText, params.newText);
+        
+        return {
+          content: [{ type: "text", text: result.result }],
+          details: result.details,
+          isError: !result.success,
+        };
+      },
+    });
+  }
+  
+  // ========================================================================
+  // Slash Commands
+  // ========================================================================
+  
+  pi.registerCommand("hex-edit", {
+    description: "Edit file using hex stream validation for reliability",
+    handler: async (args, ctx) => {
+      const parts = args.trim().split(" ");
+      
+      if (parts.length < 3) {
+        ctx.ui.notify("Usage: /hex-edit <file> <old-text> <new-text>", "error");
+        return;
+      }
+      
+      const filePath = parts[0];
+      const oldText = parts[1];
+      const newText = parts.slice(2).join(" ");
+      
+      const result = performHexEdit(filePath, oldText, newText);
+      
+      if (result.success) {
+        const lines = [
+          branding,
+          section("HEX EDIT COMPLETE"),
+          ok(`File: ${path.resolve(filePath)}`),
+          info(`Old size: ${result.details.oldSize} bytes`),
+          info(`New size: ${result.details.newSize} bytes`),
+          info(`Change: ${typeof result.details.change === 'number' && result.details.change > 0 ? "+" : ""}${result.details.change} bytes`),
+          "",
+          info(`Hash: ${result.details.hash}`),
+        ];
+        
+        pi.sendMessage({
+          customType: "hex-edit-complete",
+          content: lines.join("\n"),
+          display: { type: "content", content: lines.join("\n") },
+        });
+        
+        ctx.ui.notify(`Edited ${filePath}`, "success");
+      } else {
+        ctx.ui.notify(result.result, "error");
+      }
+    },
+  });
+
+  pi.registerCommand("hex-edit-show", {
+    description: "Show file with line numbers and hex preview",
+    handler: async (args, ctx) => {
+      if (!args.trim()) {
+        ctx.ui.notify("Usage: /hex-edit-show <file>", "error");
+        return;
+      }
+      
+      const filePath = path.resolve(args.trim());
+      
+      if (!fs.existsSync(filePath)) {
+        ctx.ui.notify(`File not found: ${filePath}`, "error");
+        return;
+      }
+      
+      const lines = [
+        branding,
+        section("FILE CONTENT"),
+        ...showFileWithHex(filePath),
+      ];
+      
+      pi.sendMessage({
+        customType: "hex-edit-show",
+        content: lines.join("\n"),
+        display: { type: "content", content: lines.join("\n") },
+      });
     },
   });
   
@@ -280,110 +447,7 @@ export default function (pi: ExtensionAPI) {
       }
     },
   });
-  
-  pi.registerCommand("hex-edit", {
-    description: "Edit file using hex stream validation for reliability",
-    handler: async (args, ctx) => {
-      const parts = args.trim().split(" ");
-      
-      if (parts.length < 3) {
-        ctx.ui.notify("Usage: /hex-edit <file> <old-text> <new-text>", "error");
-        return;
-      }
-      
-      const filePath = path.resolve(parts[0]);
-      const oldText = parts[1];
-      const newText = parts.slice(2).join(" ");
-      
-      if (!fs.existsSync(filePath)) {
-        ctx.ui.notify(`File not found: ${filePath}`, "error");
-        return;
-      }
-      
-      try {
-        // Read file as buffer for byte-level operations
-        const originalContent = fs.readFileSync(filePath);
-        const oldBytes = Buffer.from(oldText, "utf-8");
-        const newBytes = Buffer.from(newText, "utf-8");
-        
-        // Find all occurrences of old text
-        const positions = findAllOccurrences(originalContent, oldBytes);
-        
-        if (positions.length === 0) {
-          ctx.ui.notify(`Old text not found in file`, "error");
-          return;
-        }
-        
-        if (positions.length > 1) {
-          ctx.ui.notify(`${positions.length} occurrences found. Using first at position ${positions[0]}`, "warn");
-        }
-        
-        // Perform the replacement at the first occurrence
-        const newContent = replaceAtPosition(originalContent, positions[0], oldBytes, newBytes);
-        
-        // Write back
-        fs.writeFileSync(filePath, newContent);
-        
-        const lines = [
-          branding,
-          section("HEX EDIT COMPLETE"),
-          ok(`File: ${filePath}`),
-          info(`Old size: ${originalContent.length} bytes`),
-          info(`New size: ${newContent.length} bytes`),
-          info(`Change: ${newContent.length - originalContent.length > 0 ? "+" : ""}${newContent.length - originalContent.length} bytes`),
-          "",
-          info(`Old hash: ${simpleHash(originalContent)}`),
-          info(`New hash: ${simpleHash(newContent)}`),
-          "",
-          warn("Run /reload to refresh the file in Pi's view"),
-        ];
-        
-        pi.sendMessage({
-          customType: "hex-edit-complete",
-          content: lines.join("\n"),
-          display: { type: "content", content: lines.join("\n") },
-        });
-        
-        ctx.ui.notify(`Edited ${filePath} (${positions.length} occurrence(s) found)`, "success");
-      } catch (e) {
-        ctx.ui.notify(`Edit failed: ${e instanceof Error ? e.message : String(e)}`, "error");
-      }
-    },
-  });
 
-  pi.registerCommand("hex-edit-show", {
-    description: "Show file with line numbers and hex preview",
-    handler: async (args, ctx) => {
-      if (!args.trim()) {
-        ctx.ui.notify("Usage: /hex-edit-show <file>", "error");
-        return;
-      }
-      
-      const filePath = path.resolve(args.trim());
-      
-      if (!fs.existsSync(filePath)) {
-        ctx.ui.notify(`File not found: ${filePath}`, "error");
-        return;
-      }
-      
-      try {
-        const lines = [
-          branding,
-          section("FILE CONTENT"),
-          ...showFileWithHex(filePath),
-        ];
-        
-        pi.sendMessage({
-          customType: "hex-edit-show",
-          content: lines.join("\n"),
-          display: { type: "content", content: lines.join("\n") },
-        });
-      } catch (e) {
-        ctx.ui.notify(`Failed to read file: ${e instanceof Error ? e.message : String(e)}`, "error");
-      }
-    },
-  });
-  
   pi.registerTool({
     name: "hex_edit_validate",
     label: "Hex Edit Validate",
@@ -517,7 +581,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
   
-  // Keep slash commands for user convenience
+  // Slash command versions
   pi.registerCommand("hex-edit-validate", {
     description: "Validate that old text exists in file",
     handler: async (args, ctx) => {
