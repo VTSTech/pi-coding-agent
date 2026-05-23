@@ -109,6 +109,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added proper tool labels and descriptions for better LLM understanding
   - Maintained exact byte-level precision for all operations
 
+- **hex-edit: Builtin edit recovery** (`extensions/hex-edit.ts`)
+  - Added automatic recovery when builtin `edit` tool fails
+  - Intercepts failed edit operations via `tool_result` event
+  - Retries with hex-edit's byte-level validation for reliable editing
+  - Provides seamless fallback without requiring explicit hex_edit tool calls
+  - Resolves encoding and whitespace mismatch issues that cause builtin edit failures
+  - Configurable via `OVERWRITE_BUILTIN_EDIT` flag (default: true)
+
 ## [1.3.6] - 05-15-2026 8:52:52 PM
 
 ### Added

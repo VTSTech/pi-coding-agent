@@ -492,6 +492,7 @@ The `/memory stats` command provides detailed metrics:
 - **Better Context Display**: ±20 byte context in validation results
 - **Optimized Diff Output**: Shows first 50 lines for readability
 - **Proper Tool Labels**: Clear descriptions for better LLM understanding
+- **Automatic Recovery**: When the builtin `edit` tool fails, hex-edit automatically retries with byte-level validation (enabled by default)
 
 **Why Hex Edit?**
 The built-in `edit` tool uses text-based matching which can fail due to:
@@ -500,17 +501,13 @@ The built-in `edit` tool uses text-based matching which can fail due to:
 - Special characters
 - Partial matches
 
-When the built-in `edit` tool fails, use `/hex-edit` as a reliable fallback:
-- `/hex-edit <file> <old-text> <new-text>` - Byte-level replacement
-- `/hex-edit-validate <file> <text>` - Check if text exists
-- `/hex-edit-show <file>` - View file with hex preview
-- `/hex-edit-diff <file1> <file2>` - Compare files
-
 Hex Edit solves this by:
 1. Reading files as raw bytes
 2. Finding exact byte sequences
 3. Performing precise replacements
 4. Validating changes via hash comparison
+
+When the built-in `edit` tool fails, hex-edit **automatically intercepts and retries** the operation with byte-level precision. No manual intervention needed!
 
 **Example:**
 ```bash
