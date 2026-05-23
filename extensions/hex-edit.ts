@@ -270,11 +270,18 @@ export default function (pi: ExtensionAPI) {
       if (isToolCallEventType("edit", event)) {
         // Store the edit params so we can retry if it fails
         // Check that we have valid input before storing
-        if (event.input.path && event.input.oldText && event.input.newText) {
-          pendingEdits.set(event.toolCallId, {
-            path: event.input.path,
-            oldText: event.input.oldText,
-            newText: event.input.newText,
+        const path = event.input.path;
+        const oldText = event.input.oldText;
+        const newText = event.input.newText;
+        
+        if (path && typeof oldText === "string" && typeof newText === "string") {
+          pendingEdits.set(event.toolCallId, { path, oldText, newText });
+        } else {
+          // Log if we're missing parameters (helps debugging)
+          console.log(`[hex-edit] Skipping tool_call ${event.toolCallId}: invalid or missing parameters`, {
+            hasPath: !!path,
+            hasOldText: typeof oldText === "string",
+            hasNewText: typeof newText === "string",
           });
         }
       }
@@ -288,10 +295,17 @@ export default function (pi: ExtensionAPI) {
         
         // Check if the builtin edit failed
         if (event.isError) {
+          console.log(`[hex-edit] Edit failed, attempting recovery for ${edit.path}`);
+          
           // Retry with hex-edit
           const result = performHexEdit(edit.path, edit.oldText, edit.newText);
           
-          // Return modified result
+          console.log(`[hex-edit] Recovery result:`, result);
+          
+          // Notify the user about the recovery
+          ctx.ui.notify(`hex-edit recovery`, result.success ? "success" : "error");
+          
+          // Return modified result - this replaces what the LLM sees
           return {
             content: [{ type: "text", text: `[hex-edit recovery]\n${result.result}` }],
             details: result.details,
