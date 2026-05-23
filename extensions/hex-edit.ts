@@ -21,7 +21,7 @@
  * Written by VTSTech — https://www.vts-tech.org
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
+import { isToolCallEventType, isBashToolResult } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "path";
 import * as crypto from "node:crypto";
@@ -45,7 +45,7 @@ function info(msg: string): string { return `  ℹ️  ${msg}`; }
 // ============================================================================
 
 /**
- * Set to true to intercept builtin 'edit' tool calls and handle them with
+ * Set to true to intercept failed builtin 'edit' tool calls and retry with
  * hex-edit's byte-level validation. When false, both 'edit' and 'hex_edit'
  * tools are available.
  */
@@ -252,45 +252,43 @@ function performHexEdit(
 // ============================================================================
 
 export default function (pi: ExtensionAPI) {
-  // When overwriting builtin edit, intercept and block edit tool calls,
-  // then provide our own result via tool_result
+  // When overwriting builtin edit, intercept failed edits and retry with hex-edit
   if (OVERWRITE_BUILTIN_EDIT) {
-    // Track blocked edit calls that we'll handle ourselves
-    const blockedEdits = new Map<string, { path: string; oldText: string; newText: string }>();
+    // Track pending edit attempts from tool_call
+    const pendingEdits = new Map<string, { path: string; oldText: string; newText: string }>();
     
     pi.on("tool_call", async (event, ctx) => {
       if (isToolCallEventType("edit", event)) {
-        // Store the edit info so we can handle it in tool_result
-        blockedEdits.set(event.toolCallId, {
+        // Store the edit params so we can retry if it fails
+        pendingEdits.set(event.toolCallId, {
           path: event.input.path,
           oldText: event.input.oldText,
           newText: event.input.newText,
         });
-        // Block the builtin edit - we'll provide the result ourselves
-        return { block: true };
       }
     });
     
     pi.on("tool_result", async (event, ctx) => {
-      // If this was a blocked edit, provide our hex-edit result
-      if (blockedEdits.has(event.toolCallId)) {
-        const edit = blockedEdits.get(event.toolCallId)!;
-        blockedEdits.delete(event.toolCallId);
+      // Check if this was an edit that failed
+      if (pendingEdits.has(event.toolCallId)) {
+        const edit = pendingEdits.get(event.toolCallId)!;
+        pendingEdits.delete(event.toolCallId);
         
-        const result = performHexEdit(edit.path, edit.oldText, edit.newText);
-        
-        // Return the tool result that replaces the blocked builtin result
-        return {
-          content: [{ type: "text", text: result.result }],
-          details: result.details,
-          isError: !result.success,
-        };
+        // Check if the builtin edit failed
+        if (event.isError) {
+          // Retry with hex-edit
+          const result = performHexEdit(edit.path, edit.oldText, edit.newText);
+          
+          // Return modified result
+          return {
+            content: [{ type: "text", text: `[hex-edit recovery]\n${result.result}` }],
+            details: result.details,
+            isError: !result.success,
+          };
+        }
       }
     });
   }
-  
-  // When NOT overwriting builtin edit, register hex_edit as a separate tool
-  // (The edit tool is still registered but only used as replacement when OVERWRITE is true)
   
   // ========================================================================
   // Slash Commands
