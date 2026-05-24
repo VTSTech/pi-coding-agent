@@ -578,6 +578,7 @@ export default function (pi: ExtensionAPI) {
     name: "memory",
     label: "Memory",
     description: "Access long-term memory storage",
+    promptSnippet: "memory - Access long-term memory storage",
     parameters: Type.Object({
       action: Type.String({ description: "Action: get, add, delete, replace, list, search, clear, clear-meta, meta" }),
       content: Type.Optional(Type.String({ description: "Content for add action" })),
@@ -924,6 +925,7 @@ export default function (pi: ExtensionAPI) {
     name: "create_memory",
     label: "Create Memory",
     description: "Request to create a long-term memory (subject to user gate)",
+    promptSnippet: "create_memory - Request to create a long-term memory (subject to user gate)",
     parameters: Type.Object({
       content: Type.String({ description: "Memory content to store" }),
       tags: Type.Optional(Type.String({ description: "Comma-separated tags" })),
