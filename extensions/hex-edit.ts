@@ -317,6 +317,36 @@ export default function (pi: ExtensionAPI) {
     });
   }
   
+  // Register the hex_edit tool (used when OVERWRITE_BUILTIN_EDIT=false,
+  // or when called directly by the LLM as a fallback)
+  pi.registerTool({
+    name: "hex_edit",
+    label: "Hex Edit",
+    description: "Edit file using hex stream validation for reliable byte-level editing",
+    promptSnippet: "hex_edit - Edit file using hex stream validation for reliable byte-level editing",
+    parameters: Type.Object({
+      file: Type.String({ description: "Path to the file to edit" }),
+      oldText: Type.String({ description: "Exact text to replace" }),
+      newText: Type.String({ description: "Replacement text" }),
+    }),
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      const result = performHexEdit(params.file, params.oldText, params.newText);
+      
+      if (result.success) {
+        return {
+          content: [{ type: "text", text: result.result }],
+          details: result.details,
+        };
+      } else {
+        return {
+          content: [{ type: "text", text: result.result }],
+          details: result.details,
+          isError: true,
+        };
+      }
+    },
+  });
+  
   // ========================================================================
   // Slash Commands
   // ========================================================================
