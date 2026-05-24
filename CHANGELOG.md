@@ -5,6 +5,21 @@ All notable changes to the Pi Coding Agent Extensions (`@vtstech/pi-coding-agent
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.9] - 05-24-2026 2:08:55 PM
+
+### Added
+
+- **hex-edit: Added promptSnippet to hex_edit tool** (`extensions/hex-edit.ts`)
+  - Added `promptSnippet` property to `hex_edit` tool registration for LLM discoverability
+  - Tool now appears in system prompt's "Available tools" list for LLMs
+  - Enables AI to discover and use hex_edit tool directly
+
+- **memory: Added promptSnippet to memory and create_memory tools** (`extensions/long-term-memory.ts`)
+  - Added `promptSnippet` property to `memory` tool registration for LLM discoverability
+  - Added `promptSnippet` property to `create_memory` tool registration for LLM discoverability
+  - Both tools now appear in system prompt's "Available tools" list for LLMs
+  - Enables AI to discover and use memory tools directly
+
 ## [1.3.8] - 05-22-2026 1:10:24 PM
 
 ### Fixed
