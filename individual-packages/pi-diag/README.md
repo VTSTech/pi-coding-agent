@@ -13,7 +13,9 @@ pi install "npm:@vtstech/pi-diag"
 ## Commands
 
 ```
-/diag    Run full system diagnostic
+/diag                  # Run full system diagnostic
+/diag --help           # Show help
+/diag --full-prompt    # Show full untruncated system prompt
 ```
 
 ## Checks

@@ -5,6 +5,22 @@ All notable changes to the Pi Coding Agent Extensions (`@vtstech/pi-coding-agent
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.9] - 05-27-2026 12:10:33 PM
+
+### Added
+
+- **diag: Added --full-prompt parameter** (`extensions/diag.ts`)
+  - New `/diag --full-prompt` command shows the complete untruncated system prompt
+  - `self_diagnostic` tool now supports `fullPrompt: boolean` parameter
+  - Useful for debugging and inspecting the complete system prompt sent to models
+
+### Changed
+
+- **diag: Removed unused parameters** (`extensions/diag.ts`)
+  - Removed `--quick`, `--security`, and `--performance` parameters (were not fully implemented)
+  - Kept `--help` as the only parameter alongside the new `--full-prompt`
+  - Simplified the command interface to match actual functionality
+
 ## [1.3.9] - 05-24-2026 2:08:55 PM
 
 ### Added
