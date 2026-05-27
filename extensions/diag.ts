@@ -600,11 +600,75 @@ export default function (pi: ExtensionAPI) {
     return lines.join("\n");
   }
 
+  // ── Full system prompt diagnostic ───────────────────────────────────────
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function runFullPromptDiagnostics(ctx: any): Promise<string> {
+    const lines: string[] = [];
+
+    lines.push(branding);
+    lines.push("");
+    lines.push("🔍 System Prompt (Full)");
+
+    let systemPromptText: string | null = null;
+
+    // Strategy 1: Use ctx.getSystemPrompt() if available (Pi framework method)
+    try {
+      if (typeof ctx.getSystemPrompt === "function") {
+        systemPromptText = ctx.getSystemPrompt();
+        if (systemPromptText) {
+          debugLog("diag", `system prompt retrieved via getSystemPrompt(): ${systemPromptText.length} chars`);
+        }
+      }
+    } catch (err) {
+      debugLog("diag", "getSystemPrompt() not available", err);
+    }
+
+    // Strategy 2: Extract from the cached provider payload (messages array)
+    if (!systemPromptText && cachedPayload) {
+      try {
+        const messages = cachedPayload.messages as Array<{ role: string; content: string }> | undefined;
+        if (messages?.length) {
+          const sysMsg = messages.find((m) => m.role === "system") ?? messages[0];
+          if (sysMsg?.content) {
+            systemPromptText = sysMsg.content;
+            debugLog("diag", `system prompt extracted from payload: ${systemPromptText.length} chars`);
+          }
+        }
+      } catch (err) {
+        debugLog("diag", "failed to extract system prompt from payload", err);
+      }
+    }
+
+    if (systemPromptText) {
+      const charCount = systemPromptText.length;
+      const wordCount = systemPromptText.split(/\s+/).filter(Boolean).length;
+      const lineCount = systemPromptText.split("\n").length;
+      lines.push(info(`Size: ${charCount} chars, ~${wordCount} words, ${lineCount} lines`));
+      lines.push("");
+      lines.push("┌" + "─".repeat(60));
+      for (const line of systemPromptText.split("\n")) {
+        lines.push(`│ ${line}`);
+      }
+      lines.push("└" + "─".repeat(60));
+    } else {
+      lines.push(warn("System prompt not available"));
+      lines.push(info("  Possible reasons:"));
+      lines.push(info("    • No provider request has been made yet in this session"));
+      lines.push(info("    • ctx.getSystemPrompt() is not supported by your Pi version"));
+      lines.push(info("    • The provider payload does not contain a messages array"));
+    }
+
+    lines.push(branding);
+    return lines.join("\n");
+  }
+
   // ── Register /diag slash command ─────────────────────────────────────
 
   pi.registerCommand("diag", {
     description: "Run a full system diagnostic (Ollama, models, extensions, themes, resources, security)",
-    detailedHelp: "\n\n🔍 System Diagnostic Extension\n\nRuns a comprehensive diagnostic check of the Pi environment including:\n• System resources (CPU, RAM, disk space)\n• Ollama connectivity and status\n• Models.json configuration validation\n• Extensions and themes loading\n• Security posture and settings\n• Current session state\n• Network connectivity\n• Tool availability and functionality\n\n📋 Usage:\n  /diag                       - Run full diagnostic\n  /diag --help                - Show this help\n  /diag --quick               - Quick health check only\n  /diag --security            - Security-focused diagnostic\n  /diag --performance        - Performance-focused diagnostic\n\n📊 Diagnostic Sections:\n• System Resources: CPU, RAM, disk usage\n• Ollama Status: Connection and model availability\n• Configuration: Models.json validation\n• Extensions: Loaded extensions and status\n• Security: Security mode and audit log\n• Network: Internet connectivity and API endpoints\n• Tools: Available tools and functionality\n\n💡 Tips:\n• Use --quick for fast status checks\n• Use --security to focus on security issues\n• Run regularly to monitor system health\n",
+    detailedHelp: "\n\n🔍 System Diagnostic Extension\n\nRuns a comprehensive diagnostic check of the Pi environment including:\n• System resources (CPU, RAM, disk usage)\n• Ollama connectivity and status\n• Models.json configuration validation\n• Extensions and themes loading\n• Security posture and settings\n• Current session state\n• Network connectivity\n• Tool availability and functionality\n\n📋 Usage:\n  /diag                       - Run full diagnostic\n  /diag --help                - Show this help\n  /diag --full-prompt         - Show full untruncated system prompt\n\n📊 Diagnostic Sections:\n• System Resources: CPU, RAM, disk usage\n• Ollama Status: Connection and model availability\n• Configuration: Models.json validation\n• Extensions: Loaded extensions and status\n• Security: Security mode and audit log\n• Network: Internet connectivity and API endpoints\n• Tools: Available tools and functionality\n\n💡 Tips:\n• Run regularly to monitor system health\n" +
+      "• Use --full-prompt to see complete system prompt without truncation\n",
     handler: async (args, ctx) => {
       // Handle help command
       if (args.trim() === "--help") {
@@ -613,9 +677,7 @@ export default function (pi: ExtensionAPI) {
           "📋 Usage:\n" +
           "  /diag                       - Run full diagnostic\n" +
           "  /diag --help                - Show this help\n" +
-          "  /diag --quick               - Quick health check only\n" +
-          "  /diag --security            - Security-focused diagnostic\n" +
-          "  /diag --performance        - Performance-focused diagnostic\n\n" +
+          "  /diag --full-prompt         - Show full untruncated system prompt\n\n" +
           "📊 Diagnostic Sections:\n" +
           "• System Resources: CPU, RAM, disk usage\n" +
           "• Ollama Status: Connection and model availability\n" +
@@ -625,32 +687,31 @@ export default function (pi: ExtensionAPI) {
           "• Network: Internet connectivity and API endpoints\n" +
           "• Tools: Available tools and functionality\n\n" +
           "💡 Tips:\n" +
-          "• Use --quick for fast status checks\n" +
-          "• Use --security to focus on security issues\n" +
-          "• Run regularly to monitor system health\n",
+          "• Run regularly to monitor system health\n" +
+          "• Use --full-prompt to see complete system prompt without truncation\n",
           "info"
         );
         return;
       }
       
-      if (!ctx.hasUI) {
-        ctx.ui.notify("Diagnostic requires TUI mode", "error");
-        return;
-      }
-      
-      // Handle quick diagnostic
-      if (args.trim() === "--quick") {
-        ctx.ui.notify("Running quick diagnostic...", "info");
+      // Handle full-prompt command
+      if (args.trim() === "--full-prompt") {
+        ctx.ui.notify("Fetching full system prompt...", "info");
         try {
-          const report = await runQuickDiagnostics(ctx);
+          const report = await runFullPromptDiagnostics(ctx);
           pi.sendMessage({
             customType: "diagnostic-report",
             content: report,
             display: { type: "content", content: report },
           });
         } catch (e: any) {
-          ctx.ui.notify(`Quick diagnostic failed: ${e.message}`, "error");
+          ctx.ui.notify(`Full prompt fetch failed: ${e.message}`, "error");
         }
+        return;
+      }
+      
+      if (!ctx.hasUI) {
+        ctx.ui.notify("Diagnostic requires TUI mode", "error");
         return;
       }
       
@@ -680,11 +741,18 @@ export default function (pi: ExtensionAPI) {
     ],
     parameters: {
       type: "object",
-      properties: {},
+      properties: {
+        fullPrompt: {
+          type: "boolean",
+          description: "If true, show the full untruncated system prompt instead of the truncated version in the diagnostic report",
+        },
+      },
     },
-    execute: async (_toolCallId, _params, _signal, _onUpdate, ctx) => {
+    execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
       try {
-        const report = await runDiagnostics(ctx);
+        const report = params.fullPrompt
+          ? await runFullPromptDiagnostics(ctx)
+          : await runDiagnostics(ctx);
         return {
           content: [{ type: "text", text: report }],
           isError: false,
