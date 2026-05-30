@@ -359,7 +359,7 @@ const DEFAULT_RETRY_OPTIONS: Required<RetryOptions> = {
  * Calculate exponential backoff delay with jitter.
  */
 function backoffDelay(attempt: number, baseDelayMs: number, maxDelayMs: number): number {
-  const delay = Math.min(baseDelayMs * Math.pow(2, attempt), maxDelayMs);
+  const delay = Math.min(baseDelayMs * 2 ** attempt, maxDelayMs);
   // Add jitter (±25%) to avoid thundering herd
   const jitter = delay * 0.25 * (Math.random() * 2 - 1);
   return Math.max(0, Math.round(delay + jitter));
@@ -499,10 +499,11 @@ export async function fetchModelContextLength(
         model_info?: Record<string, unknown>;
         template?: string;
       };
+      const modelInfo = data.model_info ?? {};
       // Ollama uses architecture-specific keys like "qwen3.context_length"
-      for (const key of Object.keys(data?.model_info ?? {})) {
+      for (const key of Object.keys(modelInfo)) {
         if (key.endsWith(".context_length")) {
-          const val = data.model_info[key];
+          const val = modelInfo[key];
           if (typeof val === "number") return val;
         }
       }
