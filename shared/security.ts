@@ -134,6 +134,9 @@ export function setSecurityMode(mode: SecurityMode): boolean {
       return false;
     }
 
+    securityModeCache = mode;
+    securityModeCacheTime = Date.now();
+
     debugLog("security", `security mode set to ${mode}`, { path: SECURITY_CONFIG_PATH });
     
     return true;
@@ -571,7 +574,7 @@ export async function resolveAndCheckHostname(
 export function isSafeUrl(
   url: string,
   blockSsrf = true,
-  mode: SecurityMode = "max",
+  mode: SecurityMode = getSecurityMode(),
 ): { safe: boolean; error: string } {
   if (!url) return { safe: false, error: "URL cannot be empty" };
 
@@ -795,6 +798,7 @@ function checkSingleCommand(
  */
 export function sanitizeCommand(
   command: string,
+  mode: SecurityMode = getSecurityMode(),
 ): { isSafe: boolean; error: string; command: string } {
   if (!command) return { isSafe: false, error: "Command cannot be empty", command: "" };
 
@@ -846,7 +850,7 @@ export function sanitizeCommand(
   // injection pattern check. For && || |, we split and check each
   // sub-command individually against the blocklists.
   const subCommands: string[] = [];
-  let remaining = trimmed;
+  const remaining = trimmed;
 
   // Use a regex that matches &&, ||, or | (in that priority order)
   // to split while preserving the operator structure.
@@ -861,7 +865,7 @@ export function sanitizeCommand(
   // Push the final sub-command after the last operator
   subCommands.push(remaining.slice(lastIndex));
 
-  const mode = getSecurityMode();
+
 
   // Check each sub-command against the blocklists
   for (const subCmd of subCommands) {
@@ -1100,7 +1104,7 @@ process.on("SIGTERM", () => {
  */
 export function checkBashToolInput(
   input: Record<string, unknown>,
-  mode: SecurityMode = "max",
+  mode: SecurityMode = getSecurityMode(),
 ): { safe: boolean; rule: string; detail: string } {
   // Off mode: skip all security checks
   if (mode === "off") return { safe: true, rule: "", detail: "" };
@@ -1132,7 +1136,7 @@ export function checkBashToolInput(
  */
 export function checkFileToolInput(
   input: Record<string, unknown>,
-  mode: SecurityMode = "max",
+  mode: SecurityMode = getSecurityMode(),
 ): { safe: boolean; rule: string; detail: string } {
   // Off mode: skip all security checks
   if (mode === "off") return { safe: true, rule: "", detail: "" };
@@ -1169,7 +1173,7 @@ export function checkFileToolInput(
  */
 export function checkHttpToolInput(
   input: Record<string, unknown>,
-  mode: SecurityMode = "max",
+  mode: SecurityMode = getSecurityMode(),
 ): { safe: boolean; rule: string; detail: string } {
   // Off mode: skip all security checks
   if (mode === "off") return { safe: true, rule: "", detail: "" };
@@ -1177,7 +1181,7 @@ export function checkHttpToolInput(
   const url = (input.url ?? input.uri ?? input.endpoint ?? "") as string;
   if (!url) return { safe: true, rule: "", detail: "" };
 
-  const result = isSafeUrl(url, mode);
+  const result = isSafeUrl(url, true, mode);
   if (!result.safe) {
     return { safe: false, rule: "ssrf_protection", detail: result.error };
   }
@@ -1203,7 +1207,7 @@ export function checkHttpToolInput(
  */
 export function checkInjectionPatterns(
   input: Record<string, unknown>,
-  mode: SecurityMode = "max",
+  mode: SecurityMode = getSecurityMode(),
 ): { safe: boolean; rule: string; detail: string } {
   // Off mode: skip all security checks
   if (mode === "off") return { safe: true, rule: "", detail: "" };
