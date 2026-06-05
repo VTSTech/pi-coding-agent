@@ -304,6 +304,52 @@ describe("extensions/soul.ts — extension integration", () => {
 			);
 			assert.ok(true, "session_start completed without error");
 		});
+
+	it("autoLoads soul on startup when global+autoLoad=true+store has soul", async () => {
+		mockPi = makeMockPi();
+		mockCalls.emittedEvents.length = 0;
+		mockConfig = { persistence: "global", autoLoad: true };
+		mockStoreState = { active: true as const, soul: "test", level: 2, updatedAt: Date.now() };
+		mock.method(soul.SoulSpecLoader.prototype, "load", () => ({
+			name: "test", display_name: "Test Soul", description: "", version: "1.0.0", author: "", souls: [], environment: "virtual",
+		}));
+		mock.method(soul.SoulSpecLoader.prototype, "buildSystemPrompt", () => "prompt");
+		factoryResult = soul.default(mockPi.pi as any);
+		await mockPi.events["session_start"]({ reason: "startup" }, makeMockCtx());
+
+		const activated = mockCalls.emittedEvents.filter(
+			(e) => e.event === "soul:activated",
+		);
+		assert.equal(activated.length, 1, "should auto-load on startup");
+	});
+
+	it("skips autoLoad on startup when global+autoLoad=false+store has soul", async () => {
+		mockPi = makeMockPi();
+		mockCalls.emittedEvents.length = 0;
+		mockConfig = { persistence: "global", autoLoad: false };
+		mockStoreState = { active: true as const, soul: "test", level: 2, updatedAt: Date.now() };
+		factoryResult = soul.default(mockPi.pi as any);
+		await mockPi.events["session_start"]({ reason: "startup" }, makeMockCtx());
+
+		const activated = mockCalls.emittedEvents.filter(
+			(e) => e.event === "soul:activated",
+		);
+		assert.equal(activated.length, 0, "should NOT auto-load when autoLoad=false");
+	});
+
+	it("skips autoLoad on startup when session+autoLoad=true+store has soul", async () => {
+		mockPi = makeMockPi();
+		mockCalls.emittedEvents.length = 0;
+		mockConfig = { persistence: "session", autoLoad: true };
+		mockStoreState = { active: true as const, soul: "dave", level: 2, updatedAt: Date.now() };
+		factoryResult = soul.default(mockPi.pi as any);
+		await mockPi.events["session_start"]({ reason: "startup" }, makeMockCtx());
+
+		const activated = mockCalls.emittedEvents.filter(
+			(e) => e.event === "soul:activated",
+		);
+		assert.equal(activated.length, 0, "should NOT auto-load in session mode");
+	});
 	});
 
 	describe("before_agent_start handler", () => {
