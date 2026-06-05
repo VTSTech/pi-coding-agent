@@ -384,9 +384,7 @@ export class GlobalFileActiveSoulStore implements ActiveSoulStore {
 		} else {
 			sessions.push(entry);
 		}
-
 		config.sessions = sessions;
-		config.persistence = "session";
 
 		fs.writeFileSync(
 			this.filePath,
