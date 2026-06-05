@@ -5,36 +5,6 @@ All notable changes to the Pi Coding Agent Extensions (`@vtstech/pi-coding-agent
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Added
-
-- **pi-soul: Configurable persistence and startup soul flag** (`extensions/soul.ts`, `shared/soul-config.ts`)
-  - New `soul-config.json` config files (`~/.pi/agent/soul-config.json` / `.pi/soul-config.json`):
-    - `persistence`: `"global"` (default) | `"session"` | `"none"` — controls where the active soul is stored
-    - `autoLoad`: `true` (default) | `false` — controls whether the persisted soul is auto-applied on startup
-  - `pi.registerFlag("soul")`: new `--soul <name>` CLI flag activates a soul before the first prompt
-    - `--soul off` / `--soul clear` / `--soul none` / `--soul default` clears the persisted soul
-  - `pi.registerFlag("soul-level")`: new `--soul-level <1|2|3>` CLI flag sets the disclosure level for `--soul`
-    - Warns and ignores if given without `--soul`
-  - `/soul` (no args): interactive `ctx.ui.select()` picker with soul list + status + off
-  - `/soul status` command: shows active soul name and level
-  - Interactive `/soul` picker prompts for disclosure level (1-3) after selecting a soul
-  - `soul:activated` event emitted on `pi.events` bus on startup autoload, `--soul` flag, or `/soul` command
-  - `soul:deactivated` event emitted on `--soul off` or `/soul off`
-  - New `shared/soul-config.ts` module: `loadPiSoulConfig`, `createActiveSoulStore`, `GlobalFileActiveSoulStore`, `MemoryActiveSoulStore`, `isSoulClearValue` (testable without peer deps)
-  - `autoLoad` applies to `global` and `session` modes (loads per-directory soul on startup); ignored for `none`
-  - Project `.pi/soul-config.json` shallow-overrides global `~/.pi/agent/soul-config.json`
-  - Config file created automatically with defaults if missing on first load
-  - Invalid config values warn to console and fall back to defaults
-  - Soul restores on `reload`, `resume`, and `fork` in addition to `new` (restore follows explicit activation)
-  - `ctx.ui.setStatus("pi-soul", ...)` on auto-load, activation, and deactivation (Pi footer status bar)
-  - New `extensions/soul-core.ts` module: CLI flag handler, interactive picker, event helpers
-### Migration
-
-- **No migration required.** Existing users without `piSoul` config retain current behavior exactly: `persistence:"global"`, `autoLoad:true`. Existing `.active-soul.json` file is unchanged.
-
-
 ## [1.3.9] - 05-27-2026 12:10:33 PM
 
 ### Added

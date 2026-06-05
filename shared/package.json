@@ -13,8 +13,7 @@
     "./react-parser": "./react-parser.js",
     "./security": "./security.js",
     "./test-report": "./test-report.js",
-    "./types": "./types.js",
-    "./soul-config": "./soul-config.js"
+    "./types": "./types.js"
   },
   "keywords": ["pi-extensions"],
   "license": "MIT",

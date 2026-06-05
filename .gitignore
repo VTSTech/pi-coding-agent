@@ -27,4 +27,3 @@ dist/model-test/model-test.js
 dist/ollama-sync/ollama-sync.js
 dist/openrouter-sync/openrouter-sync.js
 dist/api/api.js
-.pi-lens/
