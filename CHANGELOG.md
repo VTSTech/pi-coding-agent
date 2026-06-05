@@ -17,7 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `--soul off` / `--soul clear` / `--soul none` / `--soul default` clears the persisted soul
   - `pi.registerFlag("soul-level")`: new `--soul-level <1|2|3>` CLI flag sets the disclosure level for `--soul`
     - Warns and ignores if given without `--soul`
+  - `/soul` (no args): interactive `ctx.ui.select()` picker with soul list + status + off
   - `/soul status` command: shows active soul name and level
+  - Interactive `/soul` picker prompts for disclosure level (1-3) after selecting a soul
   - `soul:activated` event emitted on `pi.events` bus on startup autoload, `--soul` flag, or `/soul` command
   - `soul:deactivated` event emitted on `--soul off` or `/soul off`
   - New `shared/soul-config.ts` module: `loadPiSoulConfig`, `createActiveSoulStore`, `GlobalFileActiveSoulStore`, `MemoryActiveSoulStore`, `isSoulClearValue` (testable without peer deps)

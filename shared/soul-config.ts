@@ -39,15 +39,15 @@ import { debugLog } from "./debug";
 export type SoulPersistence = "global" | "session" | "none";
 
 export interface PiSoulConfig {
-	/** Where to persist the active soul. Default: "global". */
-	persistence: SoulPersistence;
-	/** Whether to auto-apply a persisted soul on session_start. Default: true. */
-	autoLoad: boolean;
+  /** Where to persist the active soul. Default: "global". */
+  persistence: SoulPersistence;
+  /** Whether to auto-apply a persisted soul on session_start. Default: true. */
+  autoLoad: boolean;
 }
 
 export const PI_SOUL_DEFAULTS: PiSoulConfig = {
-	persistence: "global",
-	autoLoad: true,
+  persistence: "global",
+  autoLoad: true,
 };
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -58,7 +58,7 @@ export const SOUL_CLEAR_VALUES = ["off", "clear", "none", "default"] as const;
 export type SoulClearValue = (typeof SOUL_CLEAR_VALUES)[number];
 
 export function isSoulClearValue(v: string): boolean {
-	return (SOUL_CLEAR_VALUES as readonly string[]).includes(v.toLowerCase());
+  return (SOUL_CLEAR_VALUES as readonly string[]).includes(v.toLowerCase());
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -66,68 +66,68 @@ export function isSoulClearValue(v: string): boolean {
 // ────────────────────────────────────────────────────────────────────────────
 
 function readJsonFile(filePath: string): Record<string, unknown> | null {
-	try {
-		if (fs.existsSync(filePath)) {
-			return JSON.parse(fs.readFileSync(filePath, "utf-8")) as Record<
-				string,
-				unknown
-			>;
-		}
-	} catch (err) {
-		console.warn(
-			`[pi-soul] Failed to read config file "${filePath}": ${err}. Using defaults.`,
-		);
-	}
-	return null;
+  try {
+    if (fs.existsSync(filePath)) {
+      return JSON.parse(fs.readFileSync(filePath, "utf-8")) as Record<
+        string,
+        unknown
+      >;
+    }
+  } catch (err) {
+    console.warn(
+      `[pi-soul] Failed to read config file "${filePath}": ${err}. Using defaults.`,
+    );
+  }
+  return null;
 }
 
 function parsePiSoulConfigFromObject(raw: unknown): Partial<PiSoulConfig> {
-	if (!raw || typeof raw !== "object") return {};
-	const obj = raw as Record<string, unknown>;
-	const result: Partial<PiSoulConfig> = {};
+  if (!raw || typeof raw !== "object") return {};
+  const obj = raw as Record<string, unknown>;
+  const result: Partial<PiSoulConfig> = {};
 
-	if ("persistence" in obj) {
-		if (
-			obj.persistence === "global" ||
-			obj.persistence === "session" ||
-			obj.persistence === "none"
-		) {
-			result.persistence = obj.persistence;
-		} else {
-			console.warn(
-				`[pi-soul] Invalid piSoul.persistence value "${String(obj.persistence)}". Falling back to "global".`,
-			);
-		}
-	}
+  if ("persistence" in obj) {
+    if (
+      obj.persistence === "global" ||
+      obj.persistence === "session" ||
+      obj.persistence === "none"
+    ) {
+      result.persistence = obj.persistence;
+    } else {
+      console.warn(
+        `[pi-soul] Invalid piSoul.persistence value "${String(obj.persistence)}". Falling back to "global".`,
+      );
+    }
+  }
 
-	if ("autoLoad" in obj) {
-		if (typeof obj.autoLoad === "boolean") {
-			result.autoLoad = obj.autoLoad;
-		} else {
-			console.warn(
-				`[pi-soul] Invalid piSoul.autoLoad value "${String(obj.autoLoad)}". Falling back to true.`,
-			);
-		}
-	}
+  if ("autoLoad" in obj) {
+    if (typeof obj.autoLoad === "boolean") {
+      result.autoLoad = obj.autoLoad;
+    } else {
+      console.warn(
+        `[pi-soul] Invalid piSoul.autoLoad value "${String(obj.autoLoad)}". Falling back to true.`,
+      );
+    }
+  }
 
-	return result;
+  return result;
 }
 export interface PiSoulConfigOptions {
-	/** Override path to global soul config (default: `~/.pi/agent/soul-config.json`). */
-	globalSoulConfigPath?: string;
-	/** Override path to project soul config (default: `.pi/soul-config.json`). */
-	projectSoulConfigPath?: string;
+  /** Override path to global soul config (default: `~/.pi/agent/soul-config.json`). */
+  globalSoulConfigPath?: string;
+  /** Override path to project soul config (default: `.pi/soul-config.json`). */
+  projectSoulConfigPath?: string;
 }
 
 const GLOBAL_SOUL_CONFIG_PATH = expandHome("~/.pi/agent/soul-config.json");
 const PROJECT_SOUL_CONFIG_PATH = ".pi/soul-config.json";
 
 function writeJsonFile(filePath: string, data: Record<string, unknown>): void {
-	const dir = path.dirname(filePath);
-	if (!fs.existsSync(dir)) {
-		fs.mkdirSync(dir, { recursive: true });
-	}
-	fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + "\n", "utf-8");
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + "\n", "utf-8");
 }
 
 /**
@@ -142,47 +142,47 @@ function writeJsonFile(filePath: string, data: Record<string, unknown>): void {
  * Invalid values → warn + fall back to defaults for that field.
  */
 export function loadPiSoulConfig(options?: PiSoulConfigOptions): PiSoulConfig {
-	const globalPath = options?.globalSoulConfigPath ?? GLOBAL_SOUL_CONFIG_PATH;
-	const projectPath =
-		options?.projectSoulConfigPath ?? PROJECT_SOUL_CONFIG_PATH;
+  const globalPath = options?.globalSoulConfigPath ?? GLOBAL_SOUL_CONFIG_PATH;
+  const projectPath =
+    options?.projectSoulConfigPath ?? PROJECT_SOUL_CONFIG_PATH;
 
-	const globalData = readJsonFile(globalPath);
-	const projectData = readJsonFile(projectPath);
+  const globalData = readJsonFile(globalPath);
+  const projectData = readJsonFile(projectPath);
 
-	// Support both old format ({ piSoul: {...} }) and new flat format
-	const globalConfig = globalData
-		? parsePiSoulConfigFromObject((globalData as any).piSoul || globalData)
-		: {};
-	const projectConfig = projectData
-		? parsePiSoulConfigFromObject((projectData as any).piSoul || projectData)
-		: {};
+  // Support both old format ({ piSoul: {...} }) and new flat format
+  const globalConfig = globalData
+    ? parsePiSoulConfigFromObject((globalData as any).piSoul || globalData)
+    : {};
+  const projectConfig = projectData
+    ? parsePiSoulConfigFromObject((projectData as any).piSoul || projectData)
+    : {};
 
-	const merged: PiSoulConfig = {
-		...PI_SOUL_DEFAULTS,
-		...globalConfig,
-		...projectConfig,
-	};
+  const merged: PiSoulConfig = {
+    ...PI_SOUL_DEFAULTS,
+    ...globalConfig,
+    ...projectConfig,
+  };
 
-	// Ensure global config file exists with resolved values
-	if (!globalData) {
-		writeJsonFile(globalPath, {
-			persistence: merged.persistence,
-			autoLoad: merged.autoLoad,
-		});
-		debugLog("soul", `[pi-soul] Created default config at ${globalPath}`);
-	}
+  // Ensure global config file exists with resolved values
+  if (!globalData) {
+    writeJsonFile(globalPath, {
+      persistence: merged.persistence,
+      autoLoad: merged.autoLoad,
+    });
+    debugLog("soul", `[pi-soul] Created default config at ${globalPath}`);
+  }
 
-	return merged;
+  return merged;
 }
 // ────────────────────────────────────────────────────────────────────────────
 // Active soul state types
 // ────────────────────────────────────────────────────────────────────────────
 
 export interface ActiveSoulState {
-	active: boolean;
-	soul: string | null;
-	level?: number;
-	updatedAt: number;
+  active: boolean;
+  soul: string | null;
+  level?: number;
+  updatedAt: number;
 }
 
 /**
@@ -193,14 +193,14 @@ export interface ActiveSoulState {
  * In tests: mocked directly.
  */
 export interface SessionEntry {
-	type: string;
-	customType?: string;
-	data?: unknown;
+  type: string;
+  customType?: string;
+  data?: unknown;
 }
 
 export interface SessionAccessor {
-	appendEntry(customType: string, data?: unknown): void;
-	getEntries(): SessionEntry[];
+  appendEntry(customType: string, data?: unknown): void;
+  getEntries(): SessionEntry[];
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -208,20 +208,20 @@ export interface SessionAccessor {
 // ────────────────────────────────────────────────────────────────────────────
 
 export interface ActiveSoulStore {
-	/**
-	 * Load the current persisted soul state.
-	 * Returns null if no soul is persisted or state is cleared.
-	 */
-	load(session?: SessionAccessor): ActiveSoulState | null;
+  /**
+   * Load the current persisted soul state.
+   * Returns null if no soul is persisted or state is cleared.
+   */
+  load(session?: SessionAccessor): ActiveSoulState | null;
 
-	/** Persist the given soul state. */
-	save(state: ActiveSoulState, session?: SessionAccessor): void;
+  /** Persist the given soul state. */
+  save(state: ActiveSoulState, session?: SessionAccessor): void;
 
-	/** Clear the persisted soul state. */
-	clear(session?: SessionAccessor): void;
+  /** Clear the persisted soul state. */
+  clear(session?: SessionAccessor): void;
 
-	/** Human-readable description of this store (used in /soul status). */
-	describe(): string;
+  /** Human-readable description of this store (used in /soul status). */
+  describe(): string;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -229,203 +229,203 @@ export interface ActiveSoulStore {
 // ────────────────────────────────────────────────────────────────────────────
 
 export const ACTIVE_SOUL_PATH = path.join(
-	os.homedir(),
-	".pi",
-	"agent",
-	".active-soul.json",
+  os.homedir(),
+  ".pi",
+  "agent",
+  ".active-soul.json",
 );
 
 export class GlobalFileActiveSoulStore implements ActiveSoulStore {
-	constructor(
-		private readonly filePath: string = ACTIVE_SOUL_PATH,
-		private readonly mode: "global" | "session" = "global",
-	) {}
+  constructor(
+    private readonly filePath: string = ACTIVE_SOUL_PATH,
+    private readonly mode: "global" | "session" = "global",
+  ) {}
 
-	load(_session?: SessionAccessor): ActiveSoulState | null {
-		try {
-			if (!fs.existsSync(this.filePath)) return null;
-			const data = JSON.parse(
-				fs.readFileSync(this.filePath, "utf-8"),
-			) as Record<string, unknown>;
+  load(_session?: SessionAccessor): ActiveSoulState | null {
+    try {
+      if (!fs.existsSync(this.filePath)) return null;
+      const data = JSON.parse(
+        fs.readFileSync(this.filePath, "utf-8"),
+      ) as Record<string, unknown>;
 
-			if (this.mode === "session") {
-				return this._loadFromSessions(data);
-			}
+      if (this.mode === "session") {
+        return this._loadFromSessions(data);
+      }
 
-			// Global mode: top-level soul field (original behavior)
-			if (data && data.soul) {
-				return {
-					active: true,
-					soul: data.soul as string,
-					level: typeof data.level === "number" ? data.level : 2,
-					updatedAt:
-						typeof data.updatedAt === "number" ? data.updatedAt : Date.now(),
-				};
-			}
-		} catch (err) {
-			debugLog(
-				"soul",
-				`[pi-soul] Failed to load active soul from file: ${err}`,
-			);
-		}
-		return null;
-	}
+      // Global mode: top-level soul field (original behavior)
+      if (data && data.soul) {
+        return {
+          active: true,
+          soul: data.soul as string,
+          level: typeof data.level === "number" ? data.level : 2,
+          updatedAt:
+            typeof data.updatedAt === "number" ? data.updatedAt : Date.now(),
+        };
+      }
+    } catch (err) {
+      debugLog(
+        "soul",
+        `[pi-soul] Failed to load active soul from file: ${err}`,
+      );
+    }
+    return null;
+  }
 
-	save(state: ActiveSoulState, _session?: SessionAccessor): void {
-		if (!state.soul) return;
-		const dir = path.dirname(this.filePath);
-		if (!fs.existsSync(dir)) {
-			fs.mkdirSync(dir, { recursive: true });
-		}
+  save(state: ActiveSoulState, _session?: SessionAccessor): void {
+    if (!state.soul) return;
+    const dir = path.dirname(this.filePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
 
-		try {
-			if (this.mode === "session") {
-				this._saveToSessions(state);
-			} else {
-				// Global mode: write only top-level fields (original behavior)
-				fs.writeFileSync(
-					this.filePath,
-					JSON.stringify(
-						{
-							soul: state.soul,
-							level: state.level ?? 2,
-							updatedAt: state.updatedAt,
-						},
-						null,
-						2,
-					),
-					"utf-8",
-				);
-			}
-			debugLog("soul", `[pi-soul] Saved active soul to file: ${state.soul}`);
-		} catch (err) {
-			debugLog("soul", `[pi-soul] Failed to save active soul to file: ${err}`);
-		}
-	}
+    try {
+      if (this.mode === "session") {
+        this._saveToSessions(state);
+      } else {
+        // Global mode: write only top-level fields (original behavior)
+        fs.writeFileSync(
+          this.filePath,
+          JSON.stringify(
+            {
+              soul: state.soul,
+              level: state.level ?? 2,
+              updatedAt: state.updatedAt,
+            },
+            null,
+            2,
+          ),
+          "utf-8",
+        );
+      }
+      debugLog("soul", `[pi-soul] Saved active soul to file: ${state.soul}`);
+    } catch (err) {
+      debugLog("soul", `[pi-soul] Failed to save active soul to file: ${err}`);
+    }
+  }
 
-	clear(_session?: SessionAccessor): void {
-		try {
-			if (this.mode === "session") {
-				this._clearFromSessions();
-			} else {
-				// Global mode: delete the file (original behavior)
-				if (fs.existsSync(this.filePath)) {
-					fs.unlinkSync(this.filePath);
-					debugLog("soul", "[pi-soul] Cleared active soul file");
-				}
-			}
-		} catch (err) {
-			debugLog("soul", `[pi-soul] Failed to clear active soul: ${err}`);
-		}
-	}
+  clear(_session?: SessionAccessor): void {
+    try {
+      if (this.mode === "session") {
+        this._clearFromSessions();
+      } else {
+        // Global mode: delete the file (original behavior)
+        if (fs.existsSync(this.filePath)) {
+          fs.unlinkSync(this.filePath);
+          debugLog("soul", "[pi-soul] Cleared active soul file");
+        }
+      }
+    } catch (err) {
+      debugLog("soul", `[pi-soul] Failed to clear active soul: ${err}`);
+    }
+  }
 
-	describe(): string {
-		return this.mode === "session"
-			? "path-mapped session marker (.active-soul.json)"
-			: "global file (~/.pi/agent/.active-soul.json)";
-	}
+  describe(): string {
+    return this.mode === "session"
+      ? "path-mapped session marker (.active-soul.json)"
+      : "global file (~/.pi/agent/.active-soul.json)";
+  }
 
-	// ── Private: session mode helpers ──────────────────────────────────────
+  // ── Private: session mode helpers ──────────────────────────────────────
 
-	private _loadFromSessions(
-		data: Record<string, unknown>,
-	): ActiveSoulState | null {
-		const sessions = data.sessions as
-			| Array<Record<string, unknown>>
-			| undefined;
-		if (!sessions) return null;
-		const cwd = process.cwd();
-		const match = sessions.find((s) => (s as any).path === cwd);
-		if (
-			match &&
-			(match as any).soul &&
-			typeof (match as any).soul === "string"
-		) {
-			return {
-				active: true,
-				soul: (match as any).soul as string,
-				level:
-					typeof (match as any).level === "number" ? (match as any).level : 2,
-				updatedAt:
-					typeof (match as any).updatedAt === "number"
-						? (match as any).updatedAt
-						: Date.now(),
-			};
-		}
-		return null;
-	}
+  private _loadFromSessions(
+    data: Record<string, unknown>,
+  ): ActiveSoulState | null {
+    const sessions = data.sessions as
+      | Array<Record<string, unknown>>
+      | undefined;
+    if (!sessions) return null;
+    const cwd = process.cwd();
+    const match = sessions.find((s) => (s as any).path === cwd);
+    if (
+      match &&
+      (match as any).soul &&
+      typeof (match as any).soul === "string"
+    ) {
+      return {
+        active: true,
+        soul: (match as any).soul as string,
+        level:
+          typeof (match as any).level === "number" ? (match as any).level : 2,
+        updatedAt:
+          typeof (match as any).updatedAt === "number"
+            ? (match as any).updatedAt
+            : Date.now(),
+      };
+    }
+    return null;
+  }
 
-	private _saveToSessions(state: ActiveSoulState): void {
-		// Read existing file to preserve non-session keys
-		let config: Record<string, unknown> = {};
-		try {
-			if (fs.existsSync(this.filePath)) {
-				config = JSON.parse(fs.readFileSync(this.filePath, "utf-8")) as Record<
-					string,
-					unknown
-				>;
-			}
-		} catch {
-			// Start fresh if file is corrupt
-		}
+  private _saveToSessions(state: ActiveSoulState): void {
+    // Read existing file to preserve non-session keys
+    let config: Record<string, unknown> = {};
+    try {
+      if (fs.existsSync(this.filePath)) {
+        config = JSON.parse(fs.readFileSync(this.filePath, "utf-8")) as Record<
+          string,
+          unknown
+        >;
+      }
+    } catch {
+      // Start fresh if file is corrupt
+    }
 
-		const sessions: Array<Record<string, unknown>> =
-			(config.sessions as Array<Record<string, unknown>>) || [];
-		const cwd = process.cwd();
-		const idx = sessions.findIndex((s) => (s as any).path === cwd);
-		const entry: Record<string, unknown> = {
-			path: cwd,
-			soul: state.soul,
-			level: state.level,
-			updatedAt: Date.now(),
-		};
-		if (idx >= 0) {
-			sessions[idx] = entry;
-		} else {
-			sessions.push(entry);
-		}
-		config.sessions = sessions;
+    const sessions: Array<Record<string, unknown>> =
+      (config.sessions as Array<Record<string, unknown>>) || [];
+    const cwd = process.cwd();
+    const idx = sessions.findIndex((s) => (s as any).path === cwd);
+    const entry: Record<string, unknown> = {
+      path: cwd,
+      soul: state.soul,
+      level: state.level,
+      updatedAt: Date.now(),
+    };
+    if (idx >= 0) {
+      sessions[idx] = entry;
+    } else {
+      sessions.push(entry);
+    }
+    config.sessions = sessions;
 
-		fs.writeFileSync(
-			this.filePath,
-			JSON.stringify(config, null, 2) + "\n",
-			"utf-8",
-		);
-	}
+    fs.writeFileSync(
+      this.filePath,
+      JSON.stringify(config, null, 2) + "\n",
+      "utf-8",
+    );
+  }
 
-	private _clearFromSessions(): void {
-		if (!fs.existsSync(this.filePath)) return;
+  private _clearFromSessions(): void {
+    if (!fs.existsSync(this.filePath)) return;
 
-		let config: Record<string, unknown> = {};
-		try {
-			config = JSON.parse(fs.readFileSync(this.filePath, "utf-8")) as Record<
-				string,
-				unknown
-			>;
-		} catch {
-			return;
-		}
+    let config: Record<string, unknown> = {};
+    try {
+      config = JSON.parse(fs.readFileSync(this.filePath, "utf-8")) as Record<
+        string,
+        unknown
+      >;
+    } catch {
+      return;
+    }
 
-		const sessions = config.sessions as
-			| Array<Record<string, unknown>>
-			| undefined;
-		if (!sessions) return;
+    const sessions = config.sessions as
+      | Array<Record<string, unknown>>
+      | undefined;
+    if (!sessions) return;
 
-		const cwd = process.cwd();
-		const filtered = sessions.filter((s) => (s as any).path !== cwd);
+    const cwd = process.cwd();
+    const filtered = sessions.filter((s) => (s as any).path !== cwd);
 
-		if (filtered.length === 0) {
-			// No sessions left — remove the file entirely
-			fs.unlinkSync(this.filePath);
-		} else {
-			config.sessions = filtered;
-			fs.writeFileSync(
-				this.filePath,
-				JSON.stringify(config, null, 2) + "\n",
-				"utf-8",
-			);
-		}
-	}
+    if (filtered.length === 0) {
+      // No sessions left — remove the file entirely
+      fs.unlinkSync(this.filePath);
+    } else {
+      config.sessions = filtered;
+      fs.writeFileSync(
+        this.filePath,
+        JSON.stringify(config, null, 2) + "\n",
+        "utf-8",
+      );
+    }
+  }
 }
 // ────────────────────────────────────────────────────────────────────────────
 // Implementation: MemoryActiveSoulStore
@@ -441,25 +441,25 @@ export class GlobalFileActiveSoulStore implements ActiveSoulStore {
  * Used when `piSoul.persistence = "none"`.
  */
 export class MemoryActiveSoulStore implements ActiveSoulStore {
-	private _state: ActiveSoulState | null = null;
+  private _state: ActiveSoulState | null = null;
 
-	load(_session?: SessionAccessor): ActiveSoulState | null {
-		return this._state;
-	}
+  load(_session?: SessionAccessor): ActiveSoulState | null {
+    return this._state;
+  }
 
-	save(state: ActiveSoulState, _session?: SessionAccessor): void {
-		this._state = state;
-		debugLog("soul", `[pi-soul] Active soul in memory: ${state.soul}`);
-	}
+  save(state: ActiveSoulState, _session?: SessionAccessor): void {
+    this._state = state;
+    debugLog("soul", `[pi-soul] Active soul in memory: ${state.soul}`);
+  }
 
-	clear(_session?: SessionAccessor): void {
-		this._state = null;
-		debugLog("soul", "[pi-soul] Cleared in-memory active soul");
-	}
+  clear(_session?: SessionAccessor): void {
+    this._state = null;
+    debugLog("soul", "[pi-soul] Cleared in-memory active soul");
+  }
 
-	describe(): string {
-		return "in-memory only (not persisted)";
-	}
+  describe(): string {
+    return "in-memory only (not persisted)";
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -467,15 +467,15 @@ export class MemoryActiveSoulStore implements ActiveSoulStore {
 // ────────────────────────────────────────────────────────────────────────────
 
 export function createActiveSoulStore(config: PiSoulConfig): ActiveSoulStore {
-	switch (config.persistence) {
-		case "global":
-			return new GlobalFileActiveSoulStore();
-		case "session":
-			return new GlobalFileActiveSoulStore(undefined, "session");
-		case "none":
-			return new MemoryActiveSoulStore();
-		default:
-			// Safety fallback — should never be reached with valid config
-			return new GlobalFileActiveSoulStore();
-	}
+  switch (config.persistence) {
+    case "global":
+      return new GlobalFileActiveSoulStore();
+    case "session":
+      return new GlobalFileActiveSoulStore(undefined, "session");
+    case "none":
+      return new MemoryActiveSoulStore();
+    default:
+      // Safety fallback — should never be reached with valid config
+      return new GlobalFileActiveSoulStore();
+  }
 }

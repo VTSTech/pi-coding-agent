@@ -52,10 +52,15 @@ Get detailed information about a soul.
 #### `/souls`
 List available souls.
 
+#### `/soul` (no arguments)
+Opens an interactive picker that shows available souls plus `status` and `off` options.
+After selecting a soul, a second picker asks for the disclosure level (1-3).
+
 #### `/soul <name>`
 Use a soul for the current session with partial matching support.
 
 ```bash
+/soul                       # Interactive picker: choose soul + disclosure level
 /soul nova-helper          # Use the Nova Helper persona (exact match)
 /soul dev                  # Load any soul containing 'dev' (partial matching)
 /soul /dev/ig              # Load any soul with 'dev' (case-insensitive regex)
