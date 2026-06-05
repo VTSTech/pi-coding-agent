@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `soul:activated` event emitted on `pi.events` bus on startup autoload, `--soul` flag, or `/soul` command
   - `soul:deactivated` event emitted on `--soul off` or `/soul off`
   - New `shared/soul-config.ts` module: `loadPiSoulConfig`, `createActiveSoulStore`, `GlobalFileActiveSoulStore`, `MemoryActiveSoulStore`, `isSoulClearValue` (testable without peer deps)
-  - `autoLoad` only applies to `persistence: "global"`; session/none modes ignore it
+  - `autoLoad` applies to `global` and `session` modes (loads per-directory soul on startup); ignored for `none`
   - Project `.pi/soul-config.json` shallow-overrides global `~/.pi/agent/soul-config.json`
   - Config file created automatically with defaults if missing on first load
   - Invalid config values warn to console and fall back to defaults

@@ -94,7 +94,7 @@ created automatically with defaults the first time the extension loads.
 | Key | Values | Default | Description |
 |-----|--------|---------|-------------|
 | `persistence` | `"global"`, `"session"`, `"none"` | `"global"` | Where to store the active soul |
-| `autoLoad` | `true`, `false` | `true` | Auto-apply persisted soul on fresh startup (global mode only) |
+| `autoLoad` | `true`, `false` | `true` | Auto-apply persisted soul on fresh startup |
 
 Config file is created automatically at `~/.pi/agent/soul-config.json` with defaults
 if it doesn't exist when the extension loads.
@@ -108,10 +108,13 @@ if it doesn't exist when the extension loads.
 }
 ```
 
-With this config, normal coding sessions start clean. An explicit `/soul dave` or
-`--soul dave` saves the mapping `cwd → dave` into `.active-soul.json`. On `/reload`
+With `autoLoad: false`, normal coding sessions start clean. An explicit `/soul dave`
+or `--soul dave` saves the mapping `cwd → dave` into `.active-soul.json`. On `/reload`
 or `/new` in that directory, Dave is restored automatically — without loading on
 fresh Pi startup.
+
+With `autoLoad: true` (default), fresh Pi startup in that same directory loads Dave
+automatically — the per-directory mapping is checked on startup.
 
 **`persistence` values:**
 - `"global"` (default) — stores in `~/.pi/agent/.active-soul.json` as a single top-level entry; persists across all sessions including `/new`. Original upstream behavior, unchanged.
@@ -129,11 +132,13 @@ fresh Pi startup.
 ```
 Top-level fields (created by global mode) are preserved when writing in session mode — backward compatible with older Pi versions that only read the top-level `soul` key.
 
-**`autoLoad`:** Only applies to `persistence: "global"`. Ignored for `session`
-and `none` modes — those modes never auto-load on fresh startup.
+**`autoLoad`:** Controls whether the persisted soul is auto-applied on fresh Pi startup.
 
-- `true` (default with `"global"` persistence) — loads the single active soul
-  from `.active-soul.json` on fresh Pi startup.
+- `true` (default) — loads the applicable soul on fresh startup:
+  - `global` mode: loads the single active soul from `.active-soul.json`
+  - `session` mode: loads the soul mapped to the current project directory
+    (if one exists in the `sessions[]` array)
+  - `none` mode: ignored (no storage to load from)
 - `false` — persisted soul is not auto-applied on fresh startup; explicit
   `/soul <name>` or `--soul <name>` still works.
 

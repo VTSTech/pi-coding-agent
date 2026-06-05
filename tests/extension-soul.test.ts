@@ -360,7 +360,7 @@ describe("extensions/soul.ts — extension integration", () => {
       );
     });
 
-    it("skips autoLoad on startup when session+autoLoad=true+store has soul", async () => {
+    it("autoLoads soul on startup when session+autoLoad=true+store has entry", async () => {
       mockPi = makeMockPi();
       mockCalls.emittedEvents.length = 0;
       mockConfig = { persistence: "session", autoLoad: true };
@@ -370,16 +370,30 @@ describe("extensions/soul.ts — extension integration", () => {
         level: 2,
         updatedAt: Date.now(),
       };
+      mock.method(soul.SoulSpecLoader.prototype, "load", () => ({
+        name: "dave",
+        display_name: "Dave",
+        description: "",
+        version: "1.0.0",
+        author: "",
+        souls: [],
+        environment: "virtual",
+      }));
+      mock.method(
+        soul.SoulSpecLoader.prototype,
+        "buildSystemPrompt",
+        () => "prompt",
+      );
       factoryResult = soul.default(mockPi.pi as any);
+      const ctx = makeMockCtx();
       await mockPi.events["session_start"](
         { reason: "startup" },
-        makeMockCtx(),
+        ctx,
       );
 
-      const activated = mockCalls.emittedEvents.filter(
-        (e) => e.event === "soul:activated",
-      );
-      assert.equal(activated.length, 0, "should NOT auto-load in session mode");
+      // Should auto-load since autoLoad=true, regardless of persistence mode
+      assert.equal(ctx.setStatusCalls.length, 1, "setStatus should be called");
+      assert.equal(ctx.setStatusCalls[0].value, "Dave", "should restore Dave");
     });
   });
 
