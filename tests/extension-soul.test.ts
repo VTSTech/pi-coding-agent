@@ -229,41 +229,46 @@ describe("extensions/soul.ts — extension integration", () => {
       const ctx = makeMockCtx();
       await mockPi.events["session_start"]({ reason: "reload" }, ctx);
 
-      // Soul should auto-load (tested via store mock)
-      assert.ok(true, "session_start completed without error on reload");
+      // Soul should auto-load and set footer status
+      assert.equal(ctx.setStatusCalls.length, 1, "setStatus should be called");
+      assert.equal(ctx.setStatusCalls[0].id, "pi-soul");
+      assert.equal(ctx.setStatusCalls[0].value, "Test Soul");
     });
 
     it("restores soul on new/resume/fork regardless of autoLoad", async () => {
-      mockPi = makeMockPi();
-      mockCalls.emittedEvents.length = 0;
-      mockConfig = { persistence: "session", autoLoad: false };
-      mockStoreState = {
-        active: true,
-        soul: "test",
-        level: 2,
-        updatedAt: Date.now(),
-      };
-      mock.method(soul.SoulSpecLoader.prototype, "load", () => ({
-        name: "test",
-        display_name: "Test Soul",
-        description: "A test soul",
-        version: "1.0.0",
-        author: "test",
-        souls: [],
-        environment: "virtual",
-      }));
-      mock.method(
-        soul.SoulSpecLoader.prototype,
-        "buildSystemPrompt",
-        () => "test system prompt",
-      );
-      factoryResult = soul.default(mockPi.pi as any);
+      for (const reason of ["new", "resume", "fork"]) {
+        mockPi = makeMockPi();
+        mockCalls.emittedEvents.length = 0;
+        mockConfig = { persistence: "session", autoLoad: false };
+        mockStoreState = {
+          active: true,
+          soul: "test",
+          level: 2,
+          updatedAt: Date.now(),
+        };
+        mock.method(soul.SoulSpecLoader.prototype, "load", () => ({
+          name: "test",
+          display_name: "Test Soul",
+          description: "A test soul",
+          version: "1.0.0",
+          author: "test",
+          souls: [],
+          environment: "virtual",
+        }));
+        mock.method(
+          soul.SoulSpecLoader.prototype,
+          "buildSystemPrompt",
+          () => "test system prompt",
+        );
+        factoryResult = soul.default(mockPi.pi as any);
 
-      const ctx = makeMockCtx();
-      await mockPi.events["session_start"]({ reason: "new" }, ctx);
+        const ctx = makeMockCtx();
+        await mockPi.events["session_start"]({ reason }, ctx);
 
-      // Soul should restore on non-startup regardless of autoLoad
-      assert.ok(true, "restore completed without error on new");
+        // Soul should restore on non-startup regardless of autoLoad
+        assert.equal(ctx.setStatusCalls.length, 1, `setStatus for ${reason}`);
+        assert.equal(ctx.setStatusCalls[0].value, "Test Soul", `status value for ${reason}`);
+      }
     });
 
     it("does not restore when store is empty", async () => {

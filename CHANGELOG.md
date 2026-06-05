@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Project `.pi/soul-config.json` shallow-overrides global `~/.pi/agent/soul-config.json`
   - Config file created automatically with defaults if missing on first load
   - Invalid config values warn to console and fall back to defaults
+  - Soul restores on `reload`, `resume`, and `fork` in addition to `new` (restore follows explicit activation)
+  - `ctx.ui.setStatus("pi-soul", ...)` on auto-load, activation, and deactivation (Pi footer status bar)
+  - New `extensions/soul-core.ts` module: CLI flag handler, interactive picker, event helpers
 ### Migration
 
 - **No migration required.** Existing users without `piSoul` config retain current behavior exactly: `persistence:"global"`, `autoLoad:true`. Existing `.active-soul.json` file is unchanged.

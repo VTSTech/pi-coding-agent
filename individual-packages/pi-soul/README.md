@@ -137,9 +137,9 @@ and `none` modes — those modes never auto-load on fresh startup.
 - `false` — persisted soul is not auto-applied on fresh startup; explicit
   `/soul <name>` or `--soul <name>` still works.
 
-**Important:** `/reload` and `/new` always restore the active soul from the
-persisted store, regardless of `autoLoad` or `persistence` mode. The soul was
-explicitly activated within this Pi process.
+**Important:** `/reload`, `/new`, `/resume`, and `/fork` always restore the
+active soul from the persisted store, regardless of `autoLoad` or
+`persistence` mode. The soul was explicitly activated within this Pi process.
 
 **Project-local override example (`.pi/soul-config.json`):**
 
@@ -192,14 +192,15 @@ export default function(pi) {
 ```
 
 
-## Powerline Integration
+## Status Bar
 
-When [pi-powerline-footer](https://github.com/nicobailon/pi-powerline-footer) is installed,
-the active soul name appears in the status bar automatically. The extension calls
+The active soul name appears in Pi's footer status bar automatically. The extension calls
 `ctx.ui.setStatus("pi-soul", displayName)` on activation and clears it on deactivation.
 
-No configuration needed — the status appears in the `extension_statuses` secondary segment.
-If powerline is not installed, the API call is a harmless no-op.
+This is Pi's standard status API — it works with the built-in TUI footer.
+If [pi-powerline-footer](https://github.com/nicobailon/pi-powerline-footer) is installed,
+the status appears in the `extension_statuses` secondary segment with additional styling.
+No configuration needed.
 ## Soul Structure
 
 Souls are defined in `.pi/agent/souls/` directory with the following structure:
