@@ -179,7 +179,7 @@ export function expandHome(p: string): string {
   return p;
 }
 
-// Active soul persistence across sessions — uses shared/soul-config.ts store
+// Active soul persistence across sessions
 let activeSoulStore: ActiveSoulStore;
 
 function saveActiveSoul(soulName: string, level: number): void {
@@ -262,6 +262,7 @@ export class SoulSpecLoader {
           return expanded;
         }
       } catch {
+        continue;
       }
     }
 
@@ -270,7 +271,7 @@ export class SoulSpecLoader {
 
   private findPartialSoulPath(soulPath: string): string | null {
     // Check if soulPath looks like a regex pattern
-    const regexPattern = soulPath.match(/^\/([^/]*)\/([a-z]*)$/i);
+    const regexPattern = soulPath.match(/^\/([^\/]*)\/([a-z]*)$/i);
     let regex: RegExp;
     
     if (regexPattern) {
@@ -875,6 +876,7 @@ export default function (pi: ExtensionAPI) {
     type: "string",
     description: "Disclosure level (1-3) for --soul (default: 2)",
   });
+
   // Event handlers
   pi.on("session_start", async (event, ctx) => {
     debugLog("soul", `SoulSpec extension session started: ${event.reason}`);
@@ -897,7 +899,7 @@ export default function (pi: ExtensionAPI) {
     }
 
     // On fresh sessions, check for persisted active soul
-    if (event.reason === "startup" || event.reason === "new") {
+    if (event.reason === "startup" || event.reason === "new" || event.reason === "reload" || event.reason === "resume" || event.reason === "fork") {
       const active = loadActiveSoul();
       if (active) {
         debugLog("soul", `Found active soul from previous session: ${active.soul}`);
