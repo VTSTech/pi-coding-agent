@@ -262,7 +262,6 @@ export class SoulSpecLoader {
           return expanded;
         }
       } catch {
-        continue;
       }
     }
 
@@ -271,7 +270,7 @@ export class SoulSpecLoader {
 
   private findPartialSoulPath(soulPath: string): string | null {
     // Check if soulPath looks like a regex pattern
-    const regexPattern = soulPath.match(/^\/([^\/]*)\/([a-z]*)$/i);
+    const regexPattern = soulPath.match(/^\/([^/]*)\/([a-z]*)$/i);
     let regex: RegExp;
 
     if (regexPattern) {
@@ -747,7 +746,7 @@ export default function (pi: ExtensionAPI) {
         }),
       ),
     }),
-    // @ts-ignore
+    // @ts-expect-error
     async execute(toolCallId: string, params: any, signal: any, onUpdate: any, ctx: any) {
       debugLog(
         "soul",
@@ -834,7 +833,7 @@ export default function (pi: ExtensionAPI) {
     label: "List Souls",
     description: "List all available SoulSpec personas",
     parameters: Type.Object({}),
-    // @ts-ignore
+    // @ts-expect-error
     async execute(toolCallId: string, params: any, signal: any, onUpdate: any, ctx: any) {
       const souls = soulLoader.getAllSouls();
 
@@ -883,7 +882,7 @@ export default function (pi: ExtensionAPI) {
           "Name of the soul to get info for. Supports partial matching: 'dev' matches 'developer'",
       }),
     }),
-    // @ts-ignore
+    // @ts-expect-error
     async execute(toolCallId: string, params: any, signal: any, onUpdate: any, ctx: any) {
       debugLog("soul", `Getting soul info for: ${params.soul_name}`);
 
@@ -1158,7 +1157,9 @@ export default function (pi: ExtensionAPI) {
           } else if (pickResult.type === "cleared") {
             autoAppliedSoul = null;
           }
-          if (pickResult.type !== "none") return;
+          // The picker handled everything (status, activate, clear, cancel) —
+          // never fall through to the text usage message when we had a UI.
+          return;
         }
         const souls = soulLoader.getAllSouls();
         let msg = "Usage: /soul <soul-name>\n\nAvailable souls:\n";

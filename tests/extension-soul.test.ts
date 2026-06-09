@@ -554,4 +554,37 @@ describe("extensions/soul.ts — extension integration", () => {
       // assert.ok(ctx.notifyCalls[0].msg.includes("No soul"));
     });
   });
+
+describe("/soul interactive picker — status selection", () => {
+  it("shows status notification without falling through to usage error", async () => {
+    mockPi = makeMockPi();
+    mockCalls.emittedEvents.length = 0;
+    mock.method(soul.SoulSpecLoader.prototype, "getAllSouls", () => []);
+    factoryResult = soul.default(mockPi.pi as any);
+
+    const handler = mockPi.commands["soul"].handler;
+    const notifyCalls: Array<{ msg: string; type: string }> = [];
+    const ctx = {
+      hasUI: true,
+      ui: {
+        notify: (msg: string, type: string = "info") => {
+          notifyCalls.push({ msg, type });
+        },
+        setStatus: () => {},
+        select: async (_title: string, _options: string[]) =>
+          "📋 status — Show active soul info",
+      },
+      notifyCalls,
+      sessionManager: { getEntries: () => [] },
+    };
+    await handler("", ctx);
+
+    // Should have shown exactly one notification (the status message)
+    assert.equal(notifyCalls.length, 1,
+      "expected exactly one notification (status message)");
+    // Must NOT contain the usage error message that was the bug
+    assert.ok(!notifyCalls.some((n) => n.msg.includes("Usage:")),
+      "must not fall through to usage error");
+  });
+});
 });
