@@ -17,17 +17,16 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { join } from "path";
-import { existsSync, mkdirSync, readdirSync, statSync, readFileSync, writeFileSync, unlinkSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from "fs";
 import { homedir } from "os";
 import { debugLog } from "../shared/debug";
-import { section, ok, fail, warn, info } from "../shared/format";
+import { section, ok, warn, info } from "../shared/format";
 import { readSettings, writeSettings } from "../shared/config-io";
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const EXTENSION_VERSION = "1.3.5";
 const WORKSPACE_DIR = join(homedir(), ".pi", "agent", "workspaces");
 const WORKSPACE_EXT = ".ws.json";
 
@@ -35,22 +34,13 @@ const WORKSPACE_EXT = ".ws.json";
 // Types
 // ============================================================================
 
-interface WorkspaceConfig {
-  defaultProvider?: string;
-  defaultModel?: string;
-  theme?: string;
-  defaultThinkingLevel?: string;
-  hideThinkingBlock?: boolean;
-  [key: string]: unknown;
-}
-
 interface WorkspaceState {
   name: string;
   savedAt: string;
   session: { sessionName?: string };
   skills: string[];
   extensions: string[];
-  configs: WorkspaceConfig;
+  configs: Record<string, unknown>;
   soul?: { name: string; level: number };
   cwd?: string;
   version: string;
@@ -64,28 +54,12 @@ function getWorkspacePath(name: string): string {
   return join(WORKSPACE_DIR, `${name}${WORKSPACE_EXT}`);
 }
 
-function listWorkspaces(): string[] {
-  try {
-    if (!existsSync(WORKSPACE_DIR)) return [];
-    return readdirSync(WORKSPACE_DIR)
-      .filter(f => f.endsWith(WORKSPACE_EXT))
-      .map(f => f.slice(0, -WORKSPACE_EXT.length))
-      .sort();
-  } catch (err) {
-    debugLog("workspace", "failed to list workspaces", err);
-    return [];
-  }
-}
-
 function loadWorkspace(name: string): WorkspaceState | null {
   try {
     const path = getWorkspacePath(name);
     if (!existsSync(path)) return null;
     return JSON.parse(readFileSync(path, "utf-8"));
-  } catch (err) {
-    debugLog("workspace", `failed to load workspace ${name}`, err);
-    return null;
-  }
+  } catch { return null; }
 }
 
 function saveWorkspaceState(name: string, state: WorkspaceState): boolean {
@@ -93,81 +67,69 @@ function saveWorkspaceState(name: string, state: WorkspaceState): boolean {
     if (!existsSync(WORKSPACE_DIR)) mkdirSync(WORKSPACE_DIR, { recursive: true });
     writeFileSync(getWorkspacePath(name), JSON.stringify(state, null, 2), "utf-8");
     return true;
-  } catch (err) {
-    debugLog("workspace", `failed to save workspace ${name}`, err);
-    return false;
-  }
-}
-
-function deleteWorkspace(name: string): boolean {
-  try {
-    const path = getWorkspacePath(name);
-    if (!existsSync(path)) return false;
-    unlinkSync(path);
-    return true;
-  } catch (err) {
-    debugLog("workspace", `failed to delete workspace ${name}`, err);
-    return false;
-  }
-}
-
-function getCurrentSessionName(): string | undefined {
-  try {
-    const sessionNameFile = join(homedir(), ".pi", "agent", "session-name");
-    if (existsSync(sessionNameFile)) {
-      return readFileSync(sessionNameFile, "utf-8").trim() || undefined;
-    }
-  } catch (err) {
-    debugLog("workspace", "failed to read session name", err);
-  }
-  return undefined;
-}
-
-function getCurrentSkills(): string[] {
-  try {
-    const skillsDir = join(homedir(), ".pi", "agent", "skills");
-    if (!existsSync(skillsDir)) return [];
-    const skills: string[] = [];
-    for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
-      if (entry.isDirectory() && existsSync(join(skillsDir, entry.name, "SKILL.md"))) {
-        skills.push(entry.name);
-      }
-    }
-    return skills;
-  } catch (err) {
-    debugLog("workspace", "failed to list skills", err);
-    return [];
-  }
+  } catch { return false; }
 }
 
 function getCurrentExtensions(): string[] {
   const extensions: string[] = [];
   const seen = new Set<string>();
 
-  // Check extensions from git packages
+  // Check ~/.pi/agent/extensions (local extensions)
+  const localExtDir = join(homedir(), ".pi", "agent", "extensions");
   try {
-    const gitBase = join(homedir(), ".pi", "agent", "git");
+    if (existsSync(localExtDir)) {
+      for (const entry of readdirSync(localExtDir)) {
+        if (entry.endsWith(".js") || entry.endsWith(".mjs")) {
+          const extName = entry.replace(/\.(js|mjs)$/, "");
+          if (!seen.has(extName)) {
+            extensions.push(extName);
+            seen.add(extName);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    debugLog("workspace", "failed to scan local extensions", err);
+  }
+
+  // Check git bundles for extensions/ directory
+  const gitBase = join(homedir(), ".pi", "agent", "git");
+  try {
     if (existsSync(gitBase)) {
       for (const gitDir of readdirSync(gitBase)) {
-        const pkgPath = join(gitBase, gitDir, "individual-packages");
-        if (!existsSync(pkgPath)) continue;
+        const extPath = join(gitBase, gitDir, "extensions");
+        if (!existsSync(extPath)) continue;
 
-        for (const pkgDir of readdirSync(pkgPath)) {
-          if (pkgDir.startsWith("pi-") && !seen.has(pkgDir)) {
-            const extFile = join(pkgPath, pkgDir, `${pkgDir.replace(/^pi-/, "")}.ts`);
-            if (existsSync(extFile)) {
-              extensions.push(pkgDir);
-              seen.add(pkgDir);
+        for (const entry of readdirSync(extPath)) {
+          if (entry.endsWith(".ts") || entry.endsWith(".js")) {
+            const extName = entry.replace(/\.(ts|js)$/, "");
+            if (!seen.has(extName)) {
+              extensions.push(extName);
+              seen.add(extName);
             }
           }
         }
       }
     }
   } catch (err) {
-    debugLog("workspace", "failed to list extensions", err);
+    debugLog("workspace", "failed to scan git extensions", err);
   }
 
   return extensions;
+}
+
+function getCurrentSkills(): string[] {
+  const skills: string[] = [];
+  try {
+    const skillsDir = join(homedir(), ".pi", "agent", "skills");
+    if (!existsSync(skillsDir)) return [];
+    for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
+      if (entry.isDirectory() && existsSync(join(skillsDir, entry.name, "SKILL.md"))) {
+        skills.push(entry.name);
+      }
+    }
+  } catch { console.error("Failed to list skills"); }
+  return skills;
 }
 
 function getCurrentSoul(): { name: string; level: number } | null {
@@ -177,26 +139,11 @@ function getCurrentSoul(): { name: string; level: number } | null {
       const config = JSON.parse(readFileSync(soulConfigPath, "utf-8"));
       if (config.activeSoul) return { name: config.activeSoul.name, level: config.activeSoul.level || 2 };
     }
-  } catch (err) {
-    debugLog("workspace", "failed to read soul config", err);
-  }
+  } catch {}
   return null;
 }
 
-function getCurrentCwd(): string {
-  try { return process.cwd(); } catch { return "."; }
-}
-
-// ============================================================================
-// Branding
-// ============================================================================
-
-const BRANDING = [
-  `  ⚡ Pi Workspace Manager v${EXTENSION_VERSION}`,
-  `  Written by VTSTech`,
-  `  GitHub: https://github.com/VTSTech`,
-  `  Website: www.vts-tech.org`,
-].join("\n");
+const BRANDING = `⚡ Pi Workspace Manager v1.3.5 - VTSTech`;
 
 // ============================================================================
 // Extension
@@ -204,29 +151,22 @@ const BRANDING = [
 
 export default function (pi: ExtensionAPI) {
   pi.registerCommand("workspace", {
-    description: "Save, load, and manage workspaces (session state)",
+    description: "Save, load, and manage workspaces",
     handler: async (args, ctx) => {
-      const parts = args?.split(/\s+/) || [];
-      const sub = parts[0]?.toLowerCase() || "";
-      const name = parts.slice(1).join(" ").trim();
+      const [sub, workspaceName] = (args || "").trim().split(/\s+/, 2);
 
       switch (sub) {
-        case "":
-        case "help":
-          ctx.ui.notify("Commands: save, load, delete, list, current", "info");
-          return;
-
         case "save":
-          if (!name) return ctx.ui.notify("Usage: /workspace save <name>", "error");
-          return handleSave(ctx, name);
+          if (!workspaceName) return ctx.ui.notify("Usage: /workspace save <name>", "error");
+          return handleSave(ctx, workspaceName);
 
         case "load":
-          if (!name) return ctx.ui.notify("Usage: /workspace load <name>", "error");
-          return handleLoad(ctx, name);
+          if (!workspaceName) return ctx.ui.notify("Usage: /workspace load <name>", "error");
+          return handleLoad(ctx, workspaceName);
 
         case "delete":
-          if (!name) return ctx.ui.notify("Usage: /workspace delete <name>", "error");
-          return handleDelete(ctx, name);
+          if (!workspaceName) return ctx.ui.notify("Usage: /workspace delete <name>", "error");
+          return handleDelete(ctx, workspaceName);
 
         case "list":
           return handleList(ctx);
@@ -235,7 +175,7 @@ export default function (pi: ExtensionAPI) {
           return handleCurrent(ctx);
 
         default:
-          ctx.ui.notify(`Unknown: ${sub}`, "error");
+          ctx.ui.notify("Workspace commands: save, load, delete, list, current", "info");
       }
     },
   });
@@ -243,83 +183,64 @@ export default function (pi: ExtensionAPI) {
   async function handleSave(ctx: any, name: string) {
     const state: WorkspaceState = {
       name, savedAt: new Date().toISOString(),
-      session: { sessionName: getCurrentSessionName() },
+      session: { sessionName: undefined },
       skills: getCurrentSkills(),
       extensions: getCurrentExtensions(),
       configs: readSettings(),
       soul: getCurrentSoul(),
-      cwd: getCurrentCwd(),
+      cwd: process.cwd(),
       version: "1.0.0",
     };
 
-    if (!saveWorkspaceState(name, state)) {
-      return ctx.ui.notify(`Failed to save`, "error");
+    if (saveWorkspaceState(name, state)) {
+      ctx.ui.notify(`Saved workspace "${name}"`, "success");
     }
-
-    pi.sendMessage({
-      customType: "workspace-saved",
-      content: [BRANDING, section("SAVED"), ok(`Name: ${name}`), info(`Extensions: ${state.extensions.length}`), info(`Skills: ${state.skills.length}`)].join("\n"),
-      display: { type: "content", content: "" }
-    });
-    ctx.ui.notify(`Saved "${name}"`, "success");
   }
 
   async function handleLoad(ctx: any, name: string) {
     const workspace = loadWorkspace(name);
-    if (!workspace) return ctx.ui.notify(`Not found: ${name}`, "error");
+    if (!workspace) return ctx.ui.notify(`Workspace "${name}" not found`, "error");
 
     writeSettings(workspace.configs);
-
-    if (workspace.session.sessionName) {
-      writeFileSync(join(homedir(), ".pi", "agent", "session-name"), workspace.session.sessionName, "utf-8");
-    }
-
-    if (workspace.soul) {
-      const existing = existsSync(join(homedir(), ".pi", "agent", "soul-config.json"))
-        ? JSON.parse(readFileSync(join(homedir(), ".pi", "agent", "soul-config.json"), "utf-8"))
-        : { persistence: true, autoLoad: true };
-      existing.activeSoul = { name: workspace.soul.name, level: workspace.soul.level, updatedAt: Date.now() };
-      writeFileSync(join(homedir(), ".pi", "agent", "soul-config.json"), JSON.stringify(existing, null, 2), "utf-8");
-    }
-
-    pi.sendMessage({
-      customType: "workspace-loaded",
-      content: [BRANDING, section("LOADED"), ok(`Name: ${workspace.name}`)].join("\n"),
-      display: { type: "content", content: "" }
-    });
-    ctx.ui.notify(`Loaded "${name}"`, "success");
+    ctx.ui.notify(`Loaded workspace "${name}"`, "success");
   }
 
   async function handleList(ctx: any) {
-    const names = listWorkspaces();
-    const lines = [BRANDING, section("WORKSPACES")];
-    if (names.length === 0) lines.push(info("None saved"));
-    else for (const n of names) {
-      const ws = loadWorkspace(n);
-      if (ws) lines.push(ok(`  ${n} (${ws.skills.length} skills, ${ws.extensions.length} ext)`));
-    }
-    pi.sendMessage({ customType: "workspace-list", content: lines.join("\n"), display: { type: "content", content: "" } });
+    const names: string[] = [];
+    try {
+      if (existsSync(WORKSPACE_DIR)) {
+        for (const f of readdirSync(WORKSPACE_DIR)) {
+          if (f.endsWith(WORKSPACE_EXT)) names.push(f.slice(0, -WORKSPACE_EXT.length));
+        }
+      }
+    } catch {}
+
+    if (names.length === 0) ctx.ui.notify("No workspaces saved", "info");
+    else ctx.ui.notify(`Workspaces: ${names.join(", ")}`, "info");
   }
 
   async function handleDelete(ctx: any, name: string) {
-    if (!loadWorkspace(name)) return ctx.ui.notify(`Not found: ${name}`, "error");
-    if (deleteWorkspace(name)) ctx.ui.notify(`Deleted "${name}"`, "success");
-    else ctx.ui.notify(`Failed to delete`, "error");
+    const path = getWorkspacePath(name);
+    if (existsSync(path)) {
+      unlinkSync(path);
+      ctx.ui.notify(`Deleted workspace "${name}"`, "success");
+    } else {
+      ctx.ui.notify(`Workspace "${name}" not found`, "error");
+    }
   }
 
   async function handleCurrent(ctx: any) {
-    const skills = getCurrentSkills();
     const exts = getCurrentExtensions();
-    const settings = readSettings();
+    const skills = getCurrentSkills();
 
-    const lines = [
-      BRANDING, section("CURRENT STATE"),
-      info(`Session: ${getCurrentSessionName() || "(none)"}`),
-      info(`Skills: ${skills.length}`), info(`Extensions: ${exts.length}`),
-      section("SETTINGS"),
-      info(`Provider: ${settings.defaultProvider || "(none)"}`),
-      info(`Model: ${settings.defaultModel || "(none)"}`),
-    ];
-    pi.sendMessage({ customType: "workspace-current", content: lines.join("\n"), display: { type: "content", content: "" } });
+    let output = `${BRANDING}\n\n`;
+    output += `Extensions: ${exts.length}\n`;
+    output += `Skills: ${skills.length}\n`;
+
+    pi.sendMessage({
+      customType: "workspace-current",
+      content: output,
+      display: { type: "content", content: output },
+    });
   }
 }
