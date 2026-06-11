@@ -30,20 +30,38 @@ import { readSettings, writeSettings } from "../shared/config-io";
 const WORKSPACE_DIR = join(homedir(), ".pi", "agent", "workspaces");
 const WORKSPACE_EXT = ".ws.json";
 
+// Maximum file size to archive (100KB)
+const MAX_FILE_SIZE = 100 * 1024;
+// File extensions to skip when archiving
+const SKIP_EXTENSIONS = [".log", ".tmp", ".cache", ".lock", ".swp", ".swo"];
+
 // ============================================================================
 // Types
 // ============================================================================
+
+interface WorkspaceExtension {
+  name: string;
+  source: "local" | "git" | "package";
+  package?: string;
+}
 
 interface WorkspaceState {
   name: string;
   savedAt: string;
   session: { sessionName?: string };
   skills: string[];
-  extensions: string[];
+  extensions: WorkspaceExtension[];
   configs: Record<string, unknown>;
   soul?: { name: string; level: number };
   cwd?: string;
+  repo?: string;
+  repos?: { path: string; remote: string | null }[];
+  content?: WorkspaceContent;
   version: string;
+}
+
+interface WorkspaceContent {
+  files: { path: string; content: string }[];
 }
 
 // ============================================================================
@@ -70,8 +88,8 @@ function saveWorkspaceState(name: string, state: WorkspaceState): boolean {
   } catch { return false; }
 }
 
-function getCurrentExtensions(): string[] {
-  const extensions: string[] = [];
+function getCurrentExtensions(): WorkspaceExtension[] {
+  const extensions: WorkspaceExtension[] = [];
   const seen = new Set<string>();
 
   // Check ~/.pi/agent/extensions (local extensions)
@@ -82,7 +100,7 @@ function getCurrentExtensions(): string[] {
         if (entry.endsWith(".js") || entry.endsWith(".mjs")) {
           const extName = entry.replace(/\.(js|mjs)$/, "");
           if (!seen.has(extName)) {
-            extensions.push(extName);
+            extensions.push({ name: extName, source: "local" });
             seen.add(extName);
           }
         }
@@ -114,12 +132,18 @@ function getCurrentExtensions(): string[] {
             const extPath = join(userDir, repoEntry.name, "extensions");
             if (!existsSync(extPath)) continue;
 
+            const repoUrl = `${hostEntry.name}/${userEntry.name}/${repoEntry.name}`;
+
             const extFiles = readdirSync(extPath);
             for (const entry of extFiles) {
               if (entry.endsWith(".ts") || entry.endsWith(".js")) {
                 const extName = entry.replace(/\.(ts|js)$/, "");
                 if (!seen.has(extName)) {
-                  extensions.push(extName);
+                  extensions.push({
+                    name: extName,
+                    source: "git",
+                    package: repoUrl
+                  });
                   seen.add(extName);
                 }
               }
@@ -130,6 +154,40 @@ function getCurrentExtensions(): string[] {
     }
   } catch (err) {
     debugLog("workspace", "failed to scan git extensions", err);
+  }
+
+  // Check git packages for extensions in package.json
+  try {
+    const packages = readSettings().packages || [];
+    for (const pkg of packages) {
+      // Handle git:github.com/VTSTech/pi-coding-agent format
+      const gitMatch = pkg.match(/^git:(.+)$/);
+      if (gitMatch) {
+        const repoPath = gitMatch[1]; // e.g., github.com/VTSTech/pi-coding-agent
+        const [hostUserRepo] = repoPath.split("/"); // Could be more complex
+
+        // Try to get extensions from the git repo
+        const gitExtPath = join(homedir(), ".pi", "agent", "git", repoPath, "extensions");
+        if (existsSync(gitExtPath)) {
+          const extFiles = readdirSync(gitExtPath);
+          for (const entry of extFiles) {
+            if (entry.endsWith(".ts") || entry.endsWith(".js")) {
+              const extName = entry.replace(/\.(ts|js)$/, "");
+              if (!seen.has(extName)) {
+                extensions.push({
+                  name: extName,
+                  source: "package",
+                  package: repoPath
+                });
+                seen.add(extName);
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    debugLog("workspace", "failed to scan package extensions", err);
   }
 
   return extensions;
@@ -161,6 +219,112 @@ function getCurrentSoul(): { name: string; level: number } | null {
 }
 
 const BRANDING = `⚡ Pi Workspace Manager v1.3.5 - VTSTech`;
+
+// ============================================================================
+// Git & Content Helpers
+// ============================================================================
+
+/**
+ * Check if a directory is a git repository
+ */
+function isGitRepo(dir: string): boolean {
+  try {
+    return existsSync(join(dir, ".git"));
+  } catch { return false; }
+}
+
+/**
+ * Get the git remote URL for a directory, if it's a repo
+ */
+function getGitRemoteUrl(dir: string): string | null {
+  try {
+    const result = require("child_process").execSync(
+      `git -C "${dir}" remote get-url origin 2>/dev/null`,
+      { encoding: "utf-8" }
+    ).trim();
+    return result || null;
+  } catch { return null; }
+}
+
+/**
+ * Find git repositories within a directory (up to 2 levels deep)
+ * Skip !dirs (reference folders) but still scan .dirs for repos
+ */
+function findGitRepos(baseDir: string): { path: string; remote: string | null }[] {
+  const repos: { path: string; remote: string | null }[] = [];
+
+  function scanDir(dir: string, depth: number) {
+    if (depth > 2) return;
+
+    try {
+      const entries = readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        // Skip .git directories and !dirs (reference folders)
+        if (entry.name === ".git" || entry.name.startsWith("!")) continue;
+        if (!entry.isDirectory()) continue;
+
+        const fullPath = join(dir, entry.name);
+        if (isGitRepo(fullPath)) {
+          repos.push({ path: fullPath, remote: getGitRemoteUrl(fullPath) });
+        }
+        scanDir(fullPath, depth + 1);
+      }
+    } catch (err) {
+      debugLog("workspace", "failed to scan dir for repos", err);
+    }
+  }
+
+  scanDir(baseDir, 0);
+  return repos;
+}
+
+/**
+ * Get workspace directory, skipping !dirs (reference folders)
+ * .dirs ARE scanned for content as skills/extensions may live there
+ */
+function getWorkspaceContent(dir: string): WorkspaceContent {
+  const files: { path: string; content: string }[] = [];
+
+  function scanForFiles(currentDir: string, basePath: string) {
+    try {
+      const entries = readdirSync(currentDir, { withFileTypes: true });
+      for (const entry of entries) {
+        // Skip .git directories and !dirs (reference folders)
+        if (entry.name === ".git" || entry.name.startsWith("!")) continue;
+
+        const fullPath = join(currentDir, entry.name);
+        const relativePath = join(basePath, entry.name);
+
+        if (entry.isDirectory()) {
+          // Don't skip .dirs - they may contain skills/extensions
+          scanForFiles(fullPath, relativePath);
+        } else if (entry.isFile()) {
+          const ext = "." + entry.name.split(".").pop();
+          // Skip certain extensions and large files
+          if (SKIP_EXTENSIONS.includes(ext) || entry.name.endsWith(".png") || entry.name.endsWith(".jpg") || entry.name.endsWith(".gif")) continue;
+
+          try {
+            const stats = require("fs").statSync(fullPath);
+            if (stats.size > MAX_FILE_SIZE) continue;
+
+            const content = readFileSync(fullPath, "utf-8");
+            // Skip binary content (but allow .ts/.js even if they have nulls)
+            if (content.includes("\x00") && ext !== ".ts" && ext !== ".js") continue;
+
+            files.push({ path: relativePath, content });
+          } catch (err) {
+            debugLog("workspace", `failed to read file ${fullPath}`, err);
+          }
+        }
+      }
+    } catch (err) {
+      debugLog("workspace", "failed to scan workspace content", err);
+    }
+  }
+
+  scanForFiles(dir, "");
+  return { files };
+}
 
 // ============================================================================
 // Extension
@@ -198,6 +362,10 @@ export default function (pi: ExtensionAPI) {
   });
 
   async function handleSave(ctx: any, name: string) {
+    const cwd = process.cwd();
+    const repos = findGitRepos(cwd);
+    const isCurrentDirRepo = isGitRepo(cwd);
+
     const state: WorkspaceState = {
       name, savedAt: new Date().toISOString(),
       session: { sessionName: undefined },
@@ -205,9 +373,24 @@ export default function (pi: ExtensionAPI) {
       extensions: getCurrentExtensions(),
       configs: readSettings(),
       soul: getCurrentSoul(),
-      cwd: process.cwd(),
+      cwd,
       version: "1.0.0",
     };
+
+    // If current directory is a git repo, save its URL
+    if (isCurrentDirRepo) {
+      state.repo = getGitRemoteUrl(cwd);
+    }
+
+    // If git repos are found within the workspace, save their info
+    if (repos.length > 0) {
+      state.repos = repos;
+    }
+
+    // Only archive content if there are no repos (git repos can be cloned)
+    if (!isCurrentDirRepo && repos.length === 0) {
+      state.content = getWorkspaceContent(cwd);
+    }
 
     if (saveWorkspaceState(name, state)) {
       ctx.ui.notify(`Saved workspace "${name}"`, "success");
@@ -249,10 +432,27 @@ export default function (pi: ExtensionAPI) {
   async function handleCurrent(ctx: any) {
     const exts = getCurrentExtensions();
     const skills = getCurrentSkills();
+    const cwd = process.cwd();
+    const repos = findGitRepos(cwd);
+    const isCurrentRepo = isGitRepo(cwd);
 
     let output = `${BRANDING}\n\n`;
     output += `Extensions: ${exts.length}\n`;
-    output += `Skills: ${skills.length}\n`;
+    for (const ext of exts) {
+      const sourceInfo = ext.source === "local" ? "(local)" : ext.package ? `(${ext.package})` : "";
+      output += `  - ${ext.name} ${sourceInfo}\n`;
+    }
+    output += `\nSkills: ${skills.length}\n`;
+    for (const skill of skills) {
+      output += `  - ${skill}\n`;
+    }
+    output += `\nRepos found: ${repos.length}\n`;
+    for (const repo of repos) {
+      output += `  - ${repo.path} ${repo.remote ? `(${repo.remote})` : ""}\n`;
+    }
+    if (isCurrentRepo) {
+      output += `  - (current dir) ${getGitRemoteUrl(cwd)}\n`;
+    }
 
     pi.sendMessage({
       customType: "workspace-current",
