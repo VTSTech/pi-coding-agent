@@ -797,7 +797,8 @@ pi-coding-agent/
 │   ├── react-fallback.ts    # ReAct fallback for non-native tool models
 │   ├── security.ts          # Command/path/SSRF protection
 │   ├── soul.ts              # SoulSpec persona management
-│   └── status.ts            # System resource monitor & status bar
+│   ├── status.ts            # System resource monitor & status bar
+│   └── workspace.ts         # Workspace management & state persistence
 ├── shared/
 │   ├── debug.ts             # Conditional debug logging
 │   ├── format.ts            # Shared formatting utilities
@@ -818,7 +819,8 @@ pi-coding-agent/
 │   ├── pi-react-fallback/  # ReAct fallback
 │   ├── pi-security/        # Security extensions
 │   ├── pi-soul/            # SoulSpec personas
-│   └── pi-status/          # System monitoring
+│   ├── pi-status/          # System monitoring
+│   └── pi-workspace/       # Workspace management
 ├── dist/                    # Built npm packages (published to npmjs.com)
 ├── scripts/
 │   ├── build-tgz.sh              # Build all individual .tgz packages
