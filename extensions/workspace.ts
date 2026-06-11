@@ -53,10 +53,10 @@ function writeJsonConfig(filePath, data) {
     fs.writeFileSync(filePath, content, "utf-8");
   }
 }
-var SETTINGS_PATH = path.join2(PI_AGENT_DIR, "settings.json");
-var SECURITY_PATH = path.join2(PI_AGENT_DIR, "security.json");
-var REACT_MODE_PATH = path.join2(PI_AGENT_DIR, "react-mode.json");
-var MODEL_TEST_CONFIG_PATH = path.join2(PI_AGENT_DIR, "model-test-config.json");
+var SETTINGS_PATH = path.join(PI_AGENT_DIR, "settings.json");
+var SECURITY_PATH = path.join(PI_AGENT_DIR, "security.json");
+var REACT_MODE_PATH = path.join(PI_AGENT_DIR, "react-mode.json");
+var MODEL_TEST_CONFIG_PATH = path.join(PI_AGENT_DIR, "model-test-config.json");
 function readSettings() {
   return readJsonConfig(SETTINGS_PATH);
 }
