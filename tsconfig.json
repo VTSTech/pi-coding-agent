@@ -14,6 +14,6 @@
     "rootDir": ".",
     "types": ["node"]
   },
-  "include": ["extensions/**/*.ts", "shared/**/*.ts"],
+  "include": ["extensions/**/*.ts", "shared/**/*.ts", "tests/**/*.ts"],
   "exclude": ["node_modules", "npm-packages", "dist"]
 }

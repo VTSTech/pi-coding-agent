@@ -237,12 +237,17 @@ build_extension() {
   info "Bundling extensions/${ext_name}.ts (shared inlined, Pi core external)"
 
   # ── Bundle ───────────────────────────────────────────────────────────
+  # Externals (provided by Pi at runtime):
+  #   @mariozechner/*   — legacy Pi core packages
+  #   @earendil-works/* — current Pi core packages (pi-coding-agent, pi-ai, pi-tui, pi-agent-core)
+  #   typebox           — schema definitions for tool parameters
   $ESBUILD "$src_file" \
     --bundle \
     --format=esm \
     --target=es2020 \
     --platform=node \
     --external:@mariozechner/* \
+    --external:@earendil-works/* \
     --external:typebox \
     --external:path \
     --external:fs \

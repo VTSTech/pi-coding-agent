@@ -25,7 +25,7 @@
     "typecheck": "tsc --noEmit --project tsconfig.quality.json",
     "typecheck:all": "tsc --noEmit",
     "lint": "npm run typecheck",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "tsx --experimental-test-module-mocks --test tests/*.test.ts",
     "build": "npm run build:ltm",
     "build:ltm": "cd individual-packages/pi-long-term-memory && npx esbuild ltm.ts --bundle --outfile=../../dist/extensions/ltm.js --format=cjs --platform=node",
     "publish": "npm run build && npm publish",
@@ -40,9 +40,12 @@
     ]
   },
   "devDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
     "@types/node": "^25.6.2",
     "esbuild": "^0.28.0",
     "tsx": "^4.22.3",
+    "typebox": "*",
     "typescript": "^6.0.3"
   }
 }
