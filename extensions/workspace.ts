@@ -30,7 +30,7 @@ function info(msg) {
 import * as fs from "fs";
 import * as path from "path";
 import os from "os";
-var PI_AGENT_DIR = path.join2(os.homedir(), ".pi", "agent");
+var PI_AGENT_DIR = path.join(os.homedir(), ".pi", "agent");
 function readJsonConfig(filePath, defaultValue = {}) {
   try {
     if (fs.existsSync(filePath)) {
