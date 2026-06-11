@@ -93,19 +93,36 @@ function getCurrentExtensions(): string[] {
   }
 
   // Check git bundles for extensions/ directory
+  // Git structure: ~/.pi/agent/git/<host>/<user>/<repo>/extensions/
   const gitBase = join(homedir(), ".pi", "agent", "git");
   try {
     if (existsSync(gitBase)) {
-      for (const gitDir of readdirSync(gitBase)) {
-        const extPath = join(gitBase, gitDir, "extensions");
-        if (!existsSync(extPath)) continue;
+      // Walk the full tree structure
+      const hostEntries = readdirSync(gitBase, { withFileTypes: true });
+      for (const hostEntry of hostEntries) {
+        if (!hostEntry.isDirectory()) continue;
+        const hostDir = join(gitBase, hostEntry.name);
 
-        for (const entry of readdirSync(extPath)) {
-          if (entry.endsWith(".ts") || entry.endsWith(".js")) {
-            const extName = entry.replace(/\.(ts|js)$/, "");
-            if (!seen.has(extName)) {
-              extensions.push(extName);
-              seen.add(extName);
+        const userEntries = readdirSync(hostDir, { withFileTypes: true });
+        for (const userEntry of userEntries) {
+          if (!userEntry.isDirectory()) continue;
+          const userDir = join(hostDir, userEntry.name);
+
+          const repoEntries = readdirSync(userDir, { withFileTypes: true });
+          for (const repoEntry of repoEntries) {
+            if (!repoEntry.isDirectory()) continue;
+            const extPath = join(userDir, repoEntry.name, "extensions");
+            if (!existsSync(extPath)) continue;
+
+            const extFiles = readdirSync(extPath);
+            for (const entry of extFiles) {
+              if (entry.endsWith(".ts") || entry.endsWith(".js")) {
+                const extName = entry.replace(/\.(ts|js)$/, "");
+                if (!seen.has(extName)) {
+                  extensions.push(extName);
+                  seen.add(extName);
+                }
+              }
             }
           }
         }
