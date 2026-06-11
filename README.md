@@ -86,6 +86,7 @@ pi update
 | `@vtstech/pi-react-fallback` | ReAct fallback for non-native tool models |
 | `@vtstech/pi-long-term-memory` | Persistent memory across sessions |
 | `@vtstech/pi-hex-edit` | Hex stream-based edit replacement for reliable file editing |
+| `@vtstech/pi-workspace` | Workspace management and state persistence |
 
 ### Manual Install
 
@@ -555,6 +556,29 @@ When the built-in `edit` tool fails, hex-edit **automatically intercepts and ret
 - Appends models, never removes existing entries
 - Reorders providers so openrouter sits above ollama
 - Registered as both `/openrouter-sync` slash command (alias `/or-sync`) and `openrouter_sync` tool
+
+### 📁 Workspace (`workspace.ts`)
+
+**Manage, archive, and restore workspaces with session state.**
+
+```bash
+/workspace              — Show workspace management help
+/workspace save <name>  — Save current workspace state
+/workspace load <name>  — Load a saved workspace
+/workspace list         — List all saved workspaces
+/workspace delete <name> — Delete a saved workspace
+/workspace current      — Show current workspace state
+```
+
+**Features:**
+- Saves session name, skills, extensions, configs, and soul state
+- Automatically detects git repositories in the workspace
+- Archives content files when no git repos are present
+- Tracks extension sources (local, git, or package-based)
+- Skips large/binary files and `!dirs` reference folders
+- Workspaces stored in `~/.pi/agent/workspaces/` as `.ws.json` files
+
+---
 
 ### 📊 System Monitor (`status.ts`)
 
