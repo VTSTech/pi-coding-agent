@@ -254,7 +254,7 @@ var BRANDING = [
   `  Written by VTSTech`,
   `  GitHub: https://github.com/VTSTech`,
   `  Website: www.vts-tech.org`
-].join2("\n");
+].join("\n");
 function workspace_default(pi) {
   debugLog("workspace", "Workspace extension loading...");
   pi.registerCommand("workspace", {
