@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.3.9] - 06-11-2026 2:46:00 PM
+
+### Added
+
+- **workspace: Workspace management extension** (`extensions/workspace.ts`)
+  - New `/workspace` command for saving, loading, and managing workspace states
+  - Commands: `save`, `load`, `list`, `delete`, `current` to manage workspaces
+  - Workspaces stored in `~/.pi/agent/workspaces/` as `.ws.json` files
+
+- **workspace: Git repository detection** (`extensions/workspace.ts`)
+  - Automatically detects git repositories in current directory (up to 2 levels deep)
+  - Skips `!dirs` (reference folders) while still scanning subdirectories for repos
+  - Captures remote URLs for tracked repositories
+
+- **workspace: Enhanced extension tracking** (`extensions/workspace.ts`)
+  - Tracks extension source: `local` (from `~/.pi/agent/extensions`), `git` (from cloned repos), or `package` (from git packages)
+  - Saves package path information for git-based extensions
+
+- **workspace: Content archiving** (`extensions/workspace.ts`)
+  - Archives workspace files when no git repos are present
+  - Skips large files (>100KB), binary files, and common temp/cache extensions
+  - Respects `!dirs` exclusion for reference folder content
+
+- **workspace: Soul and skills integration** (`extensions/workspace.ts`)
+  - Captures active soul name and level in workspace state
+  - Saves and restores skills list with workspaces
+
+- **gitignore: Added `.pi-lens/` directory** (`.gitignore`)
+  - Ignore lens storage directory for workspace extension
+
+
 ## [1.3.9] - 06-11-2026 9:00:52 AM
 
 ### Added
