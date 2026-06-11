@@ -30,7 +30,7 @@ function info(msg) {
 import * as fs from "fs";
 import * as path from "path";
 import os from "os";
-var PI_AGENT_DIR = path.join(os.homedir(), ".pi", "agent");
+var PI_AGENT_DIR = path.join2(os.homedir(), ".pi", "agent");
 function readJsonConfig(filePath, defaultValue = {}) {
   try {
     if (fs.existsSync(filePath)) {
@@ -53,10 +53,10 @@ function writeJsonConfig(filePath, data) {
     fs.writeFileSync(filePath, content, "utf-8");
   }
 }
-var SETTINGS_PATH = path.join(PI_AGENT_DIR, "settings.json");
-var SECURITY_PATH = path.join(PI_AGENT_DIR, "security.json");
-var REACT_MODE_PATH = path.join(PI_AGENT_DIR, "react-mode.json");
-var MODEL_TEST_CONFIG_PATH = path.join(PI_AGENT_DIR, "model-test-config.json");
+var SETTINGS_PATH = path.join2(PI_AGENT_DIR, "settings.json");
+var SECURITY_PATH = path.join2(PI_AGENT_DIR, "security.json");
+var REACT_MODE_PATH = path.join2(PI_AGENT_DIR, "react-mode.json");
+var MODEL_TEST_CONFIG_PATH = path.join2(PI_AGENT_DIR, "model-test-config.json");
 function readSettings() {
   return readJsonConfig(SETTINGS_PATH);
 }
@@ -254,7 +254,7 @@ var BRANDING = [
   `  Written by VTSTech`,
   `  GitHub: https://github.com/VTSTech`,
   `  Website: www.vts-tech.org`
-].join("\n");
+].join2("\n");
 function workspace_default(pi) {
   debugLog("workspace", "Workspace extension loading...");
   pi.registerCommand("workspace", {
@@ -263,7 +263,7 @@ function workspace_default(pi) {
     handler: async (args, ctx) => {
       const parts = args?.split(/\s+/) || [];
       const sub = parts[0]?.toLowerCase() || "";
-      const workspaceName = parts.slice(1).join(" ").trim();
+      const workspaceName = parts.slice(1).join2(" ").trim();
       if (sub === "--help" || sub === "-h") {
         ctx.ui.notify(
           "\u{1F4BE} Workspace Management Extension\n\n\u{1F4CB} Usage:\n  /workspace                    - Show this help\n  /workspace save <name>       - Save current workspace state\n  /workspace load <name>       - Load a saved workspace\n  /workspace delete <name>     - Delete a saved workspace\n  /workspace list              - List all saved workspaces\n  /workspace current           - Show current workspace state\n\n\u{1F527} Features:\n\u2022 Save session name and restore it later\n\u2022 Track active skills by name\n\u2022 Preserve configuration settings\n\u2022 Extension list verification on restore\n\u2022 Workspace backup and management\n\n\u{1F4A1} Tips:\n\u2022 Extensions are NOT archived, but their names are saved\n\u2022 Run /reload after restore to apply all changes\n\u2022 Workspaces stored in ~/.pi/agent/workspaces/\n\u2022 Use descriptive names like 'project-x-dev' or 'research'\n",
@@ -339,8 +339,8 @@ function workspace_default(pi) {
     lines.push(info(`Total workspaces: ${count}`));
     pi.sendMessage({
       customType: "workspace-saved",
-      content: lines.join("\n"),
-      display: { type: "content", content: lines.join("\n") }
+      content: lines.join2("\n"),
+      display: { type: "content", content: lines.join2("\n") }
     });
     ctx.ui.notify(`Workspace "${name}" saved`, "success");
   }
@@ -363,8 +363,8 @@ function workspace_default(pi) {
       lines2.push(info("These extensions will need to be installed before restoring."));
       pi.sendMessage({
         customType: "workspace-load-warning",
-        content: lines2.join("\n"),
-        display: { type: "content", content: lines2.join("\n") }
+        content: lines2.join2("\n"),
+        display: { type: "content", content: lines2.join2("\n") }
       });
     }
     const settings = workspace.configs;
@@ -396,14 +396,14 @@ function workspace_default(pi) {
     lines.push(ok(`Name: ${workspace.name}`));
     lines.push(info(`Saved at: ${workspace.savedAt}`));
     lines.push(info(`Session name: ${workspace.session.sessionName || "(none)"}`));
-    lines.push(info(`Skills: ${workspace.skills.join(", ") || "(none)"}`));
+    lines.push(info(`Skills: ${workspace.skills.join2(", ") || "(none)"}`));
     if (workspace.soul) {
       lines.push(info(`Soul: ${workspace.soul.name} (level ${workspace.soul.level})`));
     }
     if (missingExtensions.length > 0) {
       lines.push(warn(`Extensions: ${workspace.extensions.length} (${missingExtensions.length} missing)`));
     } else {
-      lines.push(info(`Extensions: ${workspace.extensions.join(", ") || "(none)"}`));
+      lines.push(info(`Extensions: ${workspace.extensions.join2(", ") || "(none)"}`));
     }
     if (workspace.cwd) {
       lines.push(info(`Working dir: ${workspace.cwd}`));
@@ -411,8 +411,8 @@ function workspace_default(pi) {
     lines.push(warn("Run /reload to apply changes in Pi"));
     pi.sendMessage({
       customType: "workspace-loaded",
-      content: lines.join("\n"),
-      display: { type: "content", content: lines.join("\n") }
+      content: lines.join2("\n"),
+      display: { type: "content", content: lines.join2("\n") }
     });
     ctx.ui.notify(`Workspace "${name}" loaded`, "success");
   }
@@ -441,8 +441,8 @@ function workspace_default(pi) {
     }
     pi.sendMessage({
       customType: "workspace-list",
-      content: lines.join("\n"),
-      display: { type: "content", content: lines.join("\n") }
+      content: lines.join2("\n"),
+      display: { type: "content", content: lines.join2("\n") }
     });
   }
   async function handleDelete(ctx, name) {
@@ -485,8 +485,8 @@ function workspace_default(pi) {
     lines.push(info(`Thinking level: ${currentSettings.defaultThinkingLevel || "(none)"}`));
     pi.sendMessage({
       customType: "workspace-current",
-      content: lines.join("\n"),
-      display: { type: "content", content: lines.join("\n") }
+      content: lines.join2("\n"),
+      display: { type: "content", content: lines.join2("\n") }
     });
   }
   pi.registerCompletion?.("workspace", {
