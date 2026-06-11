@@ -146,15 +146,70 @@ function getCurrentSkills() {
     return [];
   }
 }
-function getCurrentExtensions() {
-  try {
-    const extDir = join2(homedir(), ".pi", "agent", "extensions");
-    if (!existsSync2(extDir)) return [];
-    return readdirSync(extDir).filter((f) => f.endsWith(".js") || f.endsWith(".mjs")).map((f) => f.replace(/\.(mjs|js)$/, ""));
-  } catch (err) {
-    debugLog("workspace", "failed to list extensions", err);
-    return [];
+function getCurrentExtensions(): string[] {
+  const extensions: string[] = [];
+  const seen = new Set<string>();
+
+  // Check all extension locations from Pi docs
+  // 1. ~/.pi/agent/extensions/*.ts or ~/.pi/agent/extensions/*/index.ts
+  // 2. Project-local .pi/extensions/*.ts or .pi/extensions/*/index.ts
+  // 3. Git packages: ~/.pi/agent/git/**/individual-packages/pi-*/<name>.ts
+  const searchPaths = [
+    join(homedir(), ".pi", "agent", "extensions"),
+    join(homedir(), ".pi", "agent", "git"),
+  ];
+
+  for (const basePath of searchPaths) {
+    try {
+      if (!existsSync(basePath)) continue;
+
+      // Handle git packages specially - walk the tree
+      if (basePath.includes(".pi/agent/git")) {
+        const gitDirs = readdirSync(basePath);
+        for (const gitDir of gitDirs) {
+          const gitPath = join(basePath, gitDir, "individual-packages");
+          if (!existsSync(gitPath)) continue;
+
+          const pkgDirs = readdirSync(gitPath);
+          for (const pkgDir of pkgDirs) {
+            // Extract extension name from pi-<name>
+            if (pkgDir.startsWith("pi-") && !seen.has(pkgDir)) {
+              const extPath = join(gitPath, pkgDir, pkgDir.replace(/^pi-/, "") + ".ts");
+              if (existsSync(extPath)) {
+                extensions.push(pkgDir);
+                seen.add(pkgDir);
+              }
+            }
+          }
+        }
+      } else {
+        // Direct extensions directory - check for .ts or .js files
+        const entries = readdirSync(basePath);
+        for (const entry of entries) {
+          const entryPath = join(basePath, entry);
+          const stat = statSync(entryPath);
+
+          if (stat.isDirectory()) {
+            // Check for index.ts in subdirectory
+            const indexPath = join(entryPath, "index.ts");
+            if (existsSync(indexPath) && !seen.has(entry)) {
+              extensions.push(entry);
+              seen.add(entry);
+            }
+          } else if ((entry.endsWith(".ts") || entry.endsWith(".js")) && !seen.has(entry)) {
+            // Check for .ts or .js files
+            const extName = entry.replace(/\.(ts|js)$/, "");
+            extensions.push(extName);
+            seen.add(entry);
+          }
+        }
+      }
+    } catch (err) {
+      debugLog("workspace", `failed to check extensions dir ${basePath}`, err);
+    }
   }
+
+  return extensions;
 }
 function getCurrentSoul() {
   try {
