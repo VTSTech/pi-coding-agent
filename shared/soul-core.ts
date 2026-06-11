@@ -1,8 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { PiSoulConfig, ActiveSoulStore } from "../shared/soul-config";
-import { isSoulClearValue } from "../shared/soul-config";
-import type { SoulSpecLoader, SoulManifest } from "./soul";
-import { debugLog } from "../shared/debug";
+import type { PiSoulConfig, ActiveSoulStore } from "./soul-config";
+import { isSoulClearValue } from "./soul-config";
+import type { SoulSpecLoader, SoulManifest } from "../extensions/soul";
+import { debugLog } from "./debug";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Result types

@@ -5,7 +5,8 @@ All notable changes to the Pi Coding Agent Extensions (`@vtstech/pi-coding-agent
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.9] - 05-27-2026 12:10:33 PM
+
+## [1.3.9] - 06-11-2026 9:00:52 AM
 
 ### Added
 

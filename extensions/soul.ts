@@ -16,7 +16,7 @@ import {
   handleInteractiveSoulSelect,
   emitSoulActivated,
   emitSoulDeactivated,
-} from "./soul-core";
+} from "../shared/soul-core";
 
 // SoulSpec types ported to TypeScript
 export enum Environment {

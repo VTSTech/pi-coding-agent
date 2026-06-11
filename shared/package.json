@@ -15,7 +15,8 @@
     "./test-report": "./test-report.js",
     "./types": "./types.js",
     "./path-utils": "./path-utils.js",
-    "./soul-config": "./soul-config.js"
+    "./soul-config": "./soul-config.js",
+    "./soul-core": "./soul-core.js"
   },
   "keywords": ["pi-extensions"],
   "license": "MIT",
