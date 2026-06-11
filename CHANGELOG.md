@@ -10,22 +10,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **soul: Configurable persistence modes** (`shared/soul-config.ts`, `shared/soul-core.ts`)
+  - New `soul-config.json` config file (`~/.pi/agent/soul-config.json`) with `persistence` and `autoLoad` settings
+  - Three persistence modes: `global` (default, single active soul), `session` (per-directory soul), `none` (in-memory only)
+  - `autoLoad` controls whether persisted soul auto-applies on fresh Pi startup; explicit `/soul` and `--soul` always work regardless
+  - Session mode stores per-directory soul mappings in `.active-soul.json` under a `sessions[]` array keyed by `process.cwd()`
+  - Global mode uses top-level `soul` field (original behavior, fully backward-compatible)
+  - Project-level override via `.pi/soul-config.json` (shallow-merges over global config)
+
+- **soul: `--soul` and `--soul-level` CLI flags** (`shared/soul-core.ts`)
+  - `pi --soul <name>` starts Pi with a specific soul activated
+  - `pi --soul <name> --soul-level 3` sets disclosure level at launch
+  - `pi --soul off` clears the persisted soul
+  - Flags are processed before `autoLoad`, so `--soul` always wins
+
+- **soul: Enhanced `/soul` command** (`shared/soul-core.ts`)
+  - `/soul status` shows currently active soul name and level
+  - `/soul` (no args) opens an interactive picker to choose a soul and disclosure level (1-3) when UI supports `ctx.ui.select()`
+  - Non-interactive terminals fall back to the existing text list behavior
+
+- **soul: Lifecycle events for companion extensions** (`shared/soul-core.ts`)
+  - `soul:activated` event with payload: soul, displayName, level, manifest, persistence, autoLoad, source
+  - `soul:deactivated` event with payload: previousSoul, source, persistence, autoLoad
+  - Enables companion extensions (e.g. Telegram autoconnect) to react to soul changes without polling
+
+- **soul: Unit tests** (`tests/extension-soul.test.ts`)
+  - Full test suite using `node:test` with `--experimental-test-module-mocks`
+  - Covers: registration, resources_discover, session_start (reload/new/resume/fork), autoLoad semantics, `--soul` flag handling, `/soul` command, `soul:activated`/`soul:deactivated` events
+
+- **build: `@earendil-works/*` externals** (`scripts/build-tgz.sh`)
+  - Added `--external:@earendil-works/*` to esbuild bundle command alongside existing `@mariozechner/*`
+  - Prevents build failures when extension code imports from `@earendil-works/pi-coding-agent` or `@earendil-works/pi-ai`
+
+- **build: New shared exports** (`shared/package.json`)
+  - Added `./path-utils`, `./soul-config`, and `./soul-core` to the `@vtstech/pi-shared` exports map
+
+### Changed
+
+- **soul: Refactored persistence into shared module** (`extensions/soul.ts`)
+  - `saveActiveSoul`/`loadActiveSoul`/`clearActiveSoul` now delegate to `ActiveSoulStore` from `shared/soul-config.ts`
+  - CLI flag handling and interactive picker extracted to `shared/soul-core.ts`
+  - `expandHome` moved to `shared/path-utils.ts` (was duplicated in soul.ts)
+  - `session_start` handler now restores soul on reload/resume/fork regardless of `autoLoad` setting
+
+- **test: Updated test runner** (`package.json`)
+  - Test script now uses `tsx --experimental-test-module-mocks --test tests/*.test.ts` to support `mock.module()` in test files
+
+- **deps: Added type-checking devDependencies** (`package.json`)
+  - Added `@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent`, and `typebox` as devDependencies for CI type-checking
+
+- **soul: Added `@earendil-works/pi-ai` peer dependency** (`individual-packages/pi-soul/package.json`)
+  - Required for `StringEnum` import used in tool parameter schemas
+
+### Fixed
+
+- **soul: Interactive picker status selection no longer falls through to usage error** (`shared/soul-core.ts`)
+  - Selecting status in the interactive picker now correctly returns info instead of triggering the no-args usage message
+
+- **soul: autoLoad applies to session mode** (`extensions/soul.ts`)
+  - Session-mode souls are now correctly auto-loaded on startup when `autoLoad: true`
+
+- **soul: Moved `soul-core.ts` from `extensions/` to `shared/`** (`shared/soul-core.ts`)
+  - Pi auto-discovers all `.ts` files in `extensions/` as extension entry points; `soul-core.ts` has no factory export and was causing a load error
+  - Moved to `shared/` so it's treated as a utility module, not an extension
+  
+## [1.3.9] - 05-24-2026 2:08:55 PM
+
+### Added
+
 - **diag: Added --full-prompt parameter** (`extensions/diag.ts`)
   - New `/diag --full-prompt` command shows the complete untruncated system prompt
   - `self_diagnostic` tool now supports `fullPrompt: boolean` parameter
   - Useful for debugging and inspecting the complete system prompt sent to models
 
-### Changed
-
 - **diag: Removed unused parameters** (`extensions/diag.ts`)
   - Removed `--quick`, `--security`, and `--performance` parameters (were not fully implemented)
   - Kept `--help` as the only parameter alongside the new `--full-prompt`
   - Simplified the command interface to match actual functionality
-
-## [1.3.9] - 05-24-2026 2:08:55 PM
-
-### Added
-
+  
 - **hex-edit: Added promptSnippet to hex_edit tool** (`extensions/hex-edit.ts`)
   - Added `promptSnippet` property to `hex_edit` tool registration for LLM discoverability
   - Tool now appears in system prompt's "Available tools" list for LLMs
