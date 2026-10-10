@@ -6,6 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.3.9] - 10-10-2026 12:26:41 AM
+
+### Added
+
+- **status: Enhanced system monitoring extension** (`extensions/status.ts`)
+ - Added real-time system status display with CPU, RAM, disk usage, and session metrics
+ - Automatic status updates every 5 seconds with fast 1s interval during active tool execution
+ - Named status items that compose cleanly with other extensions' status displays
+ - Session timing and tool execution tracking with live performance metrics
+ - Memory usage monitoring and Ollama connection status indicators
+ - Security mode display and configuration status tracking
+ - Automatic interval cleanup on session shutdown to prevent memory leaks
+ - Enhanced error handling and debugging capabilities throughout monitoring system
+
+- **status: Performance optimization and reliability improvements** (`extensions/status.ts`)
+ - Added proper interval management with `.unref()` to prevent process blocking
+ - Optimized status update timing to minimize performance impact
+ - Enhanced error handling for system metric collection failures
+ - Added fallback values for unavailable system information
+ - Improved memory management by clearing intervals properly on shutdown
+ - Added comprehensive logging for debugging and monitoring system health
+
+### Changed
+
+- **status: Enhanced tool execution tracking** (`extensions/status.ts`)
+ - Added active tool name and execution time display
+ - Improved tool execution timing accuracy using performance.now()
+ - Enhanced tool lifecycle event handling for better status updates
+ - Added tool execution completion tracking and reporting
+ - Optimized status updates during active tool execution for real-time feedback
+
+### Fixed
+
+- **status: Memory leak prevention** (`extensions/status.ts`)
+ - Fixed interval cleanup issues that could cause memory leaks during session shutdown
+ - Enhanced session lifecycle management to properly clear all timers
+ - Added proper error handling for interval creation and cleanup
+ - Improved debugging logging for interval management operations
+
 ## [1.3.9] - 06-11-2026 2:46:00 PM
 
 ### Added
