@@ -483,9 +483,9 @@ export default function (pi: ExtensionAPI) {
    * eslint-disable-next-line @typescript-eslint/no-explicit-any
    * NOTE: `event` is typed as `any` because the Pi framework does not export
    * specific event type interfaces for tool_call events. The event shape
-   * varies across Pi versions and includes properties like `tool`, `name`,
-   * `blocked`, and `result`. Until Pi exports stable event types, `any`
-   * is the only safe option to avoid runtime breakage on framework updates.
+   * includes `toolName`, `blocked`, and `result` properties. Until Pi exports
+   * stable event types, `any` is the only safe option to avoid runtime breakage
+   * on framework updates.
    */
   pi.on("tool_call", (event: any) => {
     if (!event) return;
@@ -497,7 +497,7 @@ export default function (pi: ExtensionAPI) {
       (event.error as string)?.includes("blocked");
 
     if (isBlocked) {
-      securityFlashTool = event.tool ?? event.name ?? "unknown";
+      securityFlashTool = event.toolName ?? "unknown";
       securityFlashUntil = Date.now() + 3000;
       blockedCount++;
       flushStatus();
@@ -511,13 +511,13 @@ export default function (pi: ExtensionAPI) {
    * eslint-disable-next-line @typescript-eslint/no-explicit-any
    * NOTE: `event` is typed as `any` because the Pi framework does not export
    * specific event type interfaces for tool_execution_start events. The event
-   * shape includes `tool`/`name` properties but is not formally typed in the
+   * shape includes `toolName` property but is not formally typed in the
    * ExtensionAPI. Using `any` avoids type cast fragility across Pi versions.
    */
   pi.on("tool_execution_start", (event: any) => {
     if (!event) return;
-    // Try multiple possible property names for tool name
-    activeTool = event.tool || event.name || event.function || event.fn || "unknown-tool";
+    // Use the correct toolName property from Pi's ToolExecutionStartEvent
+    activeTool = event.toolName || "unknown-tool";
     activeToolStart = performance.now();
     startToolTimer();
   });
