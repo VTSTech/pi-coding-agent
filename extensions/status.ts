@@ -266,8 +266,7 @@ export default function (pi: ExtensionAPI) {
       ctxUi.setStatus("status-tool", `${green(">")} ${dim(activeTool + ":")} ${green(fmtDur(elapsed))}`);
     } else if (lastToolCallElapsed > 0 && lastToolCallName !== null) {
       // Show last tool call time (static value calculated when tool ended)
-      const toolName = lastToolCallName === "unknown-tool" ? "tool" : lastToolCallName;
-      ctxUi.setStatus("status-tool", `${dim("Last:")} ${dim(toolName + ":")} ${green(fmtDur(lastToolCallElapsed))}`);
+      ctxUi.setStatus("status-tool", `${dim("Last:")} ${dim(lastToolCallName + ":")} ${green(fmtDur(lastToolCallElapsed))}`);
     } else {
       ctxUi.setStatus("status-tool", undefined);
     }
