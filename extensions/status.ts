@@ -37,6 +37,7 @@ const TOOL_TIMER_INTERVAL_MS = 1000;
 
 export default function (pi: ExtensionAPI) {
   let lastResponseTime: number | null = null;
+  let lastResponseTokens: number | null = null;
   let agentStartTime: number | null = null;
   let updateInterval: ReturnType<typeof setInterval> | null = null;
   let toolTimerInterval: ReturnType<typeof setInterval> | null = null;
@@ -45,6 +46,8 @@ export default function (pi: ExtensionAPI) {
   let ctxTheme: any = null;
   let prevCpuInfo = getCpuSnapshot();
   let lastPayload: Record<string, any> | null = null;
+  let lastToolCallTime: number | null = null;
+  let lastToolCallName: string | null = null;
   // Cached metrics
   let cpuUsage = 0;
   let memUsed = 0;
@@ -70,6 +73,8 @@ export default function (pi: ExtensionAPI) {
   let activeTool = "";
   /** Timestamp when the active tool started executing. */
   let activeToolStart = 0;
+  /** Timestamp when the last tool call completed. */
+  let lastToolCallEndTime = 0;
 
   /** Session-scoped count of blocked operations. */
   let blockedCount = 0;
@@ -225,6 +230,13 @@ export default function (pi: ExtensionAPI) {
       lastResponseTime !== null ? `${dim("Resp")} ${green(fmtDur(lastResponseTime))}` : undefined,
     );
 
+    // TPS (Tokens Per Second)
+    ctxUi.setStatus("status-tps",
+      lastResponseTime !== null && lastResponseTokens !== null && lastResponseTime > 0
+        ? `${dim("TPS")} ${green((lastResponseTokens / (lastResponseTime / 1000)).toFixed(0))}`
+        : undefined,
+    );
+
     // Active parameters from last payload
     if (lastPayload) {
       const params = extractParams(lastPayload);
@@ -250,6 +262,10 @@ export default function (pi: ExtensionAPI) {
     if (activeTool && activeToolStart > 0) {
       const elapsed = performance.now() - activeToolStart;
       ctxUi.setStatus("status-tool", `${green(">")} ${dim(activeTool + ":")} ${green(fmtDur(elapsed))}`);
+    } else if (lastToolCallTime !== null && lastToolCallName !== null) {
+      // Show last tool call time (persists even when tool is not running)
+      const elapsed = performance.now() - lastToolCallTime;
+      ctxUi.setStatus("status-tool", `${dim("Last:")} ${dim(lastToolCallName + ":")} ${green(fmtDur(elapsed))}`);
     } else {
       ctxUi.setStatus("status-tool", undefined);
     }
@@ -355,9 +371,12 @@ export default function (pi: ExtensionAPI) {
     activeToolStart = 0;
     blockedCount = 0;
     lastResponseTime = null;
+    lastResponseTokens = null;
     lastPayload = null;
     versionsText = "";
     cachedPromptText = null;
+    lastToolCallTime = null;
+    lastToolCallName = null;
   });
 
   pi.on("before_provider_request", (event) => {
@@ -416,6 +435,16 @@ export default function (pi: ExtensionAPI) {
     if (agentStartTime !== null) {
       lastResponseTime = performance.now() - agentStartTime;
       agentStartTime = null;
+      
+      // Try to get token count from the response
+      try {
+        const ctxUsage = currentCtx?.getContextUsage?.();
+        if (ctxUsage?.tokens !== undefined) {
+          lastResponseTokens = ctxUsage.tokens;
+        }
+      } catch (err) {
+        debugLog("status", "failed to get token count from response", err);
+      }
     }
     activeTool = "";
     activeToolStart = 0;
@@ -494,6 +523,8 @@ export default function (pi: ExtensionAPI) {
    * Clear per-tool timing when a tool finishes executing.
    */
   pi.on("tool_execution_end", () => {
+    lastToolCallTime = performance.now();
+    lastToolCallName = activeTool;
     activeTool = "";
     activeToolStart = 0;
     stopToolTimer();

@@ -20,16 +20,23 @@ CPU/RAM/Swap are only shown when using a local Ollama provider (not for cloud/re
 
 **Example (local Ollama):**
 ```
-CtxMax:41k RespMax:16.4k Resp 2m3s CPU 12% RAM 2.2G/15.1G SEC:MAX Prompt: 2840 chr 393 tok pi:0.66.1
+CtxMax:41k RespMax:16.4k Resp 2m3s TPS 45 CPU 12% RAM 2.2G/15.1G SEC:MAX Prompt: 2840 chr 393 tok pi:0.66.1
 ```
 
 **Example (cloud provider, basic mode):**
 ```
-CtxMax:128k RespMax:16.4k Resp 1m22s SEC:BASIC Prompt: 2840 chr 393 tok pi:0.66.1
+CtxMax:128k RespMax:16.4k Resp 1m22s TPS 32 SEC:BASIC Prompt: 2840 chr 393 tok pi:0.66.1
+```
+
+**Example with persistent tool timing:**
+```
+CtxMax:41k RespMax:16.4k Resp 2m3s TPS 45 CPU 12% RAM 2.2G/15.1G SEC:MAX Last:read: 15s Prompt: 2840 chr 393 tok pi:0.66.1
 ```
 
 ## Enhanced Features
 - **Fast 1-second tool timer** - Real-time active tool tracking with elapsed time
+- **Persistent tool timing** - Last tool call time remains visible even when no tool is currently running
+- **TPS monitoring** - Tokens per second calculation for each response to measure processing efficiency
 - **Improved error handling** - Better debugging and error messages throughout the extension
 - **Enhanced session management** - Proper cleanup of intervals and timers on session shutdown
 - **Better memory management** - Unref() timers to prevent preventing process exit
@@ -43,12 +50,13 @@ Slots are updated every 5 seconds (1 second for active tool timing). Render orde
 |------|-------------|-----------|
 | **CtxMax + RespMax** | Combined: native model context window + max response tokens (e.g., `CtxMax:33k RespMax:16.4k`) | Ollama or after first provider request |
 | **Resp** | Agent loop duration (e.g., `2m3s`) | After first agent cycle |
+| **TPS** | Tokens per second for the last response (e.g., `TPS 45`) | After first agent cycle with token data |
 | **CPU%** | Per-core CPU usage delta | Local Ollama only |
 | **RAM** | Used/total system memory | Local Ollama only |
 | **Swap** | Used/total swap space | Local only, when active |
 | **Generation params** | Temperature, top_p, top_k, num_predict, context size, reasoning_effort (dimmed) | After first provider request |
 | **SEC** | Security mode indicator (`SEC:BASIC`/`SEC:MAX`) + session-scoped blocked count + 3s flash on block event | Always shown |
-| **Active tool** | Live elapsed timer with `>` indicator | While a tool is running |
+| **Active tool** | Live elapsed timer with `>` indicator while running, or last tool call time when idle | Always shown (persists after tool completion) |
 | **Prompt** | System prompt size as `chars chr tokens tok` | After first agent start |
 | **Pi version** | `pi:0.66.1` (dim label + green value, always last) | Always shown |
 
