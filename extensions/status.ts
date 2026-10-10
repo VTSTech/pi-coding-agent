@@ -78,6 +78,8 @@ export default function (pi: ExtensionAPI) {
 
   /** Session-scoped count of blocked operations. */
   let blockedCount = 0;
+  /** Cached elapsed time for the last tool call (static once calculated). */
+  let lastToolCallElapsed = 0;
 
   // ── helpers ──────────────────────────────────────────────────────
 
@@ -262,10 +264,10 @@ export default function (pi: ExtensionAPI) {
     if (activeTool && activeToolStart > 0) {
       const elapsed = performance.now() - activeToolStart;
       ctxUi.setStatus("status-tool", `${green(">")} ${dim(activeTool + ":")} ${green(fmtDur(elapsed))}`);
-    } else if (lastToolCallTime !== null && lastToolCallName !== null) {
-      // Show last tool call time (persists even when tool is not running)
-      const elapsed = performance.now() - lastToolCallTime;
-      ctxUi.setStatus("status-tool", `${dim("Last:")} ${dim(lastToolCallName + ":")} ${green(fmtDur(elapsed))}`);
+    } else if (lastToolCallElapsed > 0 && lastToolCallName !== null) {
+      // Show last tool call time (static value calculated when tool ended)
+      const toolName = lastToolCallName === "unknown-tool" ? "tool" : lastToolCallName;
+      ctxUi.setStatus("status-tool", `${dim("Last:")} ${dim(toolName + ":")} ${green(fmtDur(lastToolCallElapsed))}`);
     } else {
       ctxUi.setStatus("status-tool", undefined);
     }
@@ -377,6 +379,7 @@ export default function (pi: ExtensionAPI) {
     cachedPromptText = null;
     lastToolCallTime = null;
     lastToolCallName = null;
+    lastToolCallElapsed = 0;
   });
 
   pi.on("before_provider_request", (event) => {
@@ -514,7 +517,8 @@ export default function (pi: ExtensionAPI) {
    */
   pi.on("tool_execution_start", (event: any) => {
     if (!event) return;
-    activeTool = event.tool ?? event.name ?? "tool";
+    // Try multiple possible property names for tool name
+    activeTool = event.tool || event.name || event.function || event.fn || "unknown-tool";
     activeToolStart = performance.now();
     startToolTimer();
   });
@@ -523,8 +527,10 @@ export default function (pi: ExtensionAPI) {
    * Clear per-tool timing when a tool finishes executing.
    */
   pi.on("tool_execution_end", () => {
-    lastToolCallTime = performance.now();
+    const endTime = performance.now();
+    lastToolCallTime = endTime;
     lastToolCallName = activeTool;
+    lastToolCallElapsed = endTime - activeToolStart;
     activeTool = "";
     activeToolStart = 0;
     stopToolTimer();
